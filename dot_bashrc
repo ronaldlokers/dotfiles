@@ -159,3 +159,5 @@ fi
 # Ronald's Custom Additions
 
 set -o vi
+
+eval "$(mise activate bash)"
