@@ -67,6 +67,10 @@ if command -v mise > /dev/null ; then
   source <(mise completion zsh)
 fi
 
+if command -v kubectl > /dev/null ; then
+   source <(kubectl completion zsh)
+fi
+
 
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -80,8 +84,12 @@ if command -v git > /dev/null ; then
 fi 
 
 if command -v lazygit > /dev/null ; then
-  alias lg=lazygit
-fi 
+  alias lg="lazygit"
+fi
+
+if command -v kubectl > /dev/null ; then
+  alias k="kubectl"
+fi
 
 if command -v bat > /dev/null ; then
   alias cat="bat"
