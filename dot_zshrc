@@ -44,6 +44,10 @@ if command -v mise > /dev/null ; then
   eval "$($HOME/.local/bin/mise activate zsh)"
 fi
 
+if command -v direnv > /dev/null ; then
+  eval "$(direnv hook zsh)"
+fi
+
 
 # ~~~~~~~~~~~~~~~ Completion ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -67,9 +71,17 @@ fi
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-alias v=nvim
-alias gp="git pull"
-alias lg=lazygit
+if command -v nvim > /dev/null ; then
+  alias v="nvim"
+fi
+
+if command -v git > /dev/null ; then
+  alias gp="git pull"
+fi 
+
+if command -v lazygit > /dev/null ; then
+  alias lg=lazygit
+fi 
 
 if command -v bat > /dev/null ; then
   alias cat="bat"

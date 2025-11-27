@@ -158,6 +158,6 @@ fi
 
 # Ronald's Custom Additions
 
-#set -o vi
+set -o vi
 
 eval "$(mise activate bash)"
