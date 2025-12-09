@@ -102,3 +102,7 @@ if command -v lsd > /dev/null ; then
   alias lla='ls -lgha'
   alias lt='ls --tree'
 fi
+
+
+# Add Krew to PATH
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
