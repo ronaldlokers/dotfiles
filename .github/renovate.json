@@ -2,6 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "mise": {
-    "fileMatch": ["(^|/)dot_config/mise/config\\.toml$"]
+    "managerFilePatterns": [
+      "/(^|/)dot_config/mise/config\\.toml$/"
+    ]
   }
 }
