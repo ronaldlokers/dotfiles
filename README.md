@@ -34,6 +34,7 @@ authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
 | --- | --- |
 | `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv/zoxide, cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
+| `dot_config/lazygit/` | lazygit config: delta as diff pager |
 | `dot_bashrc` | bash fallback config |
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
