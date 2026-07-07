@@ -5,6 +5,10 @@ HISTFILE="$HOME/.zsh_history"
 HISTSIZE=100000
 SAVEHIST=100000
 
+setopt share_history      # share history between all shells (tmux panes)
+setopt hist_ignore_dups   # don't record consecutive duplicates
+setopt hist_ignore_space  # don't record commands starting with a space
+
 
 # ~~~~~~~~~~~~~~~ Prompt ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -54,18 +58,29 @@ fi
 # ~~~~~~~~~~~~~~~ Completion ~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-autoload -Uz compinit && compinit
+# Generated completions are cached as files in fpath; regenerating them
+# with `source <(...)` on every shell start is slow. Delete a file to
+# refresh it after a tool update.
+mkdir -p "$HOME/.zsh/completions"
+fpath+=("$HOME/.zsh/completions")
+
+for cmd in mise kubectl; do
+  if command -v "$cmd" > /dev/null && [ ! -f "$HOME/.zsh/completions/_$cmd" ]; then
+    "$cmd" completion zsh > "$HOME/.zsh/completions/_$cmd"
+  fi
+done
+
+# compinit's full security audit is slow; skip it (-C) unless the dump
+# is older than a day
+autoload -Uz compinit
+if [ -n "$(find "$HOME/.zcompdump" -mmin -1440 2>/dev/null)" ]; then
+  compinit -C
+else
+  compinit
+fi
 
 if command -v fzf > /dev/null ; then
   source <(fzf --zsh)
-fi
-
-if command -v mise > /dev/null ; then
-  source <(mise completion zsh)
-fi
-
-if command -v kubectl > /dev/null ; then
-   source <(kubectl completion zsh)
 fi
 
 
@@ -78,7 +93,7 @@ fi
 
 if command -v git > /dev/null ; then
   alias gp="git pull"
-fi 
+fi
 
 if command -v lazygit > /dev/null ; then
   alias lg="lazygit"
