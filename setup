@@ -1,22 +1,24 @@
 #!/bin/bash
+#
+# Bootstrap a fresh machine: make zsh the login shell, then install
+# chezmoi and apply the dotfiles. Safe to re-run; both steps are
+# skipped when already done.
 
 set -euo pipefail
 
+# Make zsh the login shell, unless it already is (avoids a needless
+# sudo prompt on re-runs).
 if command -v zsh >/dev/null; then
-    sudo chsh -s $(command -v zsh) $USER
+    login_shell="$(getent passwd "$USER" | cut -d: -f7)"
+    if [ "$login_shell" != "$(command -v zsh)" ]; then
+        sudo chsh -s "$(command -v zsh)" "$USER"
+    fi
 fi
 
-if [ ! -d "$HOME/.zsh" ]; then
-  mkdir -p "$HOME/.zsh"
-fi
-
-# Check if pure is already installed
-if [ ! -d "$HOME/.zsh/pure" ]; then
-  git clone https://github.com/sindresorhus/pure.git "$HOME/.zsh/pure"
-fi
-
+# Install chezmoi (to ~/.local/bin by default) and immediately apply
+# this dotfiles repo. HTTPS on purpose: a fresh machine has no SSH keys
+# yet. Everything else (mise, packages, the pure prompt) is pulled in
+# by chezmoi's externals and run_onchange scripts during apply.
 if ! command -v chezmoi >/dev/null; then
-    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply git@github.com:ronaldlokers/dotfiles.git
+    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
 fi
-
-exit 0

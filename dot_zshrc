@@ -40,8 +40,10 @@ export LANG="en_US.UTF-8"
 # ~~~~~~~~~~~~~~~ Mise ~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-if command -v mise > /dev/null ; then
+if [ -x "$HOME/.local/bin/mise" ]; then
   eval "$($HOME/.local/bin/mise activate zsh)"
+elif command -v mise > /dev/null ; then
+  eval "$(mise activate zsh)"
 fi
 
 if command -v direnv > /dev/null ; then
@@ -57,11 +59,6 @@ autoload -Uz compinit && compinit
 if command -v fzf > /dev/null ; then
   source <(fzf --zsh)
 fi
-
-if command -v flux > /dev/null ; then
-  source <(flux completion zsh)
-fi
-
 
 if command -v mise > /dev/null ; then
   source <(mise completion zsh)
@@ -102,7 +99,3 @@ if command -v lsd > /dev/null ; then
   alias lla='ls -lgha'
   alias lt='ls --tree'
 fi
-
-
-# Add Krew to PATH
-export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
