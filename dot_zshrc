@@ -15,11 +15,8 @@ setopt hist_ignore_space  # don't record commands starting with a space
 
 PURE_GIT_PULL=0
 
-if [[ "$OSTYPE" == darwin* ]]; then
-  fpath+=("$(brew --prefix)/share/zsh/site-functions")
-else
-  fpath+=($HOME/.zsh/pure)
-fi
+# pure is a chezmoi external, present on every OS
+fpath+=("$HOME/.zsh/pure")
 autoload -U promptinit; promptinit
 
 prompt pure
@@ -135,6 +132,12 @@ fi
 
 # ~~~~~~~~~~~~~~~ Plugins ~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+# fzf-tab wants to load after compinit but before widget-wrapping
+# plugins like zsh-autosuggestions
+if command -v fzf > /dev/null && [ -f "$HOME/.zsh/fzf-tab/fzf-tab.plugin.zsh" ]; then
+  source "$HOME/.zsh/fzf-tab/fzf-tab.plugin.zsh"
+fi
 
 if [ -f "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
   source "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh"
