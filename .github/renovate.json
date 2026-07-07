@@ -5,5 +5,12 @@
     "managerFilePatterns": [
       "/(^|/)dot_config/mise/config\\.toml$/"
     ]
-  }
+  },
+  "packageRules": [
+    {
+      "description": "Automerge patch/minor once CI is green; majors wait for review",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    }
+  ]
 }
