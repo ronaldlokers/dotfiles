@@ -2,7 +2,10 @@ name: Renovate
 
 on:
   schedule:
-    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+    # weekly, Monday 06:00 UTC; the second run automerges PRs whose CI
+    # went green after the first (Renovate merges on its own runs)
+    - cron: "0 6 * * 1"
+    - cron: "0 9 * * 1"
   workflow_dispatch:
 
 # Renovate authenticates with the RENOVATE_TOKEN PAT, not the workflow token
