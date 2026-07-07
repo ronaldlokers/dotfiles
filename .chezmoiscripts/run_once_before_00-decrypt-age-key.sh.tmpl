@@ -5,6 +5,8 @@ set -eu
 
 if [ ! -f "$HOME/.config/chezmoi/key.txt" ]; then
     mkdir -p "$HOME/.config/chezmoi"
-    chezmoi age decrypt --passphrase --output "$HOME/.config/chezmoi/key.txt" "{{ .chezmoi.sourceDir }}/key.txt.age"
+    # $CHEZMOI_EXECUTABLE, not bare chezmoi: during `setup` bootstrap the
+    # binary runs from ./bin and isn't on PATH yet
+    "$CHEZMOI_EXECUTABLE" age decrypt --passphrase --output "$HOME/.config/chezmoi/key.txt" "{{ .chezmoi.sourceDir }}/key.txt.age"
     chmod 600 "$HOME/.config/chezmoi/key.txt"
 fi
