@@ -83,6 +83,11 @@ if command -v fzf > /dev/null ; then
   source <(fzf --zsh)
 fi
 
+# zoxide wants to run after compinit
+if command -v zoxide > /dev/null ; then
+  eval "$(zoxide init zsh)"
+fi
+
 
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -113,4 +118,17 @@ if command -v lsd > /dev/null ; then
   alias la='ls -lathr'
   alias lla='ls -lgha'
   alias lt='ls --tree'
+fi
+
+
+# ~~~~~~~~~~~~~~~ Plugins ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+if [ -f "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
+  source "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
+
+# syntax highlighting wants to be sourced last
+if [ -f "$HOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]; then
+  source "$HOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
 fi

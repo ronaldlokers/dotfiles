@@ -13,8 +13,9 @@ shell. Both are safe to re-run.
 
 Applying pulls in everything else automatically:
 
-- **externals** (`.chezmoiexternals/`) download the mise binary and the
-  [pure](https://github.com/sindresorhus/pure) prompt, refreshed weekly
+- **externals** (`.chezmoiexternals/`) download the mise binary, the
+  [pure](https://github.com/sindresorhus/pure) prompt, and the
+  zsh-autosuggestions / zsh-syntax-highlighting plugins, refreshed weekly
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
 
@@ -22,7 +23,8 @@ Applying pulls in everything else automatically:
 
 | Path | Contents |
 | --- | --- |
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, cached completions, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv/zoxide, cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_bashrc` | bash fallback config |
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
