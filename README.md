@@ -26,7 +26,8 @@ self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
 `workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
-`chezmoi apply`.
+`chezmoi apply`. CI (`.github/workflows/ci.yaml`) shellchecks the scripts and
+test-bootstraps the repo into a clean HOME on every push and PR.
 
 ## Secrets
 
