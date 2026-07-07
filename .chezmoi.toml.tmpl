@@ -1,5 +1,15 @@
+{{- /* asked once on first interactive init, then remembered; CI and
+       other non-TTY runs silently get the default */ -}}
+{{- $email := "ronald@lokilabs.nl" -}}
+{{- if stdinIsATTY -}}
+{{-   $email = promptStringOnce . "email" "Git email address" $email -}}
+{{- end -}}
+
 encryption = "age"
 
 [age]
     identity = "~/.config/chezmoi/key.txt"
     recipient = "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy"
+
+[data]
+    email = {{ $email | quote }}
