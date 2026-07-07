@@ -2,6 +2,6 @@
 # --paging=never because lazygit renders the output itself,
 # --dark because delta can't detect the terminal background in a pipe.
 git:
-  paging:
-    colorArg: always
-    pager: delta --dark --paging=never
+  pagers:
+    - colorArg: always
+      pager: delta --dark --paging=never

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Decrypt the chezmoi age identity on first apply so encrypted files can
+# be applied. Prompts once for the passphrase (backed up in Proton Pass).
+set -eu
+
+if [ ! -f "$HOME/.config/chezmoi/key.txt" ]; then
+    mkdir -p "$HOME/.config/chezmoi"
+    chezmoi age decrypt --passphrase --output "$HOME/.config/chezmoi/key.txt" "{{ .chezmoi.sourceDir }}/key.txt.age"
+    chmod 600 "$HOME/.config/chezmoi/key.txt"
+fi
