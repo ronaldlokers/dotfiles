@@ -165,3 +165,9 @@ if [ -x "$HOME/.local/bin/mise" ]; then
 elif command -v mise > /dev/null ; then
   eval "$(mise activate bash)"
 fi
+
+# fzf keybindings (fuzzy Ctrl-R etc.), same as in .zshrc, so bash
+# stays usable on machines where zsh isn't the login shell yet
+if command -v fzf > /dev/null ; then
+  eval "$(fzf --bash)"
+fi
