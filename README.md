@@ -19,6 +19,15 @@ Applying pulls in everything else automatically:
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
 
+## Updates
+
+Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
+self-hosted [Renovate](https://docs.renovatebot.com) run
+(`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
+authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
+`workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
+`chezmoi apply`.
+
 ## Layout
 
 | Path | Contents |

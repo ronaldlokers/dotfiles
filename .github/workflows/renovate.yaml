@@ -1,0 +1,22 @@
+name: Renovate
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+# Renovate authenticates with the RENOVATE_TOKEN PAT, not the workflow token
+permissions: {}
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Renovate
+        uses: renovatebot/github-action@v46.1.18
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          # repo config is committed at .github/renovate.json, skip onboarding PR
+          RENOVATE_ONBOARDING: "false"
