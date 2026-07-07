@@ -13,10 +13,8 @@ shell. Both are safe to re-run.
 
 Applying pulls in everything else automatically:
 
-- **externals** (`.chezmoiexternals/`) download the mise binary, the
-  [pure](https://github.com/sindresorhus/pure) prompt, and the
-  [LazyVim starter](https://github.com/LazyVim/starter) config
-  (refreshed weekly where a `refreshPeriod` is set)
+- **externals** (`.chezmoiexternals/`) download the mise binary and the
+  [pure](https://github.com/sindresorhus/pure) prompt, refreshed weekly
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
 
@@ -28,7 +26,7 @@ Applying pulls in everything else automatically:
 | `dot_bashrc` | bash fallback config |
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
-| `dot_config/nvim/` | LazyVim tweaks layered over the starter external |
+| `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 
 Project-specific tooling (kubectl, flux, krew, ...) is intentionally *not*
 here — it lives in each project's own `mise.toml`.
