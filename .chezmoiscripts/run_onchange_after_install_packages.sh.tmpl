@@ -2,5 +2,11 @@
 set -euo pipefail
 
 # packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
-$HOME/.local/bin/mise trust $HOME/.config/mise/config.toml
-$HOME/.local/bin/mise install
+
+# mise must be resolvable by name, not just full path: tool backends spawn
+# child processes that call `mise` (e.g. the npm backend's reshim wrapper),
+# and ~/.local/bin isn't on PATH yet on a fresh machine.
+export PATH="$HOME/.local/bin:$PATH"
+
+mise trust "$HOME/.config/mise/config.toml"
+mise install

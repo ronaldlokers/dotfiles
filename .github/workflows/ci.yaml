@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck setup .chezmoiscripts/*.sh.tmpl
+      - name: validate renovate config
+        run: npx --yes --package renovate renovate-config-validator .github/renovate.json
+
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install zsh
+        run: sudo apt-get update -q && sudo apt-get install -y -q zsh
+      - name: install chezmoi
+        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/bin"
+      - name: bootstrap into a clean HOME
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          TESTHOME="$(mktemp -d)"
+          echo "TESTHOME=$TESTHOME" >> "$GITHUB_ENV"
+          # CI has no passphrase: seed a dummy age identity so the
+          # run_once_before decrypt script skips, and exclude encrypted
+          # files from the apply. Everything else runs for real:
+          # externals, run scripts, full mise tool install.
+          mkdir -p "$TESTHOME/.config/chezmoi"
+          touch "$TESTHOME/.config/chezmoi/key.txt"
+          HOME="$TESTHOME" chezmoi init --source "$PWD"
+          HOME="$TESTHOME" chezmoi apply --source "$PWD" --exclude encrypted
+      - name: smoke-test zsh startup
+        run: |
+          HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
+      - name: smoke-test installed tools
+        run: |
+          HOME="$TESTHOME" zsh -ic 'nvim --version | head -1; mise ls | head -20'
