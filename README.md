@@ -28,6 +28,15 @@ authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
 `workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
 `chezmoi apply`.
 
+## Secrets
+
+Files added with `chezmoi add --encrypt` are age-encrypted in the repo with
+a dedicated dotfiles keypair (`.chezmoi.toml.tmpl`). The private key is
+committed passphrase-protected as `key.txt.age`; on first apply a
+`run_once_before` script prompts for the passphrase (backup: Proton Pass)
+and decrypts it to `~/.config/chezmoi/key.txt`. Currently encrypted: the
+sops age keys (`~/.config/sops/age/keys.txt`).
+
 ## Layout
 
 | Path | Contents |
