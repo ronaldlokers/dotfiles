@@ -11,5 +11,9 @@
     }
   },
   "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$(ls -td \"$HOME\"/.claude/plugins/cache/caveman/caveman/*/src/hooks/caveman-statusline.sh 2>/dev/null | head -1)\""
+  },
   "theme": "dark"
 }
