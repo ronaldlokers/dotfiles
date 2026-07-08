@@ -46,14 +46,13 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           TESTHOME="$(mktemp -d)"
           echo "TESTHOME=$TESTHOME" >> "$GITHUB_ENV"
-          # CI has no passphrase: seed a dummy age identity so the
-          # run_once_before decrypt script skips, and exclude encrypted
-          # files from the apply. Everything else runs for real:
-          # externals, run scripts, full mise tool install.
-          mkdir -p "$TESTHOME/.config/chezmoi"
-          touch "$TESTHOME/.config/chezmoi/key.txt"
+          # CI has no passphrase and no tty, same as `devpod up` on a
+          # fresh machine: the unlock script detects that and skips
+          # decrypting the age identity and the secrets behind it.
+          # Everything else runs for real: externals, run scripts, full
+          # mise tool install.
           HOME="$TESTHOME" chezmoi init --source "$PWD"
-          HOME="$TESTHOME" chezmoi apply --source "$PWD" --exclude encrypted
+          HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
       - name: smoke-test zsh startup
         run: |
           HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
