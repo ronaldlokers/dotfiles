@@ -8,6 +8,17 @@ case $- in
       *) return;;
 esac
 
+# On Omarchy machines hand interactive bash straight over to zsh — the
+# same shim omarchy-setup-zsh installs (never run that; it replaces
+# ~/.zshrc and ~/.bashrc, which chezmoi owns). Covers machines where
+# the setup script's chsh hasn't made zsh the login shell yet.
+if [ -d /usr/share/omarchy-zsh ] && command -v zsh > /dev/null; then
+  if [[ $(ps --no-header --pid=$PPID --format=comm) != "zsh" && -z ${BASH_EXECUTION_STRING} && ${SHLVL} == 1 ]]; then
+    shopt -q login_shell && LOGIN_OPTION='--login' || LOGIN_OPTION=''
+    exec zsh $LOGIN_OPTION
+  fi
+fi
+
 # don't put duplicate lines or lines starting with space in the history.
 # See bash(1) for more options
 HISTCONTROL=ignoreboth
