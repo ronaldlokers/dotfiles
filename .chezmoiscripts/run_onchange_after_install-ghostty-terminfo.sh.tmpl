@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+# terminfo hash: {{ include "ghostty.terminfo" | sha256sum }}
+
+# Ghostty sets TERM=xterm-ghostty, but containers (devpod) usually lack
+# that terminfo entry, which breaks zle redrawing (doubled/overlapping
+# characters while typing). Compile it into ~/.terminfo, which ncurses
+# checks before the system database.
+if ! infocmp -x xterm-ghostty >/dev/null 2>&1; then
+  tic -x -o "$HOME/.terminfo" "{{ .chezmoi.sourceDir }}/ghostty.terminfo"
+fi
