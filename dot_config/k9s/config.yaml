@@ -1,0 +1,7 @@
+# Only the skin is pinned here; k9s fills in the rest with defaults.
+# Note: k9s rewrites this file with the full config on exit, so
+# `chezmoi diff` will show drift after running it — that's expected,
+# apply just resets it back to this minimal form.
+k9s:
+  ui:
+    skin: catppuccin-mocha
