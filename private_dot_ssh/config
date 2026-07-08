@@ -1,0 +1,3 @@
+# First ssh use loads the key into the agent, so no manual ssh-add
+# after login/reboot
+AddKeysToAgent yes

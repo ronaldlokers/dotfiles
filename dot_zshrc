@@ -39,6 +39,12 @@ export LANG="en_US.UTF-8"
 
 export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/config"
 
+# socket of the systemd user ssh-agent (dot_config/systemd/user); the
+# guard keeps a forwarded agent (devpod/ssh -A) as-is
+if [ -z "$SSH_AUTH_SOCK" ] && [ -S "$XDG_RUNTIME_DIR/ssh-agent.socket" ]; then
+  export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+fi
+
 
 # ~~~~~~~~~~~~~~~ Mise ~~~~~~~~~~~~~~~~~~~~~~~~
 
