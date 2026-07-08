@@ -1,5 +1,6 @@
 setup
 fixes.md
+ghostty.terminfo
 README.md
 key.txt.age
 .ssh/id_ed25519_signing.age
