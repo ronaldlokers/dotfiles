@@ -4,6 +4,12 @@
 set -eu
 
 if [ ! -f "$HOME/.config/chezmoi/key.txt" ]; then
+    if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+        echo "No TTY available, skipping age key decryption." >&2
+        echo "Run 'chezmoi init --apply' manually to unlock secrets." >&2
+        exit 0
+    fi
+
     mkdir -p "$HOME/.config/chezmoi"
     echo "Unlocking the age key that decrypts the repo's secrets (sops key," >&2
     echo "git signing key). The passphrase is backed up in Proton Pass." >&2
