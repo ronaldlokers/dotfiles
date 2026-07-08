@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chezmoi diff *)",
+      "Bash(chezmoi status *)",
+      "Bash(chezmoi verify *)",
+      "Bash(chezmoi cat *)",
+      "Bash(chezmoi source-path *)",
+      "Bash(chezmoi execute-template *)",
+      "Bash(chezmoi data *)",
+      "Bash(chezmoi managed *)"
+    ]
+  }
+}
