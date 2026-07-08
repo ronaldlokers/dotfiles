@@ -1,0 +1,15 @@
+# Shell-independent ssh-agent: no shell rc starts an agent (the bash →
+# zsh switch on Omarchy silently dropped it), so the user session owns
+# it instead. SSH_AUTH_SOCK reaches shells via environment.d and the
+# fallback export in .zshrc/.bashrc.
+# Activate once per machine: systemctl --user enable --now ssh-agent
+[Unit]
+Description=SSH key agent
+
+[Service]
+Type=simple
+Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
+ExecStart=/usr/bin/ssh-agent -D -a $SSH_AUTH_SOCK
+
+[Install]
+WantedBy=default.target
