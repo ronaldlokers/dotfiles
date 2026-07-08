@@ -1,6 +1,12 @@
 {
+  "includeCoAuthoredBy": false,
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$HOME\"/.claude/statusline.sh"
+  },
   "enabledPlugins": {
-    "caveman@caveman": true
+    "caveman@caveman": true,
+    "commit-commands@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
@@ -10,11 +16,6 @@
       }
     }
   },
-  "includeCoAuthoredBy": false,
   "skipDangerousModePermissionPrompt": true,
-  "statusLine": {
-    "type": "command",
-    "command": "bash \"$HOME\"/.claude/statusline.sh"
-  },
   "theme": "dark"
 }
