@@ -172,8 +172,10 @@ if command -v fzf > /dev/null ; then
   eval "$(fzf --bash)"
 fi
 
-# socket of the systemd user ssh-agent (dot_config/systemd/user); the
-# guard keeps a forwarded agent (devpod/ssh -A) as-is
-if [ -z "$SSH_AUTH_SOCK" ] && [ -S "$XDG_RUNTIME_DIR/ssh-agent.socket" ]; then
+# socket of the systemd user ssh-agent (dot_config/systemd/user); only
+# take over when there is no *live* agent yet, so a forwarded agent
+# (devpod/ssh -A) or the session's own (e.g. gcr on Omarchy) wins, but a
+# stale/dead SSH_AUTH_SOCK gets replaced
+if [ ! -S "${SSH_AUTH_SOCK:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/ssh-agent.socket" ]; then
   export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
 fi

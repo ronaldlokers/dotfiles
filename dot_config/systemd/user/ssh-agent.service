@@ -1,8 +1,9 @@
 # Shell-independent ssh-agent: no shell rc starts an agent (the bash →
 # zsh switch on Omarchy silently dropped it), so the user session owns
-# it instead. SSH_AUTH_SOCK reaches shells via environment.d and the
-# fallback export in .zshrc/.bashrc.
-# Activate once per machine: systemctl --user enable --now ssh-agent
+# it instead. SSH_AUTH_SOCK reaches shells via the guarded fallback in
+# .zshrc/.bashrc — deliberately NOT via environment.d, which would force
+# the socket on the whole session even when this unit isn't running.
+# Enabled automatically by .chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl
 [Unit]
 Description=SSH key agent
 

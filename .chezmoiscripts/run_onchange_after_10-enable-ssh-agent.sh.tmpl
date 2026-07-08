@@ -1,0 +1,20 @@
+#!/bin/sh
+# Enable the systemd user ssh-agent so its socket actually exists — the
+# old "activate once per machine" manual step was easy to forget, which
+# left SSH_AUTH_SOCK (then set via environment.d) pointing at a dead
+# socket and broke DevPod's agent forwarding from Omarchy.
+# Re-runs whenever the unit file changes:
+# ssh-agent.service hash: {{ include "dot_config/systemd/user/ssh-agent.service" | sha256sum }}
+set -eu
+
+# Only where a systemd user manager is running (hosts, not devpod
+# containers — there the agent is forwarded in, not started locally).
+# Probe the manager's own socket, not `systemctl` exit codes: devcontainer
+# images ship a systemctl shim that exits 0 with a "systemd is not
+# running" notice.
+if [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
+    systemctl --user daemon-reload
+    systemctl --user enable --now ssh-agent.service
+else
+    echo "No systemd user session, skipping ssh-agent service enable." >&2
+fi
