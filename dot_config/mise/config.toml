@@ -6,6 +6,9 @@ lsd = "1.2.0"
 fd = "10.4.2"
 lazygit = "0.63.0"
 node = "26.4.0"
+# mason installs pip-backed packages (ruff) into a venv; without a
+# python3 on PATH those installs fail
+python = "3.14.6"
 ripgrep = "15.1.0"
 neovim = "0.12.4"
 direnv = "2.37.1"
