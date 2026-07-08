@@ -4,14 +4,14 @@
 set -eu
 
 if [ ! -f "$HOME/.config/chezmoi/key.txt" ]; then
-    # /dev/tty may exist but be unopenable (no controlling terminal),
-    # so test a real open instead of -e
-    if ! { exec 3</dev/tty; } 2>/dev/null; then
+    # /dev/tty may exist but be unopenable (no controlling terminal).
+    # Test with a real open; use `true` not `exec`/`:` because redirection
+    # failures on special builtins abort dash entirely.
+    if ! { true </dev/tty; } 2>/dev/null; then
         echo "No usable TTY, skipping age key decryption." >&2
         echo "Run 'chezmoi init --apply' manually to unlock secrets." >&2
         exit 0
     fi
-    exec 3<&-
 
     mkdir -p "$HOME/.config/chezmoi"
     echo "Unlocking the age key that decrypts the repo's secrets (sops key," >&2
