@@ -5,6 +5,10 @@ git:
   pagers:
     - colorArg: always
       pager: delta --dark --paging=never
+  # commit.gpgsign makes lazygit drop to a terminal subprocess in case
+  # signing needs a pinentry; our ssh key signs without prompting, so
+  # stay in the UI
+  overrideGpg: true
 
 # Catppuccin Mocha (blue accent), from catppuccin/lazygit
 gui:
