@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Bash(chezmoi apply *)",
       "Bash(chezmoi diff *)",
       "Bash(chezmoi status *)",
       "Bash(chezmoi verify *)",
