@@ -2,3 +2,5 @@ setup
 fixes.md
 README.md
 key.txt.age
+.ssh/id_ed25519_signing.age
+.config/sops/age/keys.txt.age
