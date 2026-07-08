@@ -1,32 +1,3 @@
-# ~~~~~~~~~~~~~~~ History ~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-HISTFILE="$HOME/.zsh_history"
-HISTSIZE=100000
-SAVEHIST=100000
-
-setopt share_history      # share history between all shells (tmux panes)
-setopt hist_ignore_dups   # don't record consecutive duplicates
-setopt hist_ignore_space  # don't record commands starting with a space
-
-
-# ~~~~~~~~~~~~~~~ Prompt ~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-PURE_GIT_PULL=0
-
-# pure is a chezmoi external, present on every OS
-fpath+=("$HOME/.zsh/pure")
-autoload -U promptinit; promptinit
-
-prompt pure
-
-
-# enable zsh vi-mode
-bindkey -v
-export KEYTIMEOUT=1 # make switching between modes faster
-
-
 # ~~~~~~~~~~~~~~~ Environment Variables ~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -87,8 +58,14 @@ if command -v direnv > /dev/null ; then
 fi
 
 
-# ~~~~~~~~~~~~~~~ Completion ~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~ Completion setup ~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+# fpath must be complete before compinit runs — either ours below or
+# the one inside omarchy's zoptions
+
+# pure is a chezmoi external, present on every OS
+fpath+=("$HOME/.zsh/pure")
 
 # Generated completions are cached as files in fpath; regenerating them
 # with `source <(...)` on every shell start is slow. Delete a file to
@@ -102,13 +79,40 @@ for cmd in mise kubectl; do
   fi
 done
 
+
+# ~~~~~~~~~~~~~~~ Omarchy ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+# On Omarchy machines the omarchy-zsh package ships shared shell config
+# under /usr/share; source it from there so it coexists with this file.
+# Never run omarchy-setup-zsh — it *replaces* ~/.zshrc and ~/.bashrc,
+# which chezmoi owns. zoptions sets options, runs compinit and loads
+# autosuggestions + syntax-highlighting; envs/aliases/functions add
+# omarchy's aliases and helpers (tdl, format-drive, ...). shell/inits
+# is deliberately skipped: mise, fzf and zoxide are set up in this file
+# already, and the prompt is pure, not starship. Everything below this
+# block wins where the two disagree (vi-mode, history size, ls/v).
+if [ -r /usr/share/omarchy-zsh/shell/zoptions ]; then
+  source /usr/share/omarchy-zsh/shell/zoptions
+  source /usr/share/omarchy-zsh/shell/envs
+  source /usr/share/omarchy-zsh/shell/aliases
+  source /usr/share/omarchy-zsh/shell/functions
+  _omarchy_zsh=1
+fi
+
+
+# ~~~~~~~~~~~~~~~ Completion ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 # compinit's full security audit is slow; skip it (-C) unless the dump
-# is older than a day
-autoload -Uz compinit
-if [ -n "$(find "$HOME/.zcompdump" -mmin -1440 2>/dev/null)" ]; then
-  compinit -C
-else
-  compinit
+# is older than a day. Omarchy's zoptions already ran compinit.
+if [ -z "${_omarchy_zsh:-}" ]; then
+  autoload -Uz compinit
+  if [ -n "$(find "$HOME/.zcompdump" -mmin -1440 2>/dev/null)" ]; then
+    compinit -C
+  else
+    compinit
+  fi
 fi
 
 if command -v fzf > /dev/null ; then
@@ -125,14 +129,46 @@ if command -v fzf > /dev/null ; then
   fi
 fi
 
-# zoxide wants to run after compinit
+# zoxide wants to run after compinit; omarchy's cd->zd alias needs its
+# `z` function too
 if command -v zoxide > /dev/null ; then
   eval "$(zoxide init zsh)"
 fi
 
 
+# ~~~~~~~~~~~~~~~ History ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+# after the omarchy block so these sizes win over its 32768
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=100000
+SAVEHIST=100000
+
+setopt share_history      # share history between all shells (tmux panes)
+setopt hist_ignore_dups   # don't record consecutive duplicates
+setopt hist_ignore_space  # don't record commands starting with a space
+
+
+# ~~~~~~~~~~~~~~~ Prompt ~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+PURE_GIT_PULL=0
+
+autoload -U promptinit; promptinit
+
+prompt pure
+
+
+# enable zsh vi-mode; overrides omarchy's bindkey -e (its extra widget
+# bindings live in the emacs keymap and stay dormant under vi-mode)
+bindkey -v
+export KEYTIMEOUT=1 # make switching between modes faster
+
+
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+# defined after omarchy's so ls/v here win over its eza/vim
 
 if command -v nvim > /dev/null ; then
   alias v="nvim"
@@ -167,16 +203,27 @@ fi
 
 
 # fzf-tab wants to load after compinit but before widget-wrapping
-# plugins like zsh-autosuggestions
+# plugins like zsh-autosuggestions (which only wraps at the first
+# prompt, so loading here is early enough even when omarchy already
+# sourced it). MENU_COMPLETE (set by omarchy) bypasses fzf-tab's menu,
+# so turn it off.
 if command -v fzf > /dev/null && [ -f "$HOME/.zsh/fzf-tab/fzf-tab.plugin.zsh" ]; then
+  unsetopt menu_complete
+  zstyle ':completion:*' menu no
   source "$HOME/.zsh/fzf-tab/fzf-tab.plugin.zsh"
 fi
 
-if [ -f "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
+# omarchy's zoptions already loads the system copies of these two;
+# only source the chezmoi-external copies when it didn't
+if ! typeset -f _zsh_autosuggest_start > /dev/null \
+    && [ -f "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
   source "$HOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh"
 fi
 
 # syntax highlighting wants to be sourced last
-if [ -f "$HOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]; then
+if [ -z "${ZSH_HIGHLIGHT_VERSION:-}" ] \
+    && [ -f "$HOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]; then
   source "$HOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
 fi
+
+unset _omarchy_zsh
