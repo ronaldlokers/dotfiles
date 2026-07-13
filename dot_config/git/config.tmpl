@@ -1,6 +1,16 @@
-# Managed by chezmoi. Machine-local settings (credential helpers,
-# identity overrides) belong in ~/.gitconfig, which git reads after
-# this file and which chezmoi leaves alone.
+# Managed by chezmoi. Truly machine-local settings (identity overrides,
+# host-specific credential helpers) belong in ~/.gitconfig, which git reads
+# after this file and which chezmoi leaves alone. The gh credential helper
+# below is portable — gh is installed on every machine via mise — so it lives
+# here: it lets HTTPS pushes to github.com authenticate with the gh token
+# (e.g. inside devcontainers where the SSH agent isn't forwarded). SSH
+# remotes ignore it, so it doesn't affect the normal ssh git_protocol flow.
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !gh auth git-credential
 [user]
 	name = Ronald Lokers
 	email = {{ .email }}
