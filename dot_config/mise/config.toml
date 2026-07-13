@@ -1,7 +1,7 @@
 [tools]
 bat = "0.26.1"
 chezmoi = "2.70.5"
-claude-code = "2.1.204"
+claude-code = "2.1.207"
 fzf = "0.74.0"
 lsd = "1.2.0"
 fd = "10.4.2"
