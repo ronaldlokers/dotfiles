@@ -53,9 +53,53 @@ jobs:
           # mise tool install.
           HOME="$TESTHOME" chezmoi init --source "$PWD"
           HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
+      - name: idempotency — second apply is a clean no-op
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          # the design leans on re-run safety (the unlock script and every
+          # run_onchange are meant to no-op once settled); prove it.
+          HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
+          pending="$(HOME="$TESTHOME" chezmoi status --source "$PWD")"
+          if [ -n "$pending" ]; then
+            echo "::error::chezmoi status is not empty after a second apply — non-idempotent:"
+            printf '%s\n' "$pending"
+            exit 1
+          fi
+      - name: assert externals actually landed
+        run: |
+          # a network blip or upstream rename can leave empty external dirs;
+          # the shells source them behind `[ -f ]` guards and stay silent, so
+          # assert the real files exist rather than trusting apply's exit code.
+          missing=0
+          for f in \
+            "$TESTHOME/.local/bin/mise" \
+            "$TESTHOME/.zsh/pure/pure.zsh" \
+            "$TESTHOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" \
+            "$TESTHOME/.zsh/fzf-tab/fzf-tab.plugin.zsh" \
+            "$TESTHOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" \
+            "$TESTHOME/.tmux/plugins/tmux-resurrect/resurrect.tmux" \
+            "$TESTHOME/.config/k9s/skins/catppuccin-mocha.yaml"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::missing or empty external: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
       - name: smoke-test zsh startup
         run: |
           HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
       - name: smoke-test installed tools
         run: |
-          HOME="$TESTHOME" zsh -ic 'nvim --version | head -1; mise ls | head -20'
+          # assert each expected tool resolves; the old `mise ls | head` exited
+          # 0 regardless (head masks the status), so a missing tool passed CI.
+          HOME="$TESTHOME" zsh -ic '
+            missing=0
+            for t in nvim mise fzf rg fd bat delta gh jq yq zoxide direnv \
+                     lazygit tmux uv kubeconform lsd tree-sitter node; do
+              if ! command -v "$t" > /dev/null 2>&1; then
+                print -r -- "::error::missing tool: $t"
+                missing=1
+              fi
+            done
+            [ "$missing" -eq 0 ] && print -r -- "all expected tools present"
+          '
