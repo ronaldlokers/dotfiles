@@ -1,7 +1,7 @@
 ---
 name: product-team-review
 description: Review the current codebase as a full cross-functional product team — product, QA, development (lead + senior), design, UX, security, DevOps/SRE, data privacy, accessibility, analytics, docs, customer support, and engineering management — then verify the findings and publish a Claude artifact of prioritized, attributed bugs, improvements, new features, and design ideas (with mockups where useful). Supports quick/standard/deep effort levels, whole-product or diff/PR scope, and can open GitHub issues or implement fixes afterward. Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
-version: 0.5.0
+version: 0.6.0
 ---
 
 # Product Team Review
@@ -250,20 +250,32 @@ container); give it a stable title and favicon.
 
 ## Phase 7 — Follow-through
 
-After publishing, give the URL and a 2–3 sentence verbal summary, then offer
-(don't assume) to convert findings into action:
+After publishing, give the URL and a 2–3 sentence verbal summary. Then **ask what
+to do next with `AskUserQuestion` — a clickable choice, never a free-text prompt
+in prose.** The user should be able to pick an action by clicking, not by typing.
 
-- **Create GitHub issues** — for findings the user selects, open issues with
-  `gh` (title, body with location + fix + persona attribution + confidence,
-  and severity/type labels). Confirm the selection first; never mass-file
+Present the follow-through options with `AskUserQuestion` (use `multiSelect: true`
+so they can pick several). Draw the option set from what this review actually
+produced — typically:
+
+- **Create GitHub issues** — open issues with `gh` for selected findings (title,
+  body with location + fix + persona attribution + confidence, severity/type
+  labels). Confirm *which* findings in a follow-up question (e.g. "critical +
+  highs", "everything", or a hand-picked set) before filing; never mass-file
   without approval. Respect the repo's git workflow (this user: branch + PR, no
   direct pushes; conventional-commit style).
-- **Implement fixes** — offer to implement the top-ranked fixes now, on a fresh
-  `fix/<topic>` or `feat/<topic>` branch. For several independent fixes, hand
-  them to parallel subagents (or a workflow). Verify each change before opening
-  a PR; don't bundle unrelated fixes into one.
+- **Implement fixes now** — on a fresh `fix/<topic>` / `feat/<topic>` branch. For
+  several independent fixes, hand them to parallel subagents (or a workflow).
+  Verify each change before opening a PR; don't bundle unrelated fixes.
+- **Write a REVIEW.md** — drop the findings into the repo as a committed
+  checklist.
+- **Re-run deeper / resume** — escalate effort, or resume any personas still
+  marked `failed`.
+- **Nothing for now** — stop here; the artifact stands on its own.
 
-Ask which of these the user wants; do nothing outward-facing without a clear go.
+Tailor the labels to the run (e.g. lead with the critical finding: "Fix the
+critical recovery gap"). Then act only on what the user clicks. Do nothing
+outward-facing — issues, branches, commits — without that explicit selection.
 
 ## Resuming a partial run
 
