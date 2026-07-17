@@ -74,8 +74,17 @@ mkdir -p "$HOME/.zsh/completions"
 fpath+=("$HOME/.zsh/completions")
 
 for cmd in mise kubectl; do
-  if command -v "$cmd" > /dev/null && [ ! -f "$HOME/.zsh/completions/_$cmd" ]; then
-    "$cmd" completion zsh > "$HOME/.zsh/completions/_$cmd"
+  # regenerate when the cache is missing *or empty*: a previous run that wrote
+  # the file before the generator failed would leave a zero-byte `_cmd` that a
+  # plain `[ -f ]` guard then trusts forever, poisoning fpath. Write to a temp
+  # file and only promote it if the generator succeeded and produced output.
+  if command -v "$cmd" > /dev/null && [ ! -s "$HOME/.zsh/completions/_$cmd" ]; then
+    if "$cmd" completion zsh > "$HOME/.zsh/completions/_$cmd.tmp" 2>/dev/null &&
+       [ -s "$HOME/.zsh/completions/_$cmd.tmp" ]; then
+      mv "$HOME/.zsh/completions/_$cmd.tmp" "$HOME/.zsh/completions/_$cmd"
+    else
+      rm -f "$HOME/.zsh/completions/_$cmd.tmp"
+    fi
   fi
 done
 
