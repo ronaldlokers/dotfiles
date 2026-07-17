@@ -1,7 +1,7 @@
 ---
 name: product-team-review
 description: Review the current codebase as a full cross-functional product team — product, QA, development (lead + senior), design, UX, security, DevOps/SRE, data privacy, accessibility, analytics, docs, customer support, and engineering management — then verify the findings and publish a Claude artifact of prioritized, attributed bugs, improvements, new features, and design ideas (with mockups where useful). Supports quick/standard/deep effort levels, whole-product or diff/PR scope, and can open GitHub issues or implement fixes afterward. Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
-version: 0.4.0
+version: 0.5.0
 ---
 
 # Product Team Review
@@ -34,7 +34,10 @@ paragraph. Afterward, optionally turn the findings into tracked work.
 Pick a level in Phase 1 (default **standard**); it scales cost vs. depth:
 
 - **quick** — core six personas only, no verification pass, no live-app driving
-  or research. A fast sanity read. Confidence tags still applied.
+  or research. A fast sanity read. Confidence tags still applied. **Default to
+  quick for small repos** (roughly a few dozen files / no separate frontend +
+  backend) — a large fan-out re-reads the same small tree many times for little
+  extra signal; suggest quick and let the user upgrade.
 - **standard** (default) — the relevant team (see Phase 3), verification of all
   critical/high bugs, live-app driving and light research only if clearly
   useful.
@@ -84,13 +87,22 @@ every later phase.
   capture screenshots of key screens/flows, so the design, UX, and accessibility
   personas review the real product, not just source. Note runtime errors seen.
 
+**Produce a recon digest.** Write a compact shared brief — stack, layout, entry
+points, key files with paths, the scope/changeset, secrets/CI facts, and any
+screenshots/runtime errors — and pass it verbatim into every persona prompt in
+Phase 3. This is the main cost lever: without it, each subagent re-explores the
+whole repo from scratch (the dominant token sink on a fan-out); with it, they
+read the digest and only open the few files their lens needs.
+
 Keep recon lightweight — enough to brief the team.
 
 ## Phase 3 — Convene the team (parallel personas)
 
 Launch the reviewers **in parallel** — one `Agent` (general-purpose) call per
-persona, batched into single messages. Give each the Phase 1 answers, Phase 2
-context (including screenshots/diff), and its lens below. Each returns a compact,
+persona, batched into single messages. Give each the Phase 1 answers, the **Phase
+2 recon digest** (so they don't re-explore — instruct them to start from it and
+open only the files their lens needs), any screenshots/diff, and its lens below.
+Each returns a compact,
 structured list of findings, every finding carrying: `title`, `where`
 (path:line), `severity` (critical/high/medium/low), `effort` (S/M/L),
 `confidence` (confirmed / likely / speculative), `category` (bug / improvement /
@@ -146,6 +158,20 @@ which personas you convened and which you skipped and why.
 - **Engineering Manager** — delivery risk, process, team-scalability,
   maintainability, "what will hurt us in six months" at a higher altitude than
   the two developer personas.
+
+**When agents die (graceful degradation).** A persona agent can return
+null/partial or terminate on a terminal API error (spend/rate limit, timeout) —
+`Agent`/`parallel` surface this rather than crashing the run. **Never abort the
+whole review because some personas failed.** Instead:
+
+- Track each convened persona's status: `completed`, `failed` (with the reason,
+  e.g. spend limit), or `skipped` (relevance-gated).
+- Synthesize from the personas that completed, and **label the coverage gap
+  explicitly** in the artifact — name which lenses did not run and what they
+  would have covered, so a reader doesn't mistake a partial review for a
+  complete one. Fold this into the executive summary and footer.
+- If a majority died, tell the user, publish what you have, and offer to resume
+  (below) rather than silently shipping a thin review.
 
 ## Phase 4 — Verify
 
@@ -204,11 +230,20 @@ consensus") with visual weight. Every finding also shows a **confidence** tag
 role names. A reader must be able to answer "why is this here, who's worried
 about it, and how sure are we?" for every item.
 
-**Persist a tracking record.** Write a machine-readable record of the findings
-(id, title, where, severity, confidence, category, raisedBy, status) to a stable
+**Persist a tracking record.** Write a machine-readable record to a stable
 per-project location — prefer a `.product-team-review/` directory in the repo
-root; add it to `.gitignore` unless the user wants reviews committed. This is
-what the next run diffs against.
+root; add it to `.gitignore` unless the user wants reviews committed. Include:
+
+- the **findings** (id, title, where, severity, confidence, category, raisedBy,
+  status);
+- the **coverage map** — every convened persona and its outcome (`completed` /
+  `failed` + reason / `skipped` + reason). This is what a resume reads to know
+  which lenses still owe a review;
+- the **recon digest** from Phase 2, so a resume can re-brief a persona without
+  redoing recon;
+- the **artifact URL** and the effort/scope config.
+
+This is what the next run diffs against *and* what a resume run continues from.
 
 Keep the page responsive (wide tables and mockups scroll in their own
 container); give it a stable title and favicon.
@@ -229,6 +264,34 @@ After publishing, give the URL and a 2–3 sentence verbal summary, then offer
   a PR; don't bundle unrelated fixes into one.
 
 Ask which of these the user wants; do nothing outward-facing without a clear go.
+
+## Resuming a partial run
+
+When a run finished with personas in a `failed` state (Phase 3 graceful
+degradation) — or the user says "continue"/"finish the review"/"reinvoke the
+ones that died" — complete it instead of starting over:
+
+1. **Load the tracking record** (Phase 6) for this project. Read its coverage map
+   to find every persona still marked `failed` (or never convened but now
+   wanted), plus the stored recon digest and artifact URL.
+2. **Re-spawn only the missing personas.** A subagent that died on a terminal
+   error can't be reliably resumed, so start each one **fresh** with the stored
+   recon digest and its lens — cheap, because recon isn't repeated. (Use
+   `SendMessage` only for an agent that is still alive from this same session.)
+   If the original failure was a spend/rate limit, confirm the user has
+   head-room before re-spawning, or the same wall will be hit again.
+3. **Merge, don't duplicate.** Fold the new findings into the existing set —
+   re-run the Phase 4 verify and Phase 5 synthesis (attribution, consensus,
+   ranking) across the *combined* findings, so consensus counts pick up the
+   late-arriving personas.
+4. **Update the same artifact in place.** Republish to the **existing artifact
+   URL** (pass it as `url`, or redeploy the same file path in-session) — don't
+   mint a new one. Remove or shrink the coverage-gap callout for the lenses now
+   filled; keep it for any still missing.
+5. **Update the tracking record** — flip the resumed personas to `completed`.
+
+The goal: a review interrupted by dying agents is always finishable later with no
+lost work and no re-review of what already succeeded.
 
 ## Style
 
