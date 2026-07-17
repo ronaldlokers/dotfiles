@@ -1,7 +1,7 @@
 ---
 name: product-team-review
 description: Review the current codebase as a full cross-functional product team — product, QA, development (lead + senior), design, UX, security, DevOps/SRE, data privacy, accessibility, analytics, docs, customer support, and engineering management — then publish a Claude artifact of prioritized bugs, improvements, new features, and design ideas (with mockups where useful). Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
-version: 0.2.0
+version: 0.3.0
 ---
 
 # Product Team Review
@@ -125,13 +125,20 @@ codebase warrants them.
 
 ## Phase 4 — Synthesize
 
-Merge the six reports into one prioritized review:
+Merge the persona reports into one prioritized review:
 
-- **De-duplicate and cluster** overlapping findings (several personas will flag
-  the same thing — that's a strong signal; note the consensus).
-- **Rank** within each of the four output sections by impact-vs-effort.
+- **Attribute every finding.** Track which persona(s) raised each item — each
+  finding carries a `raisedBy` list of role names. This is the backbone of the
+  attribution shown in the artifact, so don't drop it during clustering.
+- **De-duplicate and cluster** overlapping findings. When several personas flag
+  the same thing, merge them into one item and **union their `raisedBy`** — a
+  finding raised by three roles is a consensus item and a strong signal. Sort
+  consensus items toward the top of their section.
+- **Rank** within each of the four output sections by impact-vs-effort, with
+  cross-persona consensus breaking ties upward.
 - **Resolve conflicts** (e.g. PM wants a feature the Lead Dev says is risky) by
-  presenting the trade-off, not by silently picking a side.
+  presenting the trade-off and naming which personas sit on each side — don't
+  silently pick a side.
 - **Draft mockups** where they add clarity — new UI, a redesigned flow, a
   layout fix. Use inline HTML/CSS or SVG wireframes in the artifact; ASCII
   sketches are fine inside clarifying questions/previews.
@@ -153,6 +160,18 @@ artifact and publish it with the `Artifact` tool. Structure:
 5. **🎨 New Design Elements** — visual/UX changes, with **mockups** embedded.
 6. **Prioritized roadmap** — a "do now / do next / later" cut across all of the
    above, so the user leaves with a plan.
+
+**Persona attribution.** Every finding shows **who raised it** — render the
+`raisedBy` roles as small labelled tags/pills on each item (e.g. `Security`,
+`SRE`, `UX`). When more than one persona raised it, mark it a **consensus** item
+(e.g. a "3× consensus" badge listing the roles) and give it visual weight —
+consensus is the strongest prioritization signal on the page. Give each persona
+a consistent short label and, ideally, a stable color so the same role reads the
+same everywhere. Include a small **legend** mapping labels to full role names,
+and open with a one-line note of which personas were convened and which were
+skipped (from Phase 3). Attribution is a requirement, not decoration — a reader
+should be able to answer "why is this here, and who's worried about it?" for
+every item.
 
 Use severity/effort tags consistently, keep the page responsive (wide tables and
 mockups scroll inside their own container), and give it a stable title and
