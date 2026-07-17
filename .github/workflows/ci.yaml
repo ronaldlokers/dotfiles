@@ -95,16 +95,16 @@ jobs:
           HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
       - name: smoke-test installed tools
         run: |
-          # assert each expected tool resolves; the old `mise ls | head` exited
-          # 0 regardless (head masks the status), so a missing tool passed CI.
-          HOME="$TESTHOME" zsh -ic '
-            missing=0
-            for t in nvim mise fzf rg fd bat delta gh jq yq zoxide direnv \
-                     lazygit tmux uv kubeconform lsd tree-sitter node; do
-              if ! command -v "$t" > /dev/null 2>&1; then
-                print -r -- "::error::missing tool: $t"
-                missing=1
-              fi
-            done
-            [ "$missing" -eq 0 ] && print -r -- "all expected tools present"
-          '
+          export PATH="$TESTHOME/.local/bin:$PATH"
+          # the old `mise ls | head -20` exited 0 regardless (head masks the
+          # status), so a tool that failed to install still passed CI. Ask mise
+          # directly which configured tools are missing — no hard-coded list to
+          # drift from mise/config.toml, and no reliance on interactive-shell
+          # PATH activation (which doesn't fire under `zsh -ic`).
+          missing="$(HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
+          if [ -n "$missing" ]; then
+            echo "::error::configured mise tools are not installed:"
+            printf '%s\n' "$missing"
+            exit 1
+          fi
+          echo "all configured mise tools installed"
