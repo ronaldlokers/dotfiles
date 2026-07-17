@@ -1,7 +1,7 @@
 ---
 name: product-team-review
-description: Review the current codebase as a full product team — lead product manager, lead QA tester, lead developer, senior developer, lead designer, and lead UX designer — then publish a Claude artifact of prioritized bugs, improvements, new features, and design ideas (with mockups where useful). Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
-version: 0.1.0
+description: Review the current codebase as a full cross-functional product team — product, QA, development (lead + senior), design, UX, security, DevOps/SRE, data privacy, accessibility, analytics, docs, customer support, and engineering management — then publish a Claude artifact of prioritized bugs, improvements, new features, and design ideas (with mockups where useful). Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
+version: 0.2.0
 ---
 
 # Product Team Review
@@ -61,17 +61,25 @@ Keep this lightweight — enough context to brief the team, not a full audit yet
 
 ## Phase 3 — Convene the team (parallel personas)
 
-Launch the six reviewers **in parallel** — one `Agent` (general-purpose) call
-per persona, all in a single message so they run concurrently. Give each the
+Launch the reviewers **in parallel** — one `Agent` (general-purpose) call per
+persona, batched into single messages so they run concurrently. Give each the
 Phase 1 answers, the Phase 2 context, and its lens below. Ask each to return a
 compact, structured list of findings: `title`, `where` (path:line), `severity`
 (critical/high/medium/low), `effort` (S/M/L), `category` (bug / improvement /
 feature / design), and a one-line `why`.
 
 If the repo is small, you may instead adopt each persona inline — but keep the
-six perspectives distinct and labeled.
+perspectives distinct and labeled.
 
-**The six lenses:**
+**Pick the relevant team, don't force all fourteen.** Use the Phase 1 answers
+and Phase 2 recon to skip personas a project can't benefit from — e.g. no UI →
+drop the two designers and Accessibility; no personal/regulated data → drop Data
+Privacy; a pure library → drop Customer Support and Analytics. Note which
+personas you convened and which you skipped and why. The **core six** (PM, QA,
+Lead Dev, Senior Dev, Designer, UX) are the default; the rest are added when the
+codebase warrants them.
+
+**Core lenses:**
 
 - **Lead Product Manager** — user value, feature gaps, roadmap, prioritization,
   positioning, metrics that aren't captured, and what would move the needle.
@@ -85,6 +93,35 @@ six perspectives distinct and labeled.
   brand consistency, design-system gaps, and polish.
 - **Lead UX Designer** — user flows, information architecture, friction points,
   onboarding, copy/microcopy, accessibility, and mobile/responsive behavior.
+
+**Security, reliability & compliance lenses:**
+
+- **Lead Security Officer** — threat modeling, authentication/authorization,
+  secrets handling, input validation/injection, dependency and supply-chain
+  vulns, OWASP Top 10, and sensitive-data exposure. Go deeper than the Lead
+  Developer's general security pass.
+- **DevOps / SRE Lead** — CI/CD, build/deploy pipeline, observability and
+  monitoring, scalability, infrastructure-as-code, failure modes, backups, and
+  operational readiness.
+- **Data Privacy Officer** — PII handling, GDPR/CCPA exposure, data retention
+  and minimization, consent, logging of sensitive data, and licensing/legal
+  risk. Convene when the product touches personal or regulated data.
+- **Accessibility Specialist** — a dedicated WCAG audit: keyboard navigation,
+  screen-reader/ARIA semantics, color contrast, focus management, and reduced
+  motion. Convene when there is a UI.
+
+**Product, growth & delivery lenses:**
+
+- **Data / Analytics Lead** — instrumentation, event tracking, funnels, metrics
+  that aren't being captured, and experiment/measurement design.
+- **Technical Writer / Docs Lead** — README, onboarding, API reference, inline
+  docs, and gaps in developer/user documentation.
+- **Customer Support Lead** — voice of the customer: likely support burden,
+  confusing flows, missing self-service, and error messages that will generate
+  tickets.
+- **Engineering Manager** — delivery risk, process, team-scalability,
+  maintainability, and "what will hurt us in six months" at a higher altitude
+  than the two developer personas.
 
 ## Phase 4 — Synthesize
 
@@ -105,7 +142,9 @@ Load `artifact-design` first, then build a self-contained, theme-aware HTML
 artifact and publish it with the `Artifact` tool. Structure:
 
 1. **Executive summary** — the product in one line, top 3–5 things to do next,
-   and the overall health read from the team.
+   and the overall health read from the team. Surface any **critical security,
+   privacy, or reliability risk** here explicitly, even though it also lives in
+   its detailed section — these must not be buried.
 2. **🐛 Bugs** — confirmed defects first, then suspected; each with location,
    severity, and the fix.
 3. **📈 Improvements** — hardening, refactors, performance, a11y, tech-debt
