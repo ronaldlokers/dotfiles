@@ -35,6 +35,11 @@ jobs:
 
   bootstrap:
     runs-on: ubuntu-latest
+    env:
+      # authenticate mise's GitHub API calls (release-tag lookups) with the
+      # workflow token: unauthenticated requests share the runner IP's 60/hr
+      # limit and intermittently 403, aborting the all-or-nothing install.
+      MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - name: install zsh
@@ -53,9 +58,58 @@ jobs:
           # mise tool install.
           HOME="$TESTHOME" chezmoi init --source "$PWD"
           HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
+      - name: idempotency — second apply changes no managed files
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          # the design leans on re-run safety (the unlock script and every
+          # run_onchange are meant to no-op once settled); prove it. A second
+          # apply must exit 0 and leave no managed-file drift.
+          HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
+          # run_before_00-unlock-secrets is a plain run_before: it re-runs on
+          # every apply by design, so chezmoi always lists it as ' R ...'.
+          # That's expected — exclude scripts and assert no real file drift.
+          pending="$(HOME="$TESTHOME" chezmoi status --source "$PWD" \
+            | grep -v '\.chezmoiscripts/' || true)"
+          if [ -n "$pending" ]; then
+            echo "::error::managed files drift after a second apply — non-idempotent:"
+            printf '%s\n' "$pending"
+            exit 1
+          fi
+      - name: assert externals actually landed
+        run: |
+          # a network blip or upstream rename can leave empty external dirs;
+          # the shells source them behind `[ -f ]` guards and stay silent, so
+          # assert the real files exist rather than trusting apply's exit code.
+          missing=0
+          for f in \
+            "$TESTHOME/.local/bin/mise" \
+            "$TESTHOME/.zsh/pure/pure.zsh" \
+            "$TESTHOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" \
+            "$TESTHOME/.zsh/fzf-tab/fzf-tab.plugin.zsh" \
+            "$TESTHOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" \
+            "$TESTHOME/.tmux/plugins/tmux-resurrect/resurrect.tmux" \
+            "$TESTHOME/.config/k9s/skins/catppuccin-mocha.yaml"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::missing or empty external: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
       - name: smoke-test zsh startup
         run: |
           HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
       - name: smoke-test installed tools
         run: |
-          HOME="$TESTHOME" zsh -ic 'nvim --version | head -1; mise ls | head -20'
+          export PATH="$TESTHOME/.local/bin:$PATH"
+          # the old `mise ls | head -20` exited 0 regardless (head masks the
+          # status), so a tool that failed to install still passed CI. Ask mise
+          # directly which configured tools are missing — no hard-coded list to
+          # drift from mise/config.toml, and no reliance on interactive-shell
+          # PATH activation (which doesn't fire under `zsh -ic`).
+          missing="$(HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
+          if [ -n "$missing" ]; then
+            echo "::error::configured mise tools are not installed:"
+            printf '%s\n' "$missing"
+            exit 1
+          fi
+          echo "all configured mise tools installed"
