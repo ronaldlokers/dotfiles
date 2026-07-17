@@ -32,13 +32,15 @@
     "karpathy-skills": {
       "source": {
         "source": "github",
-        "repo": "multica-ai/andrej-karpathy-skills"
+        "repo": "multica-ai/andrej-karpathy-skills",
+        "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2"
       }
     },
     "caveman": {
       "source": {
         "source": "github",
-        "repo": "JuliusBrussee/caveman"
+        "repo": "JuliusBrussee/caveman",
+        "ref": "v1.9.1"
       }
     },
     "claude-plugins-official": {
@@ -50,10 +52,10 @@
     "voltagent-subagents": {
       "source": {
         "source": "github",
-        "repo": "VoltAgent/awesome-claude-code-subagents"
+        "repo": "VoltAgent/awesome-claude-code-subagents",
+        "ref": "947b44ca0c58d606b084e9cb1a2389335b49278b"
       }
     }
   },
-  "skipDangerousModePermissionPrompt": true,
   "theme": "dark"
 }
