@@ -1,14 +1,23 @@
+# renovate: datasource=github-tags depName=zsh-users/zsh-autosuggestions
+{{ $autosuggestionsVersion := "v0.7.1" }}
+# renovate: datasource=github-tags depName=Aloxaf/fzf-tab
+{{ $fzfTabVersion := "v1.3.0" }}
+# renovate: datasource=github-tags depName=zsh-users/zsh-syntax-highlighting
+{{ $syntaxHighlightingVersion := "0.8.0" }}
 [".zsh/zsh-autosuggestions"]
-type = "git-repo"
-url = "https://github.com/zsh-users/zsh-autosuggestions.git"
+type = "archive"
+url = "https://github.com/zsh-users/zsh-autosuggestions/archive/refs/tags/{{ $autosuggestionsVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"
 
 [".zsh/fzf-tab"]
-type = "git-repo"
-url = "https://github.com/Aloxaf/fzf-tab.git"
+type = "archive"
+url = "https://github.com/Aloxaf/fzf-tab/archive/refs/tags/{{ $fzfTabVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"
 
 [".zsh/zsh-syntax-highlighting"]
-type = "git-repo"
-url = "https://github.com/zsh-users/zsh-syntax-highlighting.git"
+type = "archive"
+url = "https://github.com/zsh-users/zsh-syntax-highlighting/archive/refs/tags/{{ $syntaxHighlightingVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"

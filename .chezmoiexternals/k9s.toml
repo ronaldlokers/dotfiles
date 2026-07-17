@@ -1,4 +1,9 @@
+{{ $k9sRef := "fdbec82284744a1fc2eb3e2d24cb92ef87ffb8b4" }}
+# catppuccin/k9s publishes no release tags, so the skin is pinned to an
+# immutable commit + checksum (was tracking the mutable `main` branch). Bump
+# manually — rare, cosmetic — by updating the ref and re-running sha256sum.
 [".config/k9s/skins/catppuccin-mocha.yaml"]
 type = "file"
-url = "https://raw.githubusercontent.com/catppuccin/k9s/main/dist/catppuccin-mocha.yaml"
+url = "https://raw.githubusercontent.com/catppuccin/k9s/{{ $k9sRef }}/dist/catppuccin-mocha.yaml"
+checksum.sha256 = "af090941aef0899e846f7c32e088a5368bf588723b7434d44c5abbf53c39da97"
 refreshPeriod = "168h"
