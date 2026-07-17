@@ -35,6 +35,11 @@ jobs:
 
   bootstrap:
     runs-on: ubuntu-latest
+    env:
+      # authenticate mise's GitHub API calls (release-tag lookups) with the
+      # workflow token: unauthenticated requests share the runner IP's 60/hr
+      # limit and intermittently 403, aborting the all-or-nothing install.
+      MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
       - name: install zsh
