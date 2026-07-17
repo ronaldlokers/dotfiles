@@ -7,6 +7,9 @@ set -euo pipefail
 # that terminfo entry, which breaks zle redrawing (doubled/overlapping
 # characters while typing). Compile it into ~/.terminfo, which ncurses
 # checks before the system database.
-if ! infocmp -x xterm-ghostty >/dev/null 2>&1; then
-  tic -x -o "$HOME/.terminfo" "{{ .chezmoi.sourceDir }}/ghostty.terminfo"
-fi
+#
+# Run unconditionally: this script only fires when the terminfo blob's hash
+# (above) changes, and `tic -o` is an idempotent overwrite. Gating on
+# `infocmp` instead skipped the recompile whenever *any* xterm-ghostty entry
+# already existed, so an updated terminfo never landed.
+tic -x -o "$HOME/.terminfo" "{{ .chezmoi.sourceDir }}/ghostty.terminfo"
