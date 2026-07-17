@@ -1,5 +1,12 @@
+{{- $miseVersion := "v2026.7.7" -}}
+# mise binary, pinned to an immutable GitHub release asset. The old
+# `mise-latest-...` URL floated to whatever mise last shipped — re-downloaded
+# weekly and executed as the driver of every other tool install. Renovate
+# bumps $miseVersion via the custom manager in .github/renovate.json.
+# Targets linux-x64 (Arch host + linux devpod containers); a different
+# platform needs the matching asset name.
 [".local/bin/mise"]
 type = "file"
 executable = true
-url = "https://mise.jdx.dev/mise-latest-{{.chezmoi.os}}-{{.chezmoi.arch}}"
+url = "https://github.com/jdx/mise/releases/download/{{ $miseVersion }}/mise-{{ $miseVersion }}-linux-x64"
 refreshPeriod = "168h"

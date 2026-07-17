@@ -8,6 +8,18 @@
   },
   "customManagers": [
     {
+      "description": "Bump the pinned mise binary version in the external",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)\\.chezmoiexternals/mise\\.toml$/"
+      ],
+      "matchStrings": [
+        "\\$miseVersion := \"(?<currentValue>v[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "jdx/mise"
+    },
+    {
       "description": "Track the pinned pomo git tag (mise's pipx git backend isn't covered by the mise manager)",
       "customType": "regex",
       "managerFilePatterns": [
