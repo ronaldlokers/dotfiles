@@ -12,9 +12,16 @@
     "voltagent-core-dev@voltagent-subagents": true,
     "voltagent-infra@voltagent-subagents": true,
     "voltagent-qa-sec@voltagent-subagents": true,
-    "voltagent-dev-exp@voltagent-subagents": true
+    "voltagent-dev-exp@voltagent-subagents": true,
+    "andrej-karpathy-skills@karpathy-skills": true
   },
   "extraKnownMarketplaces": {
+    "karpathy-skills": {
+      "source": {
+        "source": "github",
+        "repo": "multica-ai/andrej-karpathy-skills"
+      }
+    },
     "caveman": {
       "source": {
         "source": "github",
