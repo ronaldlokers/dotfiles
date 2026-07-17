@@ -1,4 +1,7 @@
+# renovate: datasource=github-tags depName=sindresorhus/pure
+{{ $pureVersion := "v1.28.3" }}
 [".zsh/pure"]
-type = "git-repo"
-url = "https://github.com/sindresorhus/pure.git"
+type = "archive"
+url = "https://github.com/sindresorhus/pure/archive/refs/tags/{{ $pureVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"

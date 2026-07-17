@@ -1,9 +1,15 @@
+# renovate: datasource=github-tags depName=tmux-plugins/tmux-resurrect
+{{ $resurrectVersion := "v4.0.0" }}
+# renovate: datasource=github-tags depName=tmux-plugins/tmux-continuum
+{{ $continuumVersion := "v3.1.0" }}
 [".tmux/plugins/tmux-resurrect"]
-type = "git-repo"
-url = "https://github.com/tmux-plugins/tmux-resurrect.git"
+type = "archive"
+url = "https://github.com/tmux-plugins/tmux-resurrect/archive/refs/tags/{{ $resurrectVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"
 
 [".tmux/plugins/tmux-continuum"]
-type = "git-repo"
-url = "https://github.com/tmux-plugins/tmux-continuum.git"
+type = "archive"
+url = "https://github.com/tmux-plugins/tmux-continuum/archive/refs/tags/{{ $continuumVersion }}.tar.gz"
+stripComponents = 1
 refreshPeriod = "168h"

@@ -8,6 +8,16 @@
   },
   "customManagers": [
     {
+      "description": "Bump tag-pinned .chezmoiexternals archives via inline `# renovate:` annotations",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)\\.chezmoiexternals/.*\\.toml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)[\\s\\S]*?:= \"(?<currentValue>[^\"]+)\""
+      ]
+    },
+    {
       "description": "Bump the pinned mise binary version in the external",
       "customType": "regex",
       "managerFilePatterns": [
