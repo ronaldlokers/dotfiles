@@ -17,19 +17,21 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: shellcheck
-        run: shellcheck setup .chezmoiscripts/*.sh.tmpl
+        run: shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh
+      - name: validate claude settings.json
+        run: jq empty dot_claude/settings.json
       - name: validate renovate config
         run: npx --yes --package renovate renovate-config-validator .github/renovate.json
 
   gitleaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0 # scan the full history, not just the tip
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -41,7 +43,7 @@ jobs:
       # limit and intermittently 403, aborting the all-or-nothing install.
       MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: install zsh
         run: sudo apt-get update -q && sudo apt-get install -y -q zsh
       - name: install chezmoi
