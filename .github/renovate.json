@@ -6,6 +6,20 @@
       "/(^|/)dot_config/mise/config\\.toml$/"
     ]
   },
+  "customManagers": [
+    {
+      "description": "Track the pinned pomo git tag (mise's pipx git backend isn't covered by the mise manager)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)dot_config/mise/config\\.toml$/"
+      ],
+      "matchStrings": [
+        "mischavandenburg/pomo\\.git\"\\s*=\\s*\\{\\s*version\\s*=\\s*\"(?<currentValue>v[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "mischavandenburg/pomo"
+    }
+  ],
   "packageRules": [
     {
       "description": "Automerge patch/minor once CI is green; majors wait for review",

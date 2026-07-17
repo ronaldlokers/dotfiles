@@ -27,7 +27,7 @@ tree-sitter = "0.26.11"
 uv = "0.11.28"
 # uvx_args: pomo imports typing_extensions but doesn't declare it; on
 # python >=3.14 nothing pulls it in transitively anymore
-"pipx:git+https://github.com/mischavandenburg/pomo.git" = { version = "latest", uvx_args = "--with typing-extensions" }
+"pipx:git+https://github.com/mischavandenburg/pomo.git" = { version = "v0.4.0", uvx_args = "--with typing-extensions" }
 
 [settings]
 # run pipx-backend tools through uvx so no system python/pipx is needed
