@@ -115,3 +115,42 @@ jobs:
             exit 1
           fi
           echo "all configured mise tools installed"
+
+  host-ssh-agent:
+    # The bootstrap job runs the clean-HOME/container path, where there is no
+    # systemd user session, so the host-only branch of
+    # run_onchange_after_10-enable-ssh-agent (systemctl --user enable ...) and
+    # the ssh-agent.service unit are never exercised. Bring up a real user
+    # session and run that branch for real.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: bring up a systemd --user session
+        run: |
+          sudo loginctl enable-linger "$(id -un)"
+          rt="/run/user/$(id -u)"
+          for _ in $(seq 1 30); do [ -S "$rt/systemd/private" ] && break; sleep 1; done
+          test -S "$rt/systemd/private" \
+            || { echo "::error::user systemd session never came up"; exit 1; }
+      - name: install chezmoi
+        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/bin"
+      - name: place the unit and run the real enable script
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          chezmoi init --source "$PWD"
+          # the bootstrap job already tests that chezmoi *places* the unit; here
+          # it just needs to be present so the enable script can start it.
+          mkdir -p "$HOME/.config/systemd/user"
+          cp dot_config/systemd/user/ssh-agent.service \
+             "$HOME/.config/systemd/user/ssh-agent.service"
+          chezmoi execute-template --source "$PWD" \
+            < .chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl \
+            > "$RUNNER_TEMP/enable.sh"
+          sh "$RUNNER_TEMP/enable.sh"
+      - name: assert the ssh-agent service is active with a live socket
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          systemctl --user is-active --quiet ssh-agent.service
+          test -S "$XDG_RUNTIME_DIR/ssh-agent.socket"
+          echo "host-path ssh-agent verified: unit active, socket present"
