@@ -35,8 +35,7 @@ Route by task class:
   `cavecrew-investigator`) for read-only location work.
 
 `savings_mode`: conservative = only clearly-mechanical read-only work leaves
-Opus; balanced = map above; aggressive = push routine implementation to Haiku
-where adequate, keep creative on Fable, Opus only for genuinely hard reasoning.
+Opus; balanced = map above; aggressive = routine implementation's preferred model drops to Haiku where adequate (Sonnet fallback); creative stays Fable; Opus only for genuinely hard reasoning.
 
 Overrides: `/model-policy` command edits this block + persists (`chezmoi apply`).
 Plain chat requests ("stop using Fable", "save tokens") = session-only, write

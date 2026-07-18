@@ -6,4 +6,4 @@ key.txt.age
 .ssh/id_ed25519_signing.age
 .config/sops/age/keys.txt.age
 .config/gh/hosts.yml.age
-docs
+/docs

@@ -18,6 +18,6 @@ Rules you MUST follow:
 2. Edit ONLY the lines between `<!-- MODEL-POLICY:START -->` and
    `<!-- MODEL-POLICY:END -->`. Leave everything else untouched.
 3. Refuse to disable `opus` — it is the main model and ultimate fallback.
-4. After editing the source, run `chezmoi apply` so `~/.claude/CLAUDE.md`
+4. After making a change (not for `show`), run `chezmoi apply` so `~/.claude/CLAUDE.md`
    updates.
 5. Print the resulting block to confirm the change.
