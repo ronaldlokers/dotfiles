@@ -279,4 +279,40 @@ else
     "out=[$out] payload=[$(cache_payload "$CACHE_DIR/gite2e")]"
 fi
 
+# ---------------------------------------------------------------- case 8 --
+# git_segment's own `timeout 1` on the `git status` call is what stops a
+# hung or slow git from blocking a render indefinitely. A fake `git` on
+# PATH sleeps past that budget, then would have produced perfectly good
+# porcelain output — this is the regression test for a mutation that drops
+# `timeout 1` from the git status invocation: without it, this case would
+# wait out the full sleep and render a branch instead of staying silent.
+# The 2-second assertion budget is well short of the 5-second sleep, so a
+# passing run proves the timeout actually fired rather than the fake git
+# finishing on its own.
+d=$(new_case_dir)
+bin="$d/bin"
+mkdir -p "$bin"
+cat >"$bin/git" <<'EOF'
+#!/bin/bash
+while [ "${1:-}" = "-C" ]; do shift 2; done
+case "$1 ${2:-}" in
+  "status --porcelain=v2")
+    sleep 5
+    printf '# branch.head slow-branch\n'
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$bin/git"
+start_ts=$(date +%s)
+out=$(PATH="$bin:$PATH" git_segment "$d/repo" 2>"$d/err")
+rc=$?
+elapsed=$(($(date +%s) - start_ts))
+if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$d/err" ] && [ "$elapsed" -le 2 ]; then
+  ok "git_segment: slower-than-timeout git status stays silent well before it would finish"
+else
+  bad "git_segment: slower-than-timeout git status stays silent well before it would finish" \
+    "out=[$out] rc=$rc err=[$(cat "$d/err")] elapsed=${elapsed}s"
+fi
+
 exit "$fail"

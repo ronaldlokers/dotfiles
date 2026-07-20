@@ -40,14 +40,40 @@ no_ccusage_path=/usr/bin:/bin
 
 # ---------------------------------------------------------------- case 1 --
 # ccusage is not resolvable on PATH at all: the actual "not installed" guard.
-out=$(PATH="$no_ccusage_path" quota_segment 2>"$bin/err")
+#
+# Checking only output/rc/stderr here is vacuous: it still passes even with
+# the `command -v ccusage || return 0` guard deleted entirely, because
+# `timeout 1 ccusage ...` invoked against a genuinely absent `ccusage` is
+# *also* silent and zero-exit from the caller's side once its own
+# `2>/dev/null` swallows timeout's own "failed to run command" message — the
+# missing guard was otherwise unfalsifiable by output alone. So this also
+# plants a fake `timeout` on PATH that records every invocation. `command -v`
+# is a bash BUILTIN — it needs no real `timeout` (or `ccusage`) binary to
+# correctly answer "not found" — so with the guard intact, quota_segment
+# returns before ever reaching the `timeout 1 ccusage` line and the fake
+# `timeout` is never invoked. A deleted guard falls through to that line and
+# invokes it at least once, which the counter now catches.
+timeout_calls="$bin/timeout_calls"
+rm -f "$timeout_calls"
+cat >"$bin/timeout" <<EOF
+#!/bin/bash
+printf 'x\n' >>"$timeout_calls"
+exit 127
+EOF
+chmod +x "$bin/timeout"
+out=$(PATH="$bin:$no_ccusage_path" quota_segment 2>"$bin/err")
 rc=$?
-if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ]; then
-  ok "ccusage absent: prints nothing, exits 0, no stderr"
+calls=0
+[ -f "$timeout_calls" ] && calls=$(wc -l <"$timeout_calls" | tr -d ' ')
+if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ] && [ "$calls" = 0 ]; then
+  ok "ccusage absent: guard returns before ever invoking timeout"
 else
-  bad "ccusage absent: prints nothing, exits 0, no stderr" \
-    "out=[$out] rc=$rc err=[$(cat "$bin/err")]"
+  bad "ccusage absent: guard returns before ever invoking timeout" \
+    "out=[$out] rc=$rc err=[$(cat "$bin/err")] timeout_calls=$calls"
 fi
+# The fake `timeout` was only for this case; every later case needs the
+# real one (via the /usr/bin:/bin fallback already on PATH).
+rm -f "$bin/timeout" "$timeout_calls"
 
 # ---------------------------------------------------------------- case 2 --
 # ccusage resolves but fails (non-zero exit). It also writes to its own
@@ -130,6 +156,34 @@ if [ "$stripped" = "5h 100%" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ]; then
 else
   bad "block not yet started: pct is clamped to 100, not 127" \
     "out=[$stripped] rc=$rc err=[$(cat "$bin/err")]"
+fi
+
+# ---------------------------------------------------------------- case 6 --
+# ccusage takes far longer than the `timeout 1` budget wrapping it, then
+# eventually would have produced perfectly good data. This is the
+# regression test for a mutation that drops `timeout 1` from the ccusage
+# invocation: without it, this case would wait out the full sleep and
+# print a real percentage instead of staying silent — the 2-second budget
+# below is well short of the 5-second sleep, so a passing run proves the
+# timeout actually fired rather than the command finishing on its own.
+cat >"$bin/ccusage" <<'EOF'
+#!/bin/bash
+sleep 5
+now=$(date +%s)
+start=$(date -u -d "@$((now - 6840))" +%Y-%m-%dT%H:%M:%S.000Z)
+end=$(date -u -d "@$((now + 11160))" +%Y-%m-%dT%H:%M:%S.000Z)
+printf '{"blocks":[{"startTime":"%s","endTime":"%s"}]}\n' "$start" "$end"
+EOF
+chmod +x "$bin/ccusage"
+start_ts=$(date +%s)
+out=$(PATH="$bin:/usr/bin:/bin" quota_segment 2>"$bin/err")
+rc=$?
+elapsed=$(($(date +%s) - start_ts))
+if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ] && [ "$elapsed" -le 2 ]; then
+  ok "ccusage slower than its timeout budget: silent well before it would finish"
+else
+  bad "ccusage slower than its timeout budget: silent well before it would finish" \
+    "out=[$out] rc=$rc err=[$(cat "$bin/err")] elapsed=${elapsed}s"
 fi
 
 exit "$fail"
