@@ -5,7 +5,7 @@ claude-code = "2.1.215"
 fzf = "0.74.0"
 lsd = "1.2.0"
 fd = "10.4.2"
-lazygit = "0.63.0"
+lazygit = "0.63.1"
 node = "26.4.0"
 # mason installs pip-backed packages (ruff) into a venv; without a
 # python3 on PATH those installs fail
