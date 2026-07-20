@@ -187,9 +187,21 @@ cache_refresh() {
 
 # A linked worktree has a --git-dir under the main repo's
 # .git/worktrees/<name>; a normal checkout has --git-dir == --git-common-dir.
+# Both paths must be compared in the same format: from any directory other
+# than the repo root, git prints --git-dir absolute but --git-common-dir
+# relative, so a plain string compare falsely flags every ordinary checkout.
+# --path-format=absolute (git >= 2.31) normalizes both; older git falls back
+# to recognizing the .git/worktrees/<name> layout directly.
 worktree_name() {
   local dir=$1 out gitdir common
-  out=$(timeout 1 git -C "$dir" rev-parse --git-dir --git-common-dir 2>/dev/null) || return 0
+  out=$(timeout 1 git -C "$dir" rev-parse \
+    --path-format=absolute --git-dir --git-common-dir 2>/dev/null) || {
+    # git < 2.31 has no --path-format; linked worktrees live in
+    # <main-repo>/.git/worktrees/<name>, so fall back to the layout.
+    gitdir=$(timeout 1 git -C "$dir" rev-parse --absolute-git-dir 2>/dev/null) || return 0
+    case "$gitdir" in */worktrees/*) printf '%s' "${gitdir##*/}" ;; esac
+    return 0
+  }
   gitdir=${out%%$'\n'*}
   common=${out##*$'\n'}
   [ "$gitdir" != "$common" ] || return 0

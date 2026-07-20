@@ -5,7 +5,7 @@ case "$1 ${2:-}" in
   "status --porcelain=v2")
     printf '# branch.head feature\n'
     ;;
-  "rev-parse --git-dir")
+  "rev-parse --path-format=absolute")
     printf '/home/tester/src/api/.git/worktrees/api-wt\n/home/tester/src/api/.git\n'
     ;;
   *) exit 1 ;;
