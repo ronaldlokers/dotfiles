@@ -23,20 +23,29 @@ if command -v rtk >/dev/null 2>&1; then
   fi
 fi
 
-# No Rust toolchain: skip rather than fail. The hook already no-ops when rtk is
-# absent, so a clean/non-interactive apply (devpod up, CI) still succeeds.
-if ! command -v cargo >/dev/null 2>&1; then
-  echo "[rtk] cargo not found; skipping rtk install. Install a Rust toolchain, then re-run chezmoi apply." >&2
+# No usable Rust toolchain: skip rather than fail. `cargo --version` (not just
+# `command -v cargo`) is the real probe — CI/devpod may have a rustup `cargo`
+# shim on PATH with no default toolchain, where the shim exists but every
+# invocation errors ("rustup could not choose a version"). The hook already
+# no-ops when rtk is absent, so a clean/non-interactive apply still succeeds.
+if ! cargo --version >/dev/null 2>&1; then
+  echo "[rtk] no usable cargo toolchain; skipping rtk install. Install Rust (e.g. rustup default stable), then re-run chezmoi apply." >&2
   exit 0
 fi
 
 # --rev pins the commit; --git (not the crates.io name) sidesteps the
 # reachingforthejack/rtk "Rust Type Kit" name collision; --locked builds
 # against the committed Cargo.lock.
+#
+# Best-effort: a failed build (network, compile error) must not abort the whole
+# apply, since rtk is optional and the hook degrades gracefully without it.
 echo "[rtk] installing rtk $RTK_VERSION (rev ${RTK_REV:0:12}) via cargo..." >&2
-cargo install \
+if ! cargo install \
   --git https://github.com/rtk-ai/rtk \
   --rev "$RTK_REV" \
   --root "$HOME/.local" \
   --locked \
-  rtk
+  rtk; then
+  echo "[rtk] cargo install failed; skipping (hook no-ops without rtk). Retry: chezmoi apply." >&2
+  exit 0
+fi
