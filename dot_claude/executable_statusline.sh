@@ -124,6 +124,54 @@ seg_style() {
   printf '%s⌘ %s%s' "$C_BLUE" "$s" "$C_RESET"
 }
 
+# Remaining wall-clock in the active five-hour block, colored on the same
+# thresholds as context so the two meters read the same way. ccusage reports
+# startTime/endTime as ISO-8601 strings (with fractional seconds), not epoch
+# numbers, so the fractional part is stripped before fromdateiso8601 parses
+# them; a value that fails to parse (missing block, malformed string) is
+# caught and becomes "", which the numeric guard below then hides.
+quota_segment() {
+  local json start end now left pct c
+  command -v ccusage >/dev/null 2>&1 || return 0
+  json=$(timeout 1 ccusage blocks --active --json 2>/dev/null) || return 0
+  # One field per line, read with mapfile: a tab-separated read collapses
+  # consecutive tabs, which silently shifts every field after an empty one.
+  local fields=()
+  mapfile -t fields < <(
+    timeout 1 jq -r '
+      (.blocks[0].startTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch ""),
+      (.blocks[0].endTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch "")
+    ' <<<"$json" 2>/dev/null
+  )
+  start=${fields[0]-}
+  end=${fields[1]-}
+  start=${start%%.*}
+  end=${end%%.*}
+  case "$start$end" in '' | *[!0-9]*) return 0 ;; esac
+  [ "$end" -gt "$start" ] || return 0
+  printf -v now '%(%s)T' -1
+  left=$((end - now))
+  [ "$left" -gt 0 ] || return 0
+  pct=$((left * 100 / (end - start)))
+  if [ "$pct" -le 20 ]; then
+    c=$C_RED
+  elif [ "$pct" -le 40 ]; then
+    c=$C_YELLOW
+  else
+    c=$C_GREEN
+  fi
+  printf '%s5h %s%%%s' "$c" "$pct" "$C_RESET"
+}
+
+# The caveman plugin ships its own renderer; it prints nothing when the mode
+# is off, which is exactly this file's contract.
+seg_caveman() {
+  local hook
+  hook=$(ls -td "$HOME"/.claude/plugins/cache/caveman/caveman/*/src/hooks/caveman-statusline.sh 2>/dev/null | head -1)
+  [ -n "$hook" ] || return 0
+  timeout 1 bash "$hook" </dev/null 2>/dev/null
+}
+
 # Join the non-empty arguments; empty segments leave no double separator.
 join_segments() {
   local sep=$1 s
@@ -317,7 +365,9 @@ line2=$(join_segments '  ' \
   "$(seg_ctx "$pct")" \
   "$(seg_cost "$cost")" \
   "$(seg_dur "$dur")" \
-  "$(seg_style "$style")")
+  "$(seg_style "$style")" \
+  "$(cache_get quota 30 quota_segment)" \
+  "$(seg_caveman)")
 
 [ -n "$line1" ] && printf '%s\n' "$line1"
 printf '%s' "$line2"

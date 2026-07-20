@@ -1,0 +1,16 @@
+cat >"$STUB_DIR/ccusage" <<'STUB'
+#!/bin/bash
+# A five-hour block that is 62% remaining: started 6840s ago, ends 11160s
+# out. Real ccusage emits ISO-8601 timestamps (with fractional seconds),
+# not raw epoch numbers, so the stub matches that shape.
+now=$(date +%s)
+start=$(date -u -d "@$((now - 6840))" +%Y-%m-%dT%H:%M:%S.000Z)
+end=$(date -u -d "@$((now + 11160))" +%Y-%m-%dT%H:%M:%S.000Z)
+printf '{"blocks":[{"startTime":"%s","endTime":"%s"}]}\n' "$start" "$end"
+STUB
+chmod +x "$STUB_DIR/ccusage"
+cat >"$STUB_DIR/git" <<'STUB'
+#!/bin/bash
+exit 128
+STUB
+chmod +x "$STUB_DIR/git"
