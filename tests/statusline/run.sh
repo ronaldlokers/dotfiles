@@ -19,6 +19,7 @@ for fixture in "$here"/fixtures/*.json; do
   # Per-fixture stub setup: fixtures/<name>.stub is sourced if present and
   # may create fake git/ccusage executables in $stub_dir.
   rm -rf "${stub_dir:?}"/*
+  FIXTURE_DEVPOD=""
   if [ -f "$here/fixtures/$name.stub" ]; then
     # shellcheck disable=SC1090
     STUB_DIR="$stub_dir" source "$here/fixtures/$name.stub"
@@ -28,7 +29,7 @@ for fixture in "$here"/fixtures/*.json; do
     PATH="$stub_dir:$PATH" \
     HOME=/home/tester \
     XDG_RUNTIME_DIR="$stub_dir/cache" \
-    DEVPOD_WORKSPACE_ID="" \
+    DEVPOD_WORKSPACE_ID="${FIXTURE_DEVPOD:-}" \
       bash "$script" <"$fixture" 2>/dev/null |
       sed $'s/\033\\[[0-9;]*m//g'
   )

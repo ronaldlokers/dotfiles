@@ -60,6 +60,20 @@ seg_dir() {
   printf '%s%s%s' "$C_DIM" "$p" "$C_RESET"
 }
 
+# Only meaningful away from the host: on Omarchy this renders nothing.
+seg_env() {
+  local name=${DEVPOD_WORKSPACE_ID:-} label
+  if [ -n "$name" ]; then
+    label="devpod:$name"
+  elif [ -f /.dockerenv ]; then
+    label=${HOSTNAME:-}
+    [ -n "$label" ] || return 0
+  else
+    return 0
+  fi
+  printf '%s%s%s' "$C_YELLOW" "$label" "$C_RESET"
+}
+
 # remaining_percentage arrives as a float. A bare fraction like .5 floors to
 # 0, which is the honest reading: almost no context left, paint it red.
 seg_ctx() {
@@ -171,6 +185,17 @@ cache_refresh() {
   disown 2>/dev/null || true
 }
 
+# A linked worktree has a --git-dir under the main repo's
+# .git/worktrees/<name>; a normal checkout has --git-dir == --git-common-dir.
+worktree_name() {
+  local dir=$1 out gitdir common
+  out=$(timeout 1 git -C "$dir" rev-parse --git-dir --git-common-dir 2>/dev/null) || return 0
+  gitdir=${out%%$'\n'*}
+  common=${out##*$'\n'}
+  [ "$gitdir" != "$common" ] || return 0
+  printf '%s' "${gitdir##*/}"
+}
+
 # One `git status --porcelain=v2 --branch` yields branch name, ahead/behind,
 # and dirtiness together — three questions, one process.
 git_segment() {
@@ -191,6 +216,9 @@ git_segment() {
   done <<<"$status"
   [ -n "$head" ] || return 0
 
+  local wt
+  wt=$(worktree_name "$dir")
+
   if [ "$head" = "(detached)" ]; then
     head=$(timeout 1 git -C "$dir" rev-parse --short HEAD 2>/dev/null) || return 0
     [ -n "$head" ] || return 0
@@ -206,7 +234,11 @@ git_segment() {
     [ "$ahead" != 0 ] && out="$out↑$ahead"
     [ "$behind" != 0 ] && out="$out↓$behind"
   fi
-  printf '%s%s%s' "$C_MAGENTA" "$out" "$C_RESET"
+  if [ -n "$wt" ]; then
+    printf '%s⑂%s%s  %s%s%s' "$C_DIM" "$wt" "$C_RESET" "$C_MAGENTA" "$out" "$C_RESET"
+  else
+    printf '%s%s%s' "$C_MAGENTA" "$out" "$C_RESET"
+  fi
 }
 
 input=$(cat)
@@ -235,6 +267,7 @@ dur=${fields[5]-}
 
 git_key=${dir//\//_}
 line1=$(join_segments '  ' \
+  "$(seg_env)" \
   "$(seg_dir "$dir")" \
   "$(cache_get "git$git_key" 10 git_segment "$dir")")
 line2=$(join_segments '  ' \

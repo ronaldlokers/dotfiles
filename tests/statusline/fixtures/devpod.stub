@@ -1,0 +1,6 @@
+FIXTURE_DEVPOD="api"
+cat >"$STUB_DIR/git" <<'STUB'
+#!/bin/bash
+exit 128
+STUB
+chmod +x "$STUB_DIR/git"
