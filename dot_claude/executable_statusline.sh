@@ -246,20 +246,46 @@ cache_get() {
   printf '%s' "$payload"
 }
 
-# Detached so the refresh survives this render exiting.
+# Detached so the refresh survives this render exiting. Backgrounds a
+# subshell of *this* shell instead of a fresh `bash -c`: a `bash -c`
+# inherits no shell functions and none of this shell's non-exported
+# variables, but both real callers of cache_get (git_segment,
+# quota_segment) are shell functions that call other shell functions
+# (worktree_name) and reference globals (the C_* colors, CACHE_DIR) — a
+# `bash -c` refresh silently fails "command not found" for every one of
+# them. A plain subshell inherits all of that for free. `trap '' HUP`
+# lets it keep running after this render's shell exits.
+#
+# An empty result is deliberately NOT written over a cache that already
+# holds something: a real command failure must never blank a segment that
+# was previously rendering fine — that overwrite (fresh timestamp, empty
+# payload) is exactly how the bash-c bug turned one bad refresh into a
+# permanently blanked segment. Leaving the file untouched keeps its
+# timestamp expired, so the very next render retries the refresh instead
+# of waiting out the TTL.
+#
+# A segment that is legitimately empty (no git repo, ccusage not
+# installed) produces the same empty result, but its cache already holds
+# an empty payload from the attempt before — that case still gets its
+# timestamp bumped, so it does not re-run the command on every single
+# render, only once per TTL.
 cache_refresh() {
   local f=$1 lock=$2
   shift 2
-  local runner=()
-  command -v setsid >/dev/null 2>&1 && runner=(setsid)
   (
-    "${runner[@]}" bash -c '
-      f=$1; lock=$2; shift 2
-      printf -v now "%(%s)T" -1
-      payload=$("$@" 2>/dev/null)
-      printf "%s\n%s" "$now" "$payload" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f"
-      rmdir "$lock" 2>/dev/null
-    ' _ "$f" "$lock" "$@"
+    trap '' HUP
+    local now payload prev_raw prev=
+    printf -v now '%(%s)T' -1
+    payload=$("$@" 2>/dev/null)
+    if [ -z "$payload" ] && [ -f "$f" ]; then
+      prev_raw=$(<"$f")
+      prev=${prev_raw#*$'\n'}
+      [ "$prev" = "$prev_raw" ] && prev=
+    fi
+    if [ -n "$payload" ] || [ -z "$prev" ]; then
+      printf '%s\n%s' "$now" "$payload" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null
+    fi
+    rmdir "$lock" 2>/dev/null
   ) >/dev/null 2>&1 &
   disown 2>/dev/null || true
 }
