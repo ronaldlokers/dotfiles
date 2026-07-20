@@ -21,8 +21,6 @@ C_DIM=$'\033[2m'
 C_RED=$'\033[31m'
 C_GREEN=$'\033[32m'
 C_YELLOW=$'\033[33m'
-# shellcheck disable=SC2034 # part of the shared palette; worktree/quota
-# segments in later tasks pick these up
 C_BLUE=$'\033[34m'
 C_MAGENTA=$'\033[35m'
 C_CYAN=$'\033[36m'
@@ -100,6 +98,30 @@ seg_cost() {
   cents=${rounded/./}
   [ $((10#$cents)) -ge 1 ] || return 0
   printf '%s$%s%s' "$C_DIM" "$rounded" "$C_RESET"
+}
+
+# Anything under a minute is noise on a line that is already busy.
+seg_dur() {
+  local ms=${1%%.*} s h m
+  case "$ms" in '' | *[!0-9]*) return 0 ;; esac
+  # Compare whole milliseconds, not the truncated-to-seconds value: flooring
+  # ms/1000 first would make 60001ms read as exactly 60s and wrongly hide.
+  [ "$ms" -gt 60000 ] || return 0
+  s=$((ms / 1000))
+  h=$((s / 3600))
+  m=$(((s % 3600) / 60))
+  if [ "$h" -gt 0 ]; then
+    printf '%s%dh%dm%s' "$C_DIM" "$h" "$m" "$C_RESET"
+  else
+    printf '%s%dm%s' "$C_DIM" "$m" "$C_RESET"
+  fi
+}
+
+# The default style is the assumption; only a deviation is worth screen space.
+seg_style() {
+  local s=$1
+  case "$s" in '' | null | default) return 0 ;; esac
+  printf '%s⌘ %s%s' "$C_BLUE" "$s" "$C_RESET"
 }
 
 # Join the non-empty arguments; empty segments leave no double separator.
@@ -280,11 +302,9 @@ mapfile -t fields < <(
 )
 model=${fields[0]-}
 dir=${fields[1]-}
-# shellcheck disable=SC2034 # style segment lands in a later task
 style=${fields[2]-}
 pct=${fields[3]-}
 cost=${fields[4]-}
-# shellcheck disable=SC2034 # duration segment lands in a later task
 dur=${fields[5]-}
 
 git_key=${dir//\//_}
@@ -295,7 +315,9 @@ line1=$(join_segments '  ' \
 line2=$(join_segments '  ' \
   "$(seg_model "$model")" \
   "$(seg_ctx "$pct")" \
-  "$(seg_cost "$cost")")
+  "$(seg_cost "$cost")" \
+  "$(seg_dur "$dur")" \
+  "$(seg_style "$style")")
 
 [ -n "$line1" ] && printf '%s\n' "$line1"
 printf '%s' "$line2"
