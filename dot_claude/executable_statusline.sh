@@ -153,6 +153,15 @@ quota_segment() {
   left=$((end - now))
   [ "$left" -gt 0 ] || return 0
   pct=$((left * 100 / (end - start)))
+  # ccusage --active should only ever return a block that contains now, so
+  # this should be unreachable — but a block that has not started yet
+  # (now < start) would otherwise push left above (end - start) and pct
+  # past 100. Defensive clamp, not a load-bearing guard.
+  if [ "$pct" -gt 100 ]; then
+    pct=100
+  elif [ "$pct" -lt 0 ]; then
+    pct=0
+  fi
   if [ "$pct" -le 20 ]; then
     c=$C_RED
   elif [ "$pct" -le 40 ]; then
