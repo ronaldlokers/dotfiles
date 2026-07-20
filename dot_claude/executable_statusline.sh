@@ -15,6 +15,12 @@ CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline"
 # this is definitionally abandoned (its owner was killed between mkdir and
 # rmdir) rather than legitimately held.
 LOCK_STALE_SECS=60
+# A background refresh that comes back empty while the cache holds a good
+# value must not blank it on the strength of one transient failure — but it
+# must also not defend a value that is genuinely gone forever. This bounds
+# how many *consecutive* empty refreshes a good value survives before it is
+# finally allowed to expire; see cache_refresh's `.misses` companion file.
+CACHE_EMPTY_RETRIES=3
 
 C_RESET=$'\033[0m'
 C_DIM=$'\033[2m'
@@ -134,13 +140,17 @@ quota_segment() {
   local json start end now left pct c
   command -v ccusage >/dev/null 2>&1 || return 0
   json=$(timeout 1 ccusage blocks --active --json 2>/dev/null) || return 0
-  # One field per line, read with mapfile: a tab-separated read collapses
-  # consecutive tabs, which silently shifts every field after an empty one.
+  # NUL-separated, read with `mapfile -d ''`: jq -r's newline delimiter is
+  # not safe here on principle (these two fields are epoch numbers, but the
+  # same parse shape as the top-level stdin parse below is used
+  # deliberately so this can never regress independently) — a delimiter
+  # that cannot appear inside the data is the only one that preserves
+  # empty fields without shifting anything later.
   local fields=()
-  mapfile -t fields < <(
-    timeout 1 jq -r '
-      (.blocks[0].startTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch ""),
-      (.blocks[0].endTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch "")
+  mapfile -d '' -t fields < <(
+    timeout 1 jq -j '
+      (.blocks[0].startTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch ""), ([0] | implode),
+      (.blocks[0].endTime // "" | tostring | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch ""), ([0] | implode)
     ' <<<"$json" 2>/dev/null
   )
   start=${fields[0]-}
@@ -182,11 +192,20 @@ seg_caveman() {
 }
 
 # Join the non-empty arguments; empty segments leave no double separator.
+# Every segment is sanitized here, centrally, rather than at each call site:
+# a segment payload that contains a raw CR or LF (a hostile caveman-plugin
+# hook, a directory name with a newline surviving from upstream) would
+# otherwise inject an extra visual line into a statusline that promises
+# exactly two. This is the composition-layer half of the same fix as the
+# NUL-delimited stdin parse above — it also covers seg_style and any future
+# segment for free, without patching each one individually.
 join_segments() {
   local sep=$1 s
   local out=
   shift
   for s in "$@"; do
+    s=${s//$'\r'/}
+    s=${s//$'\n'/}
     [ -n "$s" ] || continue
     if [ -z "$out" ]; then out=$s; else out="$out$sep$s"; fi
   done
@@ -256,38 +275,85 @@ cache_get() {
 # them. A plain subshell inherits all of that for free. `trap '' HUP`
 # lets it keep running after this render's shell exits.
 #
-# An empty result is deliberately NOT written over a cache that already
-# holds something: a real command failure must never blank a segment that
-# was previously rendering fine — that overwrite (fresh timestamp, empty
+# An empty result must never simply overwrite a cache that already holds
+# something: a real command failure must never blank a segment that was
+# previously rendering fine — that overwrite (fresh timestamp, empty
 # payload) is exactly how the bash-c bug turned one bad refresh into a
-# permanently blanked segment. Leaving the file untouched keeps its
-# timestamp expired, so the very next render retries the refresh instead
-# of waiting out the TTL.
+# permanently blanked segment. So an empty result re-writes the *previous*
+# payload rather than the empty one — but the timestamp is written every
+# time regardless, expired or not: a version that instead left the file
+# untouched (as this once did) never clears the TTL, so every subsequent
+# render sees a still-expired cache and forks a brand new background
+# refresh forever, even though nothing will ever change (e.g. the repo
+# that was cached is gone for good). Writing a fresh timestamp on the
+# no-op path is what stops that.
+#
+# But "keep serving the stale value forever" is also wrong for a value
+# that is genuinely gone (branch cached, then `.git` deleted): a companion
+# `.misses` file counts *consecutive* empty results, and once it reaches
+# CACHE_EMPTY_RETRIES the stale payload is finally allowed to expire to
+# empty, rather than being defended indefinitely. Any non-empty result
+# resets the counter to zero.
 #
 # A segment that is legitimately empty (no git repo, ccusage not
 # installed) produces the same empty result, but its cache already holds
-# an empty payload from the attempt before — that case still gets its
-# timestamp bumped, so it does not re-run the command on every single
-# render, only once per TTL.
+# an empty payload from the attempt before — `prev` is empty too, so the
+# branch below just writes empty-over-empty with a fresh timestamp, which
+# is what stops it from re-running the command on every single render.
 cache_refresh() {
   local f=$1 lock=$2
   shift 2
   (
     trap '' HUP
-    local now payload prev_raw prev=
+    local now payload prev_raw misses missfile="$f.misses" prev=
     printf -v now '%(%s)T' -1
     payload=$("$@" 2>/dev/null)
-    if [ -z "$payload" ] && [ -f "$f" ]; then
-      prev_raw=$(<"$f")
-      prev=${prev_raw#*$'\n'}
-      [ "$prev" = "$prev_raw" ] && prev=
+    if [ -n "$payload" ]; then
+      rm -f "$missfile" 2>/dev/null
+    else
+      if [ -f "$f" ]; then
+        prev_raw=$(<"$f")
+        prev=${prev_raw#*$'\n'}
+        [ "$prev" = "$prev_raw" ] && prev=
+      fi
+      if [ -n "$prev" ]; then
+        misses=
+        [ -f "$missfile" ] && misses=$(<"$missfile")
+        case "$misses" in '' | *[!0-9]*) misses=0 ;; esac
+        misses=$((misses + 1))
+        if [ "$misses" -lt "$CACHE_EMPTY_RETRIES" ]; then
+          payload=$prev
+          printf '%s' "$misses" >"$missfile" 2>/dev/null
+        else
+          rm -f "$missfile" 2>/dev/null
+        fi
+      fi
     fi
-    if [ -n "$payload" ] || [ -z "$prev" ]; then
-      printf '%s\n%s' "$now" "$payload" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null
-    fi
+    printf '%s\n%s' "$now" "$payload" >"$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null
     rmdir "$lock" 2>/dev/null
   ) >/dev/null 2>&1 &
   disown 2>/dev/null || true
+}
+
+# The git cache key must not collide across distinct directories. A naive
+# `${dir//\//_}` maps both `/x/a/b` and `/x/a_b` to the key `_x_a_b` —
+# verified live: standing in one repo, the statusline printed a
+# neighbouring repo's branch. sha1 of the repo path (per the design spec's
+# Caching section) does not have that collision. Wrapped in `timeout 1`
+# like every other external command; if no hashing tool is available the
+# caller gets an empty key and hides the segment rather than falling back
+# to the collision-prone key.
+dir_hash() {
+  local d=$1 h
+  if command -v sha1sum >/dev/null 2>&1; then
+    h=$(timeout 1 sha1sum <<<"$d" 2>/dev/null) || return 1
+  elif command -v shasum >/dev/null 2>&1; then
+    h=$(timeout 1 shasum -a 1 <<<"$d" 2>/dev/null) || return 1
+  else
+    return 1
+  fi
+  [ -n "$h" ] || return 1
+  printf '%s' "${h%% *}"
 }
 
 # A linked worktree has a --git-dir under the main repo's
@@ -370,17 +436,23 @@ git_segment() {
 
 input=$(cat)
 
-# One jq call, not one per field: this runs on every render. One field per
-# line (not @tsv) so mapfile preserves empty fields instead of bash's IFS
-# whitespace-collapsing shifting every later field left.
-mapfile -t fields < <(
-  timeout 1 jq -r '
-    (.model.display_name // ""),
-    (.workspace.current_dir // ""),
-    (.output_style.name // ""),
-    (.context_window.remaining_percentage // "" | tostring),
-    (.cost.total_cost_usd // "" | tostring),
-    (.cost.total_duration_ms // "" | tostring)
+# One jq call, not one per field: this runs on every render. NUL-separated
+# output, read with `mapfile -d ''`: `jq -r` emits raw newlines inside
+# string values (a directory containing a newline is enough), and a
+# newline delimiter silently shifts every field after it — the same class
+# of bug the tab-collapsing read was fixed for once already. NUL cannot
+# appear in a jq string value, so it is the only delimiter that is both
+# unambiguous and preserves empty fields. `([0] | implode)` builds the NUL
+# byte from its codepoint rather than embedding one literally in the jq
+# program text.
+mapfile -d '' -t fields < <(
+  timeout 1 jq -j '
+    (.model.display_name // ""), ([0] | implode),
+    (.workspace.current_dir // ""), ([0] | implode),
+    (.output_style.name // ""), ([0] | implode),
+    (.context_window.remaining_percentage // "" | tostring), ([0] | implode),
+    (.cost.total_cost_usd // "" | tostring), ([0] | implode),
+    (.cost.total_duration_ms // "" | tostring), ([0] | implode)
   ' <<<"$input" 2>/dev/null
 )
 model=${fields[0]-}
@@ -390,11 +462,16 @@ pct=${fields[3]-}
 cost=${fields[4]-}
 dur=${fields[5]-}
 
-git_key=${dir//\//_}
+git_key=
+git_out=
+if [ -n "$dir" ]; then
+  git_key=$(dir_hash "$dir")
+  [ -n "$git_key" ] && git_out=$(cache_get "git$git_key" 10 git_segment "$dir")
+fi
 line1=$(join_segments '  ' \
   "$(seg_env)" \
   "$(seg_dir "$dir")" \
-  "$(cache_get "git$git_key" 10 git_segment "$dir")")
+  "$git_out")
 line2=$(join_segments '  ' \
   "$(seg_model "$model")" \
   "$(seg_ctx "$pct")" \
