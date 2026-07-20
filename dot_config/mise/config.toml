@@ -22,6 +22,7 @@ delta = "0.19.2"
 zoxide = "0.10.0"
 gh = "2.96.0"
 tmux = "3.7b"
+shellcheck = "0.11.0"
 # nvim-treesitter (main branch) shells out to the tree-sitter CLI to
 # compile parsers; without it :TSUpdate fails and parsers go stale
 tree-sitter = "0.26.11"
