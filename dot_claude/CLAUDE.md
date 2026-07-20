@@ -1,7 +1,7 @@
 # Global instructions
 
 ## Environment
-- Usually work as `vscode` user inside devpod containers; host machine run Omarchy (Arch Linux).
+- Two environments: directly on the Omarchy (Arch Linux) host as `ronald`, or as `vscode` inside a devpod container. Check which before assuming paths or tooling.
 - Dotfiles managed with chezmoi (source: `~/.local/share/chezmoi`, repo: `ronaldlokers/dotfiles`). Never edit chezmoi-managed file in `$HOME` direct — edit source (`chezmoi source-path <file>`), run `chezmoi apply`.
 - CLI tools installed through mise, pinned versions (global: `~/.config/mise/config.toml`; per-project tooling goes that project's `mise.toml`). Prefer `mise` over apt, `npm -g`, pip for tool install.
 

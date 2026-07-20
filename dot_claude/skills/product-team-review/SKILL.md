@@ -1,6 +1,6 @@
 ---
 name: product-team-review
-description: Review the current codebase as a full cross-functional product team — product, QA, development (lead + senior), design, UX, security, DevOps/SRE, data privacy, accessibility, analytics, docs, customer support, and engineering management — then verify the findings and publish a Claude artifact of prioritized, attributed bugs, improvements, new features, and design ideas (with mockups where useful). Supports quick/standard/deep effort levels, whole-product or diff/PR scope, and can open GitHub issues or implement fixes afterward. Use when the user asks for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next" on a project. ALWAYS asks clarifying questions before reviewing.
+description: Review the codebase as a full cross-functional product team, then publish a prioritized, attributed artifact of bugs, improvements, and feature ideas. Use for a holistic product/eng/design review, a "team review", a product audit, or "what should we build/fix next".
 version: 0.6.0
 ---
 
