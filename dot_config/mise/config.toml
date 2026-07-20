@@ -2,7 +2,7 @@
 bat = "0.26.1"
 chezmoi = "2.70.5"
 claude-code = "2.1.215"
-fzf = "0.74.0"
+fzf = "0.74.1"
 lsd = "1.2.0"
 fd = "10.4.2"
 lazygit = "0.63.0"
