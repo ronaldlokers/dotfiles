@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: shellcheck
-        run: shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh tests/statusline/run.sh tests/statusline/cache-test.sh tests/statusline/worktree-test.sh tests/statusline/quota-test.sh
+        run: shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh tests/statusline/run.sh tests/statusline/cache-test.sh tests/statusline/worktree-test.sh tests/statusline/quota-test.sh tests/statusline/timeout-test.sh
       - name: validate claude settings.json
         run: jq empty dot_claude/settings.json
       - name: validate renovate config
@@ -37,6 +37,8 @@ jobs:
         run: tests/statusline/worktree-test.sh
       - name: statusline quota tests
         run: tests/statusline/quota-test.sh
+      - name: statusline timeout tests
+        run: tests/statusline/timeout-test.sh
 
   gitleaks:
     runs-on: ubuntu-latest

@@ -17,6 +17,18 @@
 # silenced `2>/dev/null` on the driver would hide any regression that
 # leaked to stderr (a dropped `timeout 1`, a removed `command -v` guard, a
 # stray debug `echo >&2`).
+#
+# fixtures/newline-field.json is the regression test for reverting the
+# top-level stdin parse from NUL-delimited (`mapfile -d '' -t` + `jq -j`
+# with `([0] | implode)` separators) back to newline-delimited (`mapfile
+# -t` + `jq -r`): a field value containing a raw embedded newline (here,
+# model.display_name) produces one extra physical line, which shifts every
+# field read after it — dir becomes the second half of the model name,
+# style becomes the empty dir, pct becomes the style string (hidden as
+# non-numeric), cost becomes the pct number, and duration is lost
+# entirely. No existing fixture's field values contain an embedded
+# newline, so this was otherwise unguarded even though it is the exact
+# mechanism the NUL-delimited parse exists to fix.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)

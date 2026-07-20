@@ -86,6 +86,20 @@ cache_payload() {
   printf '%s' "$payload"
 }
 
+# refresh_ts <cache-file> — the write timestamp currently on disk, or ''.
+# Used to detect that a background refresh has finished: cache_refresh
+# always rewrites the timestamp on completion (defended, expired, or
+# legitimately empty alike), so polling for it to change away from a known
+# "before" value is a completion signal that works regardless of which
+# branch the refresh took — unlike polling the payload, which can
+# legitimately stay the same across a round that defends it.
+refresh_ts() {
+  local f=$1 raw
+  [ -f "$f" ] || { printf ''; return; }
+  raw=$(<"$f")
+  printf '%s' "${raw%%$'\n'*}"
+}
+
 # ---------------------------------------------------------------- case 1 --
 # Cold start with an empty cache: runs the command synchronously and prints
 # its output.
@@ -313,6 +327,156 @@ if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$d/err" ] && [ "$elapsed" -le 2 ]; 
 else
   bad "git_segment: slower-than-timeout git status stays silent well before it would finish" \
     "out=[$out] rc=$rc err=[$(cat "$d/err")] elapsed=${elapsed}s"
+fi
+
+# ---------------------------------------------------------------- case 9 --
+# dir_hash must not collide across distinct directories. The pre-fix key
+# was the naive `${dir//\//_}`, which flattens every "/" to "_" — a
+# directory path ".../a/b" and a sibling literally named ".../a_b" both
+# flatten to the identical key. This is the regression test for reverting
+# dir_hash back to that scheme: it plants exactly that colliding pair, each
+# a real git repo with its own distinct branch, and asserts both that the
+# hashes differ and that cache_get, keyed on those hashes, serves each
+# directory's own branch rather than a collided neighbor's.
+d=$(new_case_dir)
+dir_ab="$d/a/b"
+dir_a_b="$d/a_b"
+mkdir -p "$dir_ab" "$dir_a_b"
+git -c init.defaultBranch=branch-ab -c commit.gpgsign=false init -q "$dir_ab"
+git -C "$dir_ab" -c commit.gpgsign=false -c user.name=Test -c user.email=test@example.com \
+  commit -q --allow-empty -m init
+git -c init.defaultBranch=branch-a_b -c commit.gpgsign=false init -q "$dir_a_b"
+git -C "$dir_a_b" -c commit.gpgsign=false -c user.name=Test -c user.email=test@example.com \
+  commit -q --allow-empty -m init
+
+hash_ab=$(dir_hash "$dir_ab")
+hash_a_b=$(dir_hash "$dir_a_b")
+if [ -n "$hash_ab" ] && [ -n "$hash_a_b" ] && [ "$hash_ab" != "$hash_a_b" ]; then
+  ok "dir_hash: sibling paths that collide under the naive scheme hash distinctly"
+else
+  bad "dir_hash: sibling paths that collide under the naive scheme hash distinctly" \
+    "hash_ab=[$hash_ab] hash_a_b=[$hash_a_b]"
+fi
+
+CACHE_DIR="$d/cache"
+out_ab=$(cache_get "git$hash_ab" 100 git_segment "$dir_ab")
+out_a_b=$(cache_get "git$hash_a_b" 100 git_segment "$dir_a_b")
+ok_ab=0
+ok_a_b=0
+case "$out_ab" in *branch-ab*) ok_ab=1 ;; esac
+case "$out_a_b" in *branch-a_b*) ok_a_b=1 ;; esac
+if [ "$ok_ab" = 1 ] && [ "$ok_a_b" = 1 ]; then
+  ok "dir_hash: distinct cache keys serve each directory's own branch, not a collided neighbor's"
+else
+  bad "dir_hash: distinct cache keys serve each directory's own branch, not a collided neighbor's" \
+    "out_ab=[$out_ab] out_a_b=[$out_a_b]"
+fi
+
+# --------------------------------------------------------------- case 10 --
+# A stale-but-good payload must eventually expire once its underlying data
+# is genuinely gone forever, rather than being defended across every
+# refresh indefinitely. This is the regression test for two mutations that
+# both defeat CACHE_EMPTY_RETRIES: reverting the `misses -lt
+# CACHE_EMPTY_RETRIES` guard to `if true` (defends unconditionally), or
+# bumping CACHE_EMPTY_RETRIES itself to something enormous (same effect via
+# the threshold rather than the comparison). The round count below is
+# fixed at 5, deliberately NOT derived from this file's own
+# CACHE_EMPTY_RETRIES: driving it from the sourced value would make this
+# loop run 100000 times under the "bump the constant" mutation instead of
+# catching it quickly. 5 rounds is comfortably more than the real
+# CACHE_EMPTY_RETRIES=3 needs to expire, so a correct script always passes
+# well within the budget, and a mutated one that needs far more than 5
+# misses to expire (or never expires at all) still fails.
+d=$(new_case_dir)
+CACHE_DIR="$d/cache"
+mkdir -p "$CACHE_DIR"
+modefile="$d/mode"
+fake_expiring_segment() {
+  local mf=$1
+  if [ -f "$mf" ] && [ "$(<"$mf")" = empty ]; then
+    printf ''
+  else
+    printf 'GOODVAL'
+  fi
+}
+
+cache_get "k10" 100000 fake_expiring_segment "$modefile" >/dev/null
+if [ "$(cache_payload "$CACHE_DIR/k10")" = "GOODVAL" ]; then
+  ok "expiry setup: cache seeded with a real value"
+else
+  bad "expiry setup: cache seeded with a real value" \
+    "payload=[$(cache_payload "$CACHE_DIR/k10")]"
+fi
+
+# The underlying data is now "gone": every subsequent refresh comes back
+# empty. Force TTL expiry on 5 consecutive renders by rewinding the cache
+# file's timestamp before each one, mirroring how a real render sees an
+# expired cache once the TTL elapses.
+printf 'empty' >"$modefile"
+for _ in 1 2 3 4 5; do
+  old_ts=$(($(date +%s) - 1000))
+  cur_payload=$(cache_payload "$CACHE_DIR/k10")
+  printf '%s\n%s' "$old_ts" "$cur_payload" >"$CACHE_DIR/k10"
+  cache_get "k10" 5 fake_expiring_segment "$modefile" >/dev/null
+  round_done() { [ "$(refresh_ts "$CACHE_DIR/k10")" != "$old_ts" ]; }
+  poll_until 40 0.05 round_done
+done
+if [ -z "$(cache_payload "$CACHE_DIR/k10")" ]; then
+  ok "stale payload expires after enough consecutive empty refreshes"
+else
+  bad "stale payload expires after enough consecutive empty refreshes" \
+    "payload=[$(cache_payload "$CACHE_DIR/k10")]"
+fi
+
+# --------------------------------------------------------------- case 11 --
+# join_segments must strip embedded newlines (not just carriage returns)
+# from every segment payload. Regression test for deleting the
+# `s=${s//$'\n'/}` line: a segment containing an embedded LF (a hostile
+# caveman-plugin hook, a directory name that somehow carries one) would
+# inject an extra visual line into a statusline that promises exactly two,
+# which is asserted here directly via the joined output's line count.
+out=$(join_segments '  ' "$(printf 'line1\nline2')" "tail")
+lines=$(printf '%s' "$out" | wc -l | tr -d ' ')
+if [ "$lines" = 0 ] && [ "$out" = "line1line2  tail" ]; then
+  ok "join_segments strips embedded newlines out of a segment payload"
+else
+  bad "join_segments strips embedded newlines out of a segment payload" \
+    "out=[$(printf '%s' "$out" | tr '\n' '|')] lines=$lines"
+fi
+
+# --------------------------------------------------------------- case 12 --
+# Finding 2: an unwritable `.misses` companion file must not defend a stale
+# payload forever just because the miss counter can never be persisted past
+# its first read. This reproduces the exact shape of a leftover
+# foreign-owned `.misses` file in a shared CACHE_DIR when XDG_RUNTIME_DIR is
+# unset — `printf ... >"$missfile" 2>/dev/null` fails silently every round,
+# so a version that only guards on `misses -lt CACHE_EMPTY_RETRIES` (without
+# also requiring the write to have succeeded) re-reads the same
+# never-advanced counter as "still under the limit" forever. The fix fails
+# toward expiring instead: the payload must be empty well before 5 rounds.
+d=$(new_case_dir)
+CACHE_DIR="$d/cache"
+mkdir -p "$CACHE_DIR"
+fake_empty_segment() { printf ''; }
+
+printf '%s\nGOODVAL' "$(date +%s)" >"$CACHE_DIR/k12"
+: >"$CACHE_DIR/k12.misses"
+chmod 444 "$CACHE_DIR/k12.misses"
+
+for _ in 1 2 3 4 5; do
+  old_ts=$(($(date +%s) - 1000))
+  cur_payload=$(cache_payload "$CACHE_DIR/k12")
+  printf '%s\n%s' "$old_ts" "$cur_payload" >"$CACHE_DIR/k12"
+  cache_get "k12" 5 fake_empty_segment >/dev/null
+  round_done() { [ "$(refresh_ts "$CACHE_DIR/k12")" != "$old_ts" ]; }
+  poll_until 40 0.05 round_done
+done
+chmod 644 "$CACHE_DIR/k12.misses" 2>/dev/null || true
+if [ -z "$(cache_payload "$CACHE_DIR/k12")" ]; then
+  ok "unwritable .misses file fails toward expiring the stale payload, not defending it forever"
+else
+  bad "unwritable .misses file fails toward expiring the stale payload, not defending it forever" \
+    "payload=[$(cache_payload "$CACHE_DIR/k12")]"
 fi
 
 exit "$fail"

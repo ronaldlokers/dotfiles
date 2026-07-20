@@ -1,0 +1,7 @@
+{
+  "model": { "display_name": "Opus\nEVILLINE" },
+  "workspace": { "current_dir": "" },
+  "output_style": { "name": "mystyle" },
+  "context_window": { "remaining_percentage": 55 },
+  "cost": { "total_cost_usd": 2.00, "total_duration_ms": 999999 }
+}
