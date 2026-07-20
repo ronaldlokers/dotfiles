@@ -192,20 +192,30 @@ cache_refresh() {
 # relative, so a plain string compare falsely flags every ordinary checkout.
 # --path-format=absolute (git >= 2.31) normalizes both; older git falls back
 # to recognizing the .git/worktrees/<name> layout directly.
+#
+# Detecting "older git" cannot rely on the command's exit status: git
+# rev-parse does not fail on an unrecognized long option, it echoes the
+# option back as a literal output line and still exits 0. So a pre-2.31 git
+# asked for --path-format=absolute succeeds with three lines (the echoed
+# flag plus the two dirs), not two — trust the output only when its shape
+# is exactly the two absolute paths that were asked for.
 worktree_name() {
-  local dir=$1 out gitdir common
+  local dir=$1 out lines=() gitdir common
   out=$(timeout 1 git -C "$dir" rev-parse \
-    --path-format=absolute --git-dir --git-common-dir 2>/dev/null) || {
-    # git < 2.31 has no --path-format; linked worktrees live in
-    # <main-repo>/.git/worktrees/<name>, so fall back to the layout.
-    gitdir=$(timeout 1 git -C "$dir" rev-parse --absolute-git-dir 2>/dev/null) || return 0
-    case "$gitdir" in */worktrees/*) printf '%s' "${gitdir##*/}" ;; esac
+    --path-format=absolute --git-dir --git-common-dir 2>/dev/null)
+  mapfile -t lines <<<"$out"
+  if [ "${#lines[@]}" -eq 2 ] &&
+    [ "${lines[0]#/}" != "${lines[0]}" ] && [ "${lines[1]#/}" != "${lines[1]}" ]; then
+    gitdir=${lines[0]}
+    common=${lines[1]}
+    [ "$gitdir" != "$common" ] || return 0
+    printf '%s' "${gitdir##*/}"
     return 0
-  }
-  gitdir=${out%%$'\n'*}
-  common=${out##*$'\n'}
-  [ "$gitdir" != "$common" ] || return 0
-  printf '%s' "${gitdir##*/}"
+  fi
+  # git < 2.31: no --path-format. Linked worktrees live in
+  # <main-repo>/.git/worktrees/<name>, so fall back to that layout.
+  gitdir=$(timeout 1 git -C "$dir" rev-parse --absolute-git-dir 2>/dev/null) || return 0
+  case "$gitdir" in */worktrees/*) printf '%s' "${gitdir##*/}" ;; esac
 }
 
 # One `git status --porcelain=v2 --branch` yields branch name, ahead/behind,
