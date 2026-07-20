@@ -321,9 +321,15 @@ cache_refresh() {
         [ -f "$missfile" ] && misses=$(<"$missfile")
         case "$misses" in '' | *[!0-9]*) misses=0 ;; esac
         misses=$((misses + 1))
-        if [ "$misses" -lt "$CACHE_EMPTY_RETRIES" ]; then
+        # The write must succeed for the stale payload to be defended: a
+        # `.misses` file that cannot be persisted (e.g. left behind
+        # foreign-owned, or the cache dir gone read-only) must never be
+        # read back as "still under the limit" forever — that reproduces
+        # the exact lie-forever bug the retry counter exists to prevent,
+        # just one layer down. Fail toward expiring, not toward defending.
+        if [ "$misses" -lt "$CACHE_EMPTY_RETRIES" ] &&
+          printf '%s' "$misses" >"$missfile" 2>/dev/null; then
           payload=$prev
-          printf '%s' "$misses" >"$missfile" 2>/dev/null
         else
           rm -f "$missfile" 2>/dev/null
         fi
