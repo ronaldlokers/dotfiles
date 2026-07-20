@@ -159,30 +159,58 @@ else
 fi
 
 # ---------------------------------------------------------------- case 6 --
-# ccusage takes far longer than the `timeout 1` budget wrapping it, then
-# eventually would have produced perfectly good data. This is the
-# regression test for a mutation that drops `timeout 1` from the ccusage
-# invocation: without it, this case would wait out the full sleep and
-# print a real percentage instead of staying silent — the 2-second budget
-# below is well short of the 5-second sleep, so a passing run proves the
-# timeout actually fired rather than the command finishing on its own.
+# ccusage slower than a one-second budget but well inside its real one. The
+# real ccusage is a Node CLI that re-reads every session JSONL on each
+# invocation; measured cold on this machine it takes ~2.5s, so the
+# `timeout 1` this call once carried killed it on *every* render and the
+# segment was permanently blank while ccusage was healthy the whole time.
+# The whole point of QUOTA_TIMEOUT_SECS is that a merely-slow ccusage still
+# renders, so the 3-second sleep below must produce a percentage, not
+# silence.
 cat >"$bin/ccusage" <<'EOF'
 #!/bin/bash
-sleep 5
+sleep 3
 now=$(date +%s)
-start=$(date -u -d "@$((now - 6840))" +%Y-%m-%dT%H:%M:%S.000Z)
-end=$(date -u -d "@$((now + 11160))" +%Y-%m-%dT%H:%M:%S.000Z)
+start=$(date -u -d "@$((now - 23600))" +%Y-%m-%dT%H:%M:%S.000Z)
+end=$(date -u -d "@$((now + 76400))" +%Y-%m-%dT%H:%M:%S.000Z)
 printf '{"blocks":[{"startTime":"%s","endTime":"%s"}]}\n' "$start" "$end"
+EOF
+chmod +x "$bin/ccusage"
+out=$(PATH="$bin:/usr/bin:/bin" quota_segment 2>"$bin/err")
+rc=$?
+stripped=$(strip "$out")
+if [ "$stripped" = "5h 76%" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ]; then
+  ok "ccusage slow but inside its budget: still renders instead of staying blank"
+else
+  bad "ccusage slow but inside its budget: still renders instead of staying blank" \
+    "out=[$stripped] rc=$rc err=[$(cat "$bin/err")]"
+fi
+
+# ---------------------------------------------------------------- case 7 --
+# ccusage hangs past QUOTA_TIMEOUT_SECS entirely. Regression test for a
+# mutation that drops the `timeout` wrapper from the ccusage invocation:
+# without it this case would wait out the full sleep and print a real
+# percentage instead of staying silent. The sleep is set well past the
+# budget and the elapsed assertion just past it, so a passing run proves
+# the timeout actually fired rather than the command finishing on its own.
+cat >"$bin/ccusage" <<EOF
+#!/bin/bash
+sleep $((QUOTA_TIMEOUT_SECS + 15))
+now=\$(date +%s)
+start=\$(date -u -d "@\$((now - 6840))" +%Y-%m-%dT%H:%M:%S.000Z)
+end=\$(date -u -d "@\$((now + 11160))" +%Y-%m-%dT%H:%M:%S.000Z)
+printf '{"blocks":[{"startTime":"%s","endTime":"%s"}]}\n' "\$start" "\$end"
 EOF
 chmod +x "$bin/ccusage"
 start_ts=$(date +%s)
 out=$(PATH="$bin:/usr/bin:/bin" quota_segment 2>"$bin/err")
 rc=$?
 elapsed=$(($(date +%s) - start_ts))
-if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ] && [ "$elapsed" -le 2 ]; then
-  ok "ccusage slower than its timeout budget: silent well before it would finish"
+if [ -z "$out" ] && [ "$rc" = 0 ] && [ ! -s "$bin/err" ] &&
+  [ "$elapsed" -le $((QUOTA_TIMEOUT_SECS + 2)) ]; then
+  ok "ccusage hangs past its timeout budget: silent well before it would finish"
 else
-  bad "ccusage slower than its timeout budget: silent well before it would finish" \
+  bad "ccusage hangs past its timeout budget: silent well before it would finish" \
     "out=[$out] rc=$rc err=[$(cat "$bin/err")] elapsed=${elapsed}s"
 fi
 

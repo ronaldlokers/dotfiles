@@ -21,6 +21,15 @@ LOCK_STALE_SECS=60
 # how many *consecutive* empty refreshes a good value survives before it is
 # finally allowed to expire; see cache_refresh's `.misses` companion file.
 CACHE_EMPTY_RETRIES=3
+# Every other external call here is a single fast syscall-bound binary, so
+# `timeout 1` fits them. ccusage does not: it is a Node CLI that re-reads
+# every session JSONL on each invocation, measured at ~2.5s warm and worse
+# as the logs grow. Under a one-second budget it was killed on every single
+# render, so the quota segment stayed permanently blank while ccusage
+# itself was perfectly healthy. Only the *cold* cache pays this
+# synchronously, once per cache directory; every later refresh runs
+# detached in the background behind the 30s TTL.
+QUOTA_TIMEOUT_SECS=8
 
 C_RESET=$'\033[0m'
 C_DIM=$'\033[2m'
@@ -139,7 +148,7 @@ seg_style() {
 quota_segment() {
   local json start end now left pct c
   command -v ccusage >/dev/null 2>&1 || return 0
-  json=$(timeout 1 ccusage blocks --active --json 2>/dev/null) || return 0
+  json=$(timeout "$QUOTA_TIMEOUT_SECS" ccusage blocks --active --json 2>/dev/null) || return 0
   # NUL-separated, read with `mapfile -d ''`: jq -r's newline delimiter is
   # not safe here on principle (these two fields are epoch numbers, but the
   # same parse shape as the top-level stdin parse below is used
