@@ -11,6 +11,10 @@ set -u
 export LC_ALL=C
 
 CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline"
+# No refresh outlives its own `timeout 1`, so a lock directory older than
+# this is definitionally abandoned (its owner was killed between mkdir and
+# rmdir) rather than legitimately held.
+LOCK_STALE_SECS=60
 
 C_RESET=$'\033[0m'
 C_DIM=$'\033[2m'
@@ -103,7 +107,7 @@ join_segments() {
 cache_get() {
   local key=$1 ttl=$2
   shift 2
-  local f="$CACHE_DIR/$key" lock="$CACHE_DIR/$key.lock" now raw ts payload
+  local f="$CACHE_DIR/$key" lock="$CACHE_DIR/$key.lock" now raw ts payload lock_ts
   mkdir -p "$CACHE_DIR" 2>/dev/null || return 0
   printf -v now '%(%s)T' -1
 
@@ -114,7 +118,19 @@ cache_get() {
     [ "$payload" = "$raw" ] && payload=
     printf '%s' "$payload"
     case "$ts" in '' | *[!0-9]*) ts=0 ;; esac
-    if [ $((now - ts)) -ge "$ttl" ] && mkdir "$lock" 2>/dev/null; then
+    if [ $((now - ts)) -ge "$ttl" ]; then
+      if ! mkdir "$lock" 2>/dev/null; then
+        # A refresh killed between mkdir and rmdir would otherwise wedge this
+        # key forever; no refresh outlives its own timeout, so a lock this old
+        # is abandoned rather than held. The stale payload above is already
+        # printed, so bailing out here still serves it — winning the lock is
+        # only about whether a refresh gets kicked off.
+        lock_ts=$(timeout 1 stat -c %Y "$lock" 2>/dev/null || echo 0)
+        case "$lock_ts" in '' | *[!0-9]*) lock_ts=0 ;; esac
+        [ $((now - lock_ts)) -ge "$LOCK_STALE_SECS" ] || return 0
+        rmdir "$lock" 2>/dev/null || return 0
+        mkdir "$lock" 2>/dev/null || return 0
+      fi
       cache_refresh "$f" "$lock" "$@"
     fi
     return 0
@@ -122,7 +138,14 @@ cache_get() {
 
   # Cold cache: pay for one synchronous attempt so the first render is not
   # blank, but never wait longer than the command's own timeout.
-  mkdir "$lock" 2>/dev/null || return 0
+  if ! mkdir "$lock" 2>/dev/null; then
+    # Same stale-lock break as the warm path above.
+    lock_ts=$(timeout 1 stat -c %Y "$lock" 2>/dev/null || echo 0)
+    case "$lock_ts" in '' | *[!0-9]*) lock_ts=0 ;; esac
+    [ $((now - lock_ts)) -ge "$LOCK_STALE_SECS" ] || return 0
+    rmdir "$lock" 2>/dev/null || return 0
+    mkdir "$lock" 2>/dev/null || return 0
+  fi
   payload=$("$@" 2>/dev/null)
   printf '%s\n%s' "$now" "$payload" >"$f.tmp" 2>/dev/null &&
     mv "$f.tmp" "$f" 2>/dev/null
