@@ -24,7 +24,7 @@ tmux = "3.7b"
 # nvim-treesitter (main branch) shells out to the tree-sitter CLI to
 # compile parsers; without it :TSUpdate fails and parsers go stale
 tree-sitter = "0.26.11"
-uv = "0.11.28"
+uv = "0.11.29"
 # uvx_args: pomo imports typing_extensions but doesn't declare it; on
 # python >=3.14 nothing pulls it in transitively anymore
 "pipx:git+https://github.com/mischavandenburg/pomo.git" = { version = "v0.4.0", uvx_args = "--with typing-extensions" }
