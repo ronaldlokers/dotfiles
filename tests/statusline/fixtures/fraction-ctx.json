@@ -1,0 +1,6 @@
+{
+  "model": { "display_name": "Haiku 4.5" },
+  "workspace": { "current_dir": "/home/tester" },
+  "context_window": { "remaining_percentage": 0.5 },
+  "cost": { "total_cost_usd": 0.004, "total_duration_ms": 0 }
+}

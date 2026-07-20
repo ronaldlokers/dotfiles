@@ -1,0 +1,14 @@
+cat >"$STUB_DIR/git" <<'STUB'
+#!/bin/bash
+while [ "${1:-}" = "-C" ]; do shift 2; done
+case "$1 ${2:-}" in
+  "status --porcelain=v2")
+    printf '# branch.head feature\n'
+    ;;
+  "rev-parse --path-format=absolute")
+    printf '/home/tester/src/api/.git/worktrees/api-wt\n/home/tester/src/api/.git\n'
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$STUB_DIR/git"

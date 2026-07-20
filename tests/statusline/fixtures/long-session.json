@@ -1,0 +1,7 @@
+{
+  "model": { "display_name": "Opus 4.8" },
+  "workspace": { "current_dir": "/home/tester" },
+  "output_style": { "name": "explanatory" },
+  "context_window": { "remaining_percentage": 62.4 },
+  "cost": { "total_cost_usd": 1.84, "total_duration_ms": 4340000 }
+}

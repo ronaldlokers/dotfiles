@@ -1,0 +1,17 @@
+cat >"$STUB_DIR/git" <<'STUB'
+#!/bin/bash
+# Fake git: -C <dir> is skipped, then the subcommand decides the reply.
+# `# branch.head (detached)` is what real git prints on a detached HEAD;
+# git_segment then falls back to `rev-parse --short HEAD` for the SHA.
+while [ "${1:-}" = "-C" ]; do shift 2; done
+case "$1 ${2:-}" in
+  "status --porcelain=v2")
+    printf '# branch.head (detached)\n'
+    ;;
+  "rev-parse --short")
+    printf 'abc1234\n'
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$STUB_DIR/git"
