@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+
+# rtk-ai/rtk — "Rust Token Killer", a CLI proxy that rewrites common dev
+# commands to cut LLM token output 60-90%. Wired into Claude Code via the
+# PreToolUse hook at ~/.claude/hooks/rtk-rewrite.sh (see dot_claude/settings.json).
+#
+# Pinned to an immutable commit SHA, not a mutable tag (same policy as the
+# third-party plugin marketplaces). Bump BOTH values together; changing this
+# file's content is what re-triggers run_onchange.
+RTK_VERSION="0.43.0"
+RTK_REV="5a7880d404db8364d602f2ecdc41dd790f64013f"
+
+# ~/.local/bin: cargo install --root target. mise shims: resolves cargo on a
+# fresh machine before shell rc has extended PATH.
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$HOME/.cargo/bin:$PATH"
+
+# Already on the pinned version? Nothing to do. `rtk --version` prints "rtk X.Y.Z".
+if command -v rtk >/dev/null 2>&1; then
+  current=$(rtk --version 2>/dev/null | awk '{print $2}')
+  if [ "$current" = "$RTK_VERSION" ]; then
+    exit 0
+  fi
+fi
+
+# No Rust toolchain: skip rather than fail. The hook already no-ops when rtk is
+# absent, so a clean/non-interactive apply (devpod up, CI) still succeeds.
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "[rtk] cargo not found; skipping rtk install. Install a Rust toolchain, then re-run chezmoi apply." >&2
+  exit 0
+fi
+
+# --rev pins the commit; --git (not the crates.io name) sidesteps the
+# reachingforthejack/rtk "Rust Type Kit" name collision; --locked builds
+# against the committed Cargo.lock.
+echo "[rtk] installing rtk $RTK_VERSION (rev ${RTK_REV:0:12}) via cargo..." >&2
+cargo install \
+  --git https://github.com/rtk-ai/rtk \
+  --rev "$RTK_REV" \
+  --root "$HOME/.local" \
+  --locked \
+  rtk

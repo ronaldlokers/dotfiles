@@ -4,6 +4,19 @@
     "type": "command",
     "command": "bash \"$HOME\"/.claude/statusline.sh"
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME\"/.claude/hooks/rtk-rewrite.sh"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "caveman@caveman": true,
     "commit-commands@claude-plugins-official": true,

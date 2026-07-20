@@ -40,3 +40,23 @@ Opus; balanced = map above; aggressive = routine implementation's preferred mode
 Overrides: `/model-policy` command edits this block + persists (`chezmoi apply`).
 Plain chat requests ("stop using Fable", "save tokens") = session-only, write
 nothing.
+
+## RTK (Rust Token Killer)
+
+Token-optimized CLI proxy (60-90% savings on dev operations). A `PreToolUse`
+hook (`~/.claude/hooks/rtk-rewrite.sh`) transparently rewrites Bash commands to
+route through `rtk` — e.g. `git status` becomes `rtk git status`, zero token
+overhead, no action needed from you. Hook no-ops when `rtk` or `jq` is absent.
+
+Meta commands (run `rtk` directly):
+
+```bash
+rtk gain              # token savings analytics
+rtk gain --history    # command usage history with savings
+rtk discover          # analyze Claude Code history for missed opportunities
+rtk proxy <cmd>       # run raw command, unfiltered (debugging)
+```
+
+Name collision: if `rtk gain` fails, wrong binary installed
+(reachingforthejack/rtk = Rust Type Kit). Correct one is `rtk-ai/rtk`, pinned in
+`.chezmoiscripts/run_onchange_after_install-rtk.sh.tmpl`.
