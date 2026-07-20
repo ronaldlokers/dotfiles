@@ -1,0 +1,7 @@
+{
+  "model": { "display_name": "Sonnet 5" },
+  "workspace": { "current_dir": "" },
+  "output_style": { "name": "" },
+  "context_window": { "remaining_percentage": 90.0 },
+  "cost": { "total_cost_usd": 5.50, "total_duration_ms": 1200 }
+}

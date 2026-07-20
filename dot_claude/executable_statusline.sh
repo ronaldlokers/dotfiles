@@ -6,6 +6,10 @@
 # times out; a statusline that lies is worse than one that is short.
 set -u
 
+# Keep printf's decimal separator a dot regardless of the user's locale;
+# the cost segment does integer math on the formatted string.
+export LC_ALL=C
+
 # shellcheck disable=SC2034 # consumed by the cache helper landing in Task 2
 CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline"
 
@@ -97,18 +101,27 @@ join_segments() {
 
 input=$(cat)
 
-# One jq call, not one per field: this runs on every render.
-IFS=$'\t' read -r model dir style pct cost dur < <(
-  jq -r '[
+# One jq call, not one per field: this runs on every render. One field per
+# line (not @tsv) so mapfile preserves empty fields instead of bash's IFS
+# whitespace-collapsing shifting every later field left.
+mapfile -t fields < <(
+  timeout 1 jq -r '
     (.model.display_name // ""),
     (.workspace.current_dir // ""),
     (.output_style.name // ""),
     (.context_window.remaining_percentage // "" | tostring),
     (.cost.total_cost_usd // "" | tostring),
     (.cost.total_duration_ms // "" | tostring)
-  ] | @tsv' <<<"$input" 2>/dev/null
+  ' <<<"$input" 2>/dev/null
 )
-: "${model:=}" "${dir:=}" "${style:=}" "${pct:=}" "${cost:=}" "${dur:=}"
+model=${fields[0]-}
+dir=${fields[1]-}
+# shellcheck disable=SC2034 # style segment lands in a later task
+style=${fields[2]-}
+pct=${fields[3]-}
+cost=${fields[4]-}
+# shellcheck disable=SC2034 # duration segment lands in a later task
+dur=${fields[5]-}
 
 line1=$(join_segments '  ' "$(seg_dir "$dir")")
 line2=$(join_segments '  ' \
