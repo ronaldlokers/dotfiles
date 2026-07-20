@@ -21,6 +21,12 @@ Spec: `docs/superpowers/specs/2026-07-20-statusline-design.md`
 - Branch: `feat/statusline`. Conventional-commit subjects, lowercase imperative. Never commit to `main`.
 - Cache directory: `${XDG_RUNTIME_DIR:-/tmp}/claude-statusline`.
 - Cache file format: line 1 is the epoch seconds of the write, the remainder is the rendered segment.
+- Read multi-field `jq` output one field per line via `mapfile`, indexed as
+  `${fields[N]-}`. Never `IFS=$'\t' read` from `@tsv`: tab is IFS-whitespace in
+  bash, so consecutive tabs collapse and every field after an empty one shifts
+  left. Task 1's review caught this producing a fabricated `ctx 1200%`.
+- `export LC_ALL=C` is set near the top of the script so `printf '%.2f'` always
+  emits a dot separator; the cost segment does integer math on that string.
 
 ---
 
@@ -174,6 +180,10 @@ Replace `dot_claude/executable_statusline.sh` entirely:
 # times out; a statusline that lies is worse than one that is short.
 set -u
 
+# Keep printf's decimal separator a dot regardless of the user's locale; the
+# cost segment does integer math on the formatted string.
+export LC_ALL=C
+
 CACHE_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-statusline"
 
 C_RESET=$'\033[0m'
@@ -258,18 +268,26 @@ join_segments() {
 
 input=$(cat)
 
-# One jq call, not one per field: this runs on every render.
-IFS=$'\t' read -r model dir style pct cost dur < <(
-  jq -r '[
+# One jq call, not one per field: this runs on every render. One field per
+# line rather than @tsv — tab is IFS-whitespace, so a tab-separated read
+# collapses empty fields and shifts everything after them.
+fields=()
+mapfile -t fields < <(
+  timeout 1 jq -r '
     (.model.display_name // ""),
     (.workspace.current_dir // ""),
     (.output_style.name // ""),
     (.context_window.remaining_percentage // "" | tostring),
     (.cost.total_cost_usd // "" | tostring),
     (.cost.total_duration_ms // "" | tostring)
-  ] | @tsv' <<<"$input" 2>/dev/null
+  ' <<<"$input" 2>/dev/null
 )
-: "${model:=}" "${dir:=}" "${style:=}" "${pct:=}" "${cost:=}" "${dur:=}"
+model=${fields[0]-}
+dir=${fields[1]-}
+style=${fields[2]-}
+pct=${fields[3]-}
+cost=${fields[4]-}
+dur=${fields[5]-}
 
 line1=$(join_segments '  ' "$(seg_dir "$dir")")
 line2=$(join_segments '  ' \
@@ -962,10 +980,17 @@ quota_segment() {
   local json start end now left pct c
   command -v ccusage >/dev/null 2>&1 || return 0
   json=$(timeout 1 ccusage blocks --active --json 2>/dev/null) || return 0
-  IFS=$'\t' read -r start end < <(
-    jq -r '[(.blocks[0].startTime // "" | tostring),
-            (.blocks[0].endTime // "" | tostring)] | @tsv' <<<"$json" 2>/dev/null
+  # One field per line, read with mapfile: a tab-separated read collapses
+  # consecutive tabs, which silently shifts every field after an empty one.
+  local fields=()
+  mapfile -t fields < <(
+    timeout 1 jq -r '
+      (.blocks[0].startTime // "" | tostring),
+      (.blocks[0].endTime // "" | tostring)
+    ' <<<"$json" 2>/dev/null
   )
+  start=${fields[0]-}
+  end=${fields[1]-}
   start=${start%%.*}
   end=${end%%.*}
   case "$start$end" in '' | *[!0-9]*) return 0 ;; esac
