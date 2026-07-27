@@ -17,6 +17,27 @@ if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
 fi
 
 systemctl --user daemon-reload
+
+# systemctl --user talks to the running user manager, which resolves unit paths
+# from its own environment — not from whatever HOME this script inherited. When
+# an apply runs against a redirected HOME (CI's clean-HOME bootstrap, any
+# throwaway-HOME test) the unit lands somewhere the manager will never look, and
+# `enable` fails with "Unit file ... does not exist".
+#
+# That is a property of the test setup, not a broken machine, so don't fail the
+# apply over it. Check visibility first and say plainly why it was skipped.
+if ! systemctl --user cat dotfiles-update-check.timer >/dev/null 2>&1; then
+    echo "Timer unit not visible to the user manager, skipping enable." >&2
+    echo "Expected when applying to a HOME the manager doesn't own." >&2
+    exit 0
+fi
+
 # The timer, not the service: the service is oneshot and pulled in by the timer.
 # Enabling the service itself would run a check on every login instead.
-systemctl --user enable --now dotfiles-update-check.timer
+#
+# Best-effort for the same reason — a notification timer is not worth aborting
+# an apply for, and this script re-runs whenever its inputs change.
+if ! systemctl --user enable --now dotfiles-update-check.timer; then
+    echo "Could not enable dotfiles-update-check.timer; continuing." >&2
+    echo "Enable it by hand with: systemctl --user enable --now dotfiles-update-check.timer" >&2
+fi
