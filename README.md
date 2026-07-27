@@ -255,6 +255,40 @@ and OpenPGP (unused here). Mixing them up costs retry attempts. **FIDO2 has no
 PUK:** exhausting it forces a reset that destroys every passkey on the key. PIV
 is more forgiving, having one.
 
+### Enrolling the age identity
+
+Needed on a replacement key, or after a PIV reset. PIV is disabled from the
+factory on some models, so enable it first — non-destructive, and it leaves
+OATH, FIDO2 and OpenPGP alone:
+
+```sh
+ykman config usb --enable PIV
+( umask 077 && age-plugin-yubikey --generate \
+    --name "dotfiles age identity" --pin-policy once --touch-policy cached \
+    > ~/.config/chezmoi/yubikey-identity.txt )
+```
+
+**Scope the `umask` to a subshell** as above. Left set in an interactive shell
+it silently follows every later command — a `chezmoi apply` in the same terminal
+then writes every managed file at `0600` instead of `0644`, which is how 521
+files once ended up needing a re-apply to fix.
+
+Then change the factory credentials, or the hardware backing is decorative —
+anyone holding the key can use it:
+
+```sh
+ykman piv access change-pin                              # default 123456
+ykman piv access change-puk                              # default 12345678
+ykman piv access change-management-key --generate --protect
+```
+
+`--protect` stores the management key on the card behind the PIN, so there's no
+hex string to keep anywhere.
+
+Finally add the new recipient (`age-plugin-yubikey --list`) to
+`.chezmoi.toml.tmpl` and re-encrypt — a new key cannot read existing blobs
+otherwise. See [Rotating the recipient set](#rotating-the-recipient-set).
+
 ### Touch-to-sudo
 
 `pam-u2f` is installed by the host package list, but the setup is **deliberately
