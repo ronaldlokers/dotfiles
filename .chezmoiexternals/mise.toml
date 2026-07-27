@@ -1,4 +1,4 @@
-{{- $miseVersion := "v2026.7.7" -}}
+{{- $miseVersion := "v2026.7.14" -}}
 # mise binary, pinned to an immutable GitHub release asset. The old
 # `mise-latest-...` URL floated to whatever mise last shipped — re-downloaded
 # weekly and executed as the driver of every other tool install. Renovate
