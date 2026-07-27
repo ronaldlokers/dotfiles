@@ -38,6 +38,16 @@ AUR package, but all three are TUIs, wanted inside a container as much as on the
 host. mise pins versions and Renovate bumps them; the host list is unpinned and
 tracks whatever the distro ships.
 
+Ghostty is the entry that only looks like it breaks that rule: it runs in a
+terminal because it *is* the terminal, and it needs a display, so it's a desktop
+app. Which terminal `Super + Return` opens is a separate question, answered by
+`dot_config/xdg-terminals.list` — Ghostty first, Alacritty second so the binding
+still works on a fresh machine in the window between chezmoi writing files and
+the package step running. `omarchy default terminal <name>` writes that same
+file, so its effect is reverted by the next apply; switch terminals by editing
+the list. The list is ignored inside containers, which have no display to open a
+terminal on.
+
 The host script is deliberately a plain `run_after`, not a `run_onchange`:
 chezmoi records a `run_onchange` script's hash as soon as it exits 0, so a run
 that skipped — no TTY for sudo, no package manager — would be remembered as done

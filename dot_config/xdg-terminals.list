@@ -1,0 +1,15 @@
+# Terminal emulator preference order for xdg-terminal-exec
+# The first found and valid terminal will be used
+#
+# Read by xdg-terminal-exec, which is what Omarchy's Super+Return binding and
+# $TERMINAL both resolve to. This is the same file `omarchy default terminal`
+# writes — managing it here means that command's effect is reverted by the next
+# `chezmoi apply`, so switching terminals is an edit to this file.
+#
+# Alacritty is listed second on purpose. chezmoi writes files before it runs
+# run_after scripts, so on a fresh machine this lands before ghostty is
+# installed; without a fallback, Super+Return would do nothing until the
+# package step finished. Alacritty ships with Omarchy, so the fallback is
+# always present.
+com.mitchellh.ghostty.desktop
+Alacritty.desktop
