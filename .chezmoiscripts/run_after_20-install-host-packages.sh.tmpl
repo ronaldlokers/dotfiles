@@ -92,13 +92,24 @@ if [ ${#pending[@]} -gt 0 ]; then
 fi
 
 # yay and paru are interchangeable for `-S`; use whichever the machine has.
+# Resolved to an absolute path because the build below runs on a stripped PATH
+# that may not contain the helper's own directory.
 aur_helper=""
 for helper in yay paru; do
-	if command -v "$helper" >/dev/null 2>&1; then
-		aur_helper="$helper"
+	if aur_helper="$(command -v "$helper" 2>/dev/null)"; then
 		break
 	fi
+	aur_helper=""
 done
+
+# An AUR build inherits this script's PATH, where mise's shims sit ahead of
+# /usr/bin — so `python` in a PKGBUILD resolves to a mise-managed interpreter
+# that can't see the pacman-installed build modules the PKGBUILD declared as
+# makedepends. chirp-next dies on "No module named build" that way, and any
+# PKGBUILD calling python/node/ruby is exposed to the same thing. Worse than
+# failing outright: a package whose build succeeds can bake mise's paths into
+# the installed files. Build against system interpreters only.
+SYSTEM_PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin"
 
 pending=()
 for pkg in "${AUR_PACKAGES[@]}"; do
@@ -114,7 +125,7 @@ if [ ${#pending[@]} -gt 0 ]; then
 		# cost the other six.
 		for pkg in "${pending[@]}"; do
 			echo "[packages] building from AUR: $pkg" >&2
-			"$aur_helper" -S --needed --noconfirm "$pkg" || true
+			env PATH="$SYSTEM_PATH" "$aur_helper" -S --needed --noconfirm "$pkg" || true
 			missing "$pkg" && failed+=("$pkg")
 		done
 	fi
