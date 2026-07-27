@@ -57,6 +57,12 @@ REPO_PACKAGES=(
 	# releases carry darwin and windows assets only — there is no linux binary
 	# for a release-based backend to fetch.
 	age-plugin-yubikey
+	# The login shell, and the one this repo actually configures — dot_zshrc holds
+	# the prompt, autosuggestions, fzf-tab and completion setup, while dot_bashrc
+	# is only a fallback. From pacman rather than mise despite being a CLI tool: a
+	# login shell has to be listed in /etc/shells and already be running before
+	# anything gets far enough to activate mise.
+	zsh
 )
 
 # Not in the official repos, so these go through an AUR helper. Building from
@@ -234,6 +240,27 @@ for pkg in "${!PACKAGE_UNITS[@]}"; do
 	sudo systemctl enable --now "$unit" \
 		|| echo "[packages] failed to enable $unit; run: sudo systemctl enable --now $unit" >&2
 done
+
+# The login shell. Same shape as the two blocks above — a side effect the package
+# can't apply to itself, keyed on the package actually being installed. Also
+# keyed on the shell being listed in /etc/shells, since chsh refuses anything
+# that isn't, and the zsh package is what adds that entry.
+if ! missing zsh; then
+	zsh_path="$(command -v zsh || true)"
+	current_shell="$(getent passwd "$user" | cut -d: -f7)"
+
+	if [ -n "$zsh_path" ] && [ "$current_shell" != "$zsh_path" ] \
+		&& grep -qxF "$zsh_path" /etc/shells; then
+		echo "[packages] setting $user's login shell to $zsh_path" >&2
+		if sudo chsh -s "$zsh_path" "$user"; then
+			# Like the group change above, a session that's already open keeps the
+			# shell it started with.
+			echo "[packages] open a new terminal for the shell change to take effect." >&2
+		else
+			echo "[packages] failed to set login shell; run: chsh -s $zsh_path" >&2
+		fi
+	fi
+fi
 
 # Best-effort by design: report and exit 0. A hard failure here would block
 # every later step of the apply over one flaky AUR build, and because this is a

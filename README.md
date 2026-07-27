@@ -48,6 +48,14 @@ file, so its effect is reverted by the next apply; switch terminals by editing
 the list. The list is ignored inside containers, which have no display to open a
 terminal on.
 
+`zsh` is the other exception, and a real one rather than an apparent one: a login
+shell has to be listed in `/etc/shells` and already be running before anything
+gets far enough to activate mise, so mise can't be what provides it. The host
+script also sets it as the login shell, once the package is installed. `setup`
+tries
+that too, but on a fresh machine it runs *before* zsh exists, so its check
+no-ops — the package step is what actually lands the change.
+
 The host script is deliberately a plain `run_after`, not a `run_onchange`:
 chezmoi records a `run_onchange` script's hash as soon as it exits 0, so a run
 that skipped — no TTY for sudo, no package manager — would be remembered as done
