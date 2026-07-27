@@ -55,6 +55,15 @@ AUR entries need `yay` or `paru`; without either they're skipped and the repo
 packages still install. Failures are reported and the apply continues — one
 broken PKGBUILD shouldn't block everything else, and the next apply retries it.
 
+AUR builds run on a **system-only `PATH`**. mise's shims sit ahead of `/usr/bin`,
+so a PKGBUILD calling `python` would otherwise get a mise-managed interpreter
+that can't see the pacman `makedepends` it just declared — and a build that
+survived that would bake mise paths into the packaged files.
+
+A few packages need a group membership they can't grant themselves (chirp needs
+`uucp` to open `/dev/ttyUSB*`). Those are listed in `PACKAGE_GROUPS`, applied
+only when the package is actually installed, and take effect on the next login.
+
 ## Updates
 
 Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
