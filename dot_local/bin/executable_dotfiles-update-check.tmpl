@@ -1,0 +1,43 @@
+#!/bin/bash
+# Notify when the dotfiles repo has commits this machine hasn't applied.
+#
+# Read-only by design: fetch and compare, never pull, never apply. Run from
+# dotfiles-update-check.timer, and safe to run by hand.
+set -euo pipefail
+
+source_dir="{{ .chezmoi.sourceDir }}"
+
+# Every early exit is 0. This runs unattended on a timer, and "no network" or
+# "not a git checkout" are ordinary states, not failures worth logging as such.
+[ -d "$source_dir/.git" ] || exit 0
+command -v git >/dev/null 2>&1 || exit 0
+
+branch="$(git -C "$source_dir" symbolic-ref --short -q HEAD || true)"
+[ -n "$branch" ] || exit 0   # detached HEAD: nothing meaningful to compare
+
+upstream="$(git -C "$source_dir" rev-parse --abbrev-ref --symbolic-full-name "@{u}" 2>/dev/null || true)"
+[ -n "$upstream" ] || exit 0 # no tracking branch, e.g. a local-only checkout
+
+# --quiet so a routine fetch stays silent in the journal; failure is fine.
+git -C "$source_dir" fetch --quiet --no-tags 2>/dev/null || exit 0
+
+behind="$(git -C "$source_dir" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)"
+[ "$behind" -gt 0 ] || exit 0
+
+# Local commits mean this checkout is mid-work; say so rather than implying a
+# clean fast-forward is waiting.
+ahead="$(git -C "$source_dir" rev-list --count "$upstream..HEAD" 2>/dev/null || echo 0)"
+if [ "$ahead" -gt 0 ]; then
+	body="$behind new upstream, $ahead local. Branch has diverged — reconcile before applying."
+else
+	body="$behind new commit(s) on $upstream. Run 'chezmoi update' to apply."
+fi
+
+# notify-send needs a session bus; a timer that fires outside a graphical login
+# has none. Fall back to the journal so the check still leaves a trace.
+if command -v notify-send >/dev/null 2>&1 && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+	notify-send --app-name=dotfiles --icon=software-update-available \
+		"Dotfiles out of date" "$body"
+else
+	echo "dotfiles: $body"
+fi

@@ -15,15 +15,20 @@ encryption = "age"
     # machine, which is why that script skips instead of failing when it's absent.
     command = "age"
 
-    # Tried in order. The YubiKey comes first, so routine decryption goes
-    # through hardware; the file identity is the fallback that keeps a lost or
-    # forgotten key from being fatal. Reaching the plugin means a PIN prompt,
-    # so anything without a TTY can't get past the first identity — again, the
-    # unlock script skips rather than failing there.
-    identities = [
-        "~/.config/chezmoi/yubikey-identity.txt",
-        "~/.config/chezmoi/key.txt",
-    ]
+    # One file, assembled by run_before_00-unlock-secrets from whichever
+    # identities the machine actually has: the YubiKey first so routine
+    # decryption goes through hardware, then the file identity as fallback.
+    #
+    # It has to be a single generated file rather than a list of paths, because
+    # age treats a listed-but-missing identity as a fatal error rather than
+    # skipping it. Listing both directly breaks every machine that has only one
+    # — a container has no yubikey-identity.txt, and a fresh machine has no
+    # key.txt until the passphrase step creates it mid-apply.
+    #
+    # A missing plugin is fine, by contrast: age falls through to the next
+    # identity in the file, so containers decrypt via key.txt with no YubiKey
+    # and no plugin installed.
+    identity = "~/.config/chezmoi/identities.txt"
 
     # Both keys are recipients of every blob, so either opens any secret.
     # Changing this list does NOT rewrite existing blobs — see "Rotating the

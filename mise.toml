@@ -46,6 +46,16 @@ trap 'rm -rf "$testhome"' EXIT
 # that way. CI has no XDG_* set, so only local runs need this.
 clean_env="env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME"
 
+# mise resolves release tags through the GitHub API, and unauthenticated calls
+# share the machine's 60/hour. A few clean-HOME runs in a row exhaust it and the
+# all-or-nothing tool install then dies on HTTP 403 — a failure that looks like
+# a broken config but isn't. CI already passes a token for this reason; borrow
+# the gh one locally so both behave the same.
+if [ -z "${MISE_GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
+	MISE_GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+	export MISE_GITHUB_TOKEN
+fi
+
 $clean_env HOME="$testhome" chezmoi init --source "$PWD" </dev/null >/dev/null
 $clean_env HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 
