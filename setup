@@ -7,7 +7,10 @@
 set -euo pipefail
 
 # Make zsh the login shell, unless it already is (avoids a needless
-# sudo prompt on re-runs).
+# sudo prompt on re-runs). On a genuinely fresh machine zsh isn't
+# installed yet at this point, so this no-ops and the host package script
+# does the chsh instead, right after installing it. Kept for the case
+# where the distro already ships zsh — it saves a login cycle.
 if command -v zsh >/dev/null; then
     login_shell="$(getent passwd "$USER" | cut -d: -f7)"
     if [ "$login_shell" != "$(command -v zsh)" ]; then
