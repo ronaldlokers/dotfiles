@@ -1,9 +1,5 @@
 {
   "includeCoAuthoredBy": false,
-  "statusLine": {
-    "type": "command",
-    "command": "bash \"$HOME\"/.claude/statusline.sh"
-  },
   "hooks": {
     "PreToolUse": [
       {
@@ -16,6 +12,10 @@
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$HOME\"/.claude/statusline.sh"
   },
   "enabledPlugins": {
     "caveman@caveman": true,
@@ -65,5 +65,6 @@
       }
     }
   },
-  "theme": "dark"
+  "theme": "dark",
+  "skipDangerousModePermissionPrompt": true
 }

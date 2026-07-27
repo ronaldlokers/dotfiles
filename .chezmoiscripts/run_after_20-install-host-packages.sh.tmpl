@@ -1,0 +1,173 @@
+#!/bin/bash
+set -euo pipefail
+
+# Desktop applications for the host. CLI tools do NOT belong here — they go in
+# dot_config/mise/config.toml, which pins them and follows into devpod
+# containers. This file is only for things that need a display and a system
+# package manager (GUI apps, kernel-adjacent tooling).
+#
+# Deliberately a plain `run_after`, not `run_onchange`: this script skips
+# whenever it can't reach a package manager or can't get root, and chezmoi
+# records a run_onchange script's hash as soon as it exits 0 — a skipped run
+# would be remembered as done and never retried. Running every apply and
+# no-opping instead costs one `pacman -Q` per package (milliseconds) and lets a
+# later, better-equipped apply finish the job. Same reasoning as the secrets
+# script being a plain run_before.
+#
+# Packages are Arch-native (several exist only in the AUR), so on any other
+# distro this exits cleanly and installs nothing rather than guessing at
+# equivalent package names.
+
+# Shipped by the distro's own repos.
+REPO_PACKAGES=(
+	discord
+	obsidian
+	proton-vpn-gtk-app
+	prusa-slicer
+	rpi-imager
+	signal-desktop
+)
+
+# Not in the official repos, so these go through an AUR helper. Building from
+# the AUR runs upstream PKGBUILDs as arbitrary code — the list is curated by
+# hand and should stay that way.
+#
+# yay/paru resolve a binary repo before falling back to the AUR, so entries here
+# also cover packages a machine happens to get from a custom repo — spotify is
+# in Omarchy's own repo but AUR-only on stock Arch, and this handles both.
+AUR_PACKAGES=(
+	bambustudio-bin
+	chirp-next
+	claude-desktop
+	proton-pass-bin
+	spotify
+	winbox
+	zen-browser-bin
+)
+
+# Containers get none of this: no display, no system package manager worth
+# mutating, and a devpod container is rebuilt too often to carry GUI apps.
+# Same markers the devpod external gates on.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+if ! command -v pacman >/dev/null 2>&1; then
+	echo "[packages] no pacman on this system; skipping host packages." >&2
+	exit 0
+fi
+
+# pacman needs root. Non-interactive applies (`devpod up`, CI's clean-HOME
+# bootstrap) have no TTY to prompt on, so a password-requiring sudo would hang
+# forever. Probe with `sudo -n` and fall through to a real prompt only when
+# stdin is a terminal.
+if ! sudo -n true 2>/dev/null && [ ! -t 0 ]; then
+	echo "[packages] no TTY and sudo needs a password; skipping host packages." >&2
+	echo "[packages] Run 'chezmoi apply' from an interactive shell to install them." >&2
+	exit 0
+fi
+
+missing() {
+	! pacman -Q "$1" >/dev/null 2>&1
+}
+
+failed=()
+
+# Collect first, install in one transaction: pacman resolves shared
+# dependencies once, and a single sudo prompt covers the whole batch.
+pending=()
+for pkg in "${REPO_PACKAGES[@]}"; do
+	missing "$pkg" && pending+=("$pkg")
+done
+
+if [ ${#pending[@]} -gt 0 ]; then
+	echo "[packages] installing from repos: ${pending[*]}" >&2
+	# --needed so an already-satisfied package is skipped rather than reinstalled.
+	sudo pacman -S --needed --noconfirm "${pending[@]}" || true
+	# pacman can exit 0 having skipped a package (e.g. a name that moved repos),
+	# so trust the database, not the exit code.
+	for pkg in "${pending[@]}"; do
+		missing "$pkg" && failed+=("$pkg")
+	done
+fi
+
+# yay and paru are interchangeable for `-S`; use whichever the machine has.
+# Resolved to an absolute path because the build below runs on a stripped PATH
+# that may not contain the helper's own directory.
+aur_helper=""
+for helper in yay paru; do
+	if aur_helper="$(command -v "$helper" 2>/dev/null)"; then
+		break
+	fi
+	aur_helper=""
+done
+
+# An AUR build inherits this script's PATH, where mise's shims sit ahead of
+# /usr/bin — so `python` in a PKGBUILD resolves to a mise-managed interpreter
+# that can't see the pacman-installed build modules the PKGBUILD declared as
+# makedepends. chirp-next dies on "No module named build" that way, and any
+# PKGBUILD calling python/node/ruby is exposed to the same thing. Worse than
+# failing outright: a package whose build succeeds can bake mise's paths into
+# the installed files. Build against system interpreters only.
+SYSTEM_PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin"
+
+pending=()
+for pkg in "${AUR_PACKAGES[@]}"; do
+	missing "$pkg" && pending+=("$pkg")
+done
+
+if [ ${#pending[@]} -gt 0 ]; then
+	if [ -z "$aur_helper" ]; then
+		echo "[packages] no AUR helper (yay/paru); skipping: ${pending[*]}" >&2
+	else
+		# One at a time here, unlike the repo batch: a single failing PKGBUILD
+		# aborts the whole yay transaction, and one broken AUR package shouldn't
+		# cost the other six.
+		for pkg in "${pending[@]}"; do
+			echo "[packages] building from AUR: $pkg" >&2
+			env PATH="$SYSTEM_PATH" "$aur_helper" -S --needed --noconfirm "$pkg" || true
+			missing "$pkg" && failed+=("$pkg")
+		done
+	fi
+fi
+
+# Group memberships a package needs to be usable but can't grant itself, since
+# only the admin knows which human should get them. chirp talks to radios over a
+# USB serial adapter, and /dev/ttyUSB* is owned by the uucp group on Arch —
+# without it chirp installs fine and then can't open the port.
+#
+# Keyed on the package actually being installed: a machine that skipped or
+# dropped chirp shouldn't silently pick up device access it has no use for.
+declare -A PACKAGE_GROUPS=(
+	[chirp-next]=uucp
+)
+
+# `id -un`, not $USER: chezmoi runs scripts with whatever environment it
+# inherited, and an unset $USER under `set -u` would abort the whole script.
+user="$(id -un)"
+
+for pkg in "${!PACKAGE_GROUPS[@]}"; do
+	group="${PACKAGE_GROUPS[$pkg]}"
+	missing "$pkg" && continue
+	# The group is created by the package that needs it, so it can be absent on a
+	# machine where installation failed.
+	getent group "$group" >/dev/null 2>&1 || continue
+	id -nG "$user" | tr ' ' '\n' | grep -qx "$group" && continue
+
+	echo "[packages] adding $user to '$group' (needed by $pkg)" >&2
+	if sudo usermod -aG "$group" "$user"; then
+		# usermod edits /etc/group, but the running session's credentials were
+		# fixed at login — nothing already open picks this up.
+		echo "[packages] log out and back in for '$group' membership to take effect." >&2
+	else
+		echo "[packages] failed to add $user to '$group'; run: sudo usermod -aG $group $user" >&2
+	fi
+done
+
+# Best-effort by design: report and exit 0. A hard failure here would block
+# every later step of the apply over one flaky AUR build, and because this is a
+# plain run_after the next apply retries whatever didn't land.
+if [ ${#failed[@]} -gt 0 ]; then
+	echo "[packages] failed to install: ${failed[*]}" >&2
+	echo "[packages] re-run 'chezmoi apply', or install by hand to see the error." >&2
+fi

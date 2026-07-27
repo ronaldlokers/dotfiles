@@ -21,6 +21,15 @@ delta = "0.19.2"
 zoxide = "0.10.0"
 gh = "2.96.0"
 tmux = "3.7b"
+# both are in Arch's extra repo too, but they're TUIs — wanted inside devpod
+# containers as much as on the host, so mise pins them instead of pacman
+yazi = "26.5.6"
+superfile = "1.6.0"
+# github, not cargo: the cargo backend compiles from source and so needs a Rust
+# toolchain the way rtk does, while this pulls the cargo-dist binary straight
+# from the release and verifies its SLSA provenance. (Not `ubi:` — mise
+# deprecated that backend in favour of `github:`, removal in 2027.1.0.)
+"github:ronaldlokers/sugarrush" = "2026.7.3"
 # nvim-treesitter (main branch) shells out to the tree-sitter CLI to
 # compile parsers; without it :TSUpdate fails and parsers go stale
 tree-sitter = "0.26.11"

@@ -20,6 +20,49 @@ Applying pulls in everything else automatically:
   nothing inside a container, so devpod-provisioned boxes skip it
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
+- **host packages** (`.chezmoiscripts/run_after_20-install-host-packages.sh.tmpl`)
+  install the desktop apps listed below — see [Packages](#packages)
+
+## Packages
+
+Two lists, split by where a tool is wanted rather than by what installs it:
+
+| | Where | Goes in |
+| --- | --- | --- |
+| CLI / TUI tools | host **and** devpod containers | `dot_config/mise/config.toml` |
+| Desktop apps | host only | `run_after_20-install-host-packages.sh.tmpl` |
+
+Anything that runs in a terminal belongs in mise, even when a distro package
+exists — `yazi` and `superfile` are in Arch's `extra` and `sugarrush` has its own
+AUR package, but all three are TUIs, wanted inside a container as much as on the
+host. mise pins versions and Renovate bumps them; the host list is unpinned and
+tracks whatever the distro ships.
+
+The host script is deliberately a plain `run_after`, not a `run_onchange`:
+chezmoi records a `run_onchange` script's hash as soon as it exits 0, so a run
+that skipped — no TTY for sudo, no package manager — would be remembered as done
+and never retried. Running every apply costs one `pacman -Q` per package and
+lets a later interactive apply finish the job.
+
+It skips cleanly and installs nothing when any of these hold, so containers,
+CI, and non-Arch machines are unaffected:
+
+- `/.dockerenv` or `/run/.containerenv` exists (it's a container)
+- no `pacman` on `PATH` (it's not an Arch-family distro)
+- sudo needs a password and there's no TTY to ask on (`devpod up`, CI)
+
+AUR entries need `yay` or `paru`; without either they're skipped and the repo
+packages still install. Failures are reported and the apply continues — one
+broken PKGBUILD shouldn't block everything else, and the next apply retries it.
+
+AUR builds run on a **system-only `PATH`**. mise's shims sit ahead of `/usr/bin`,
+so a PKGBUILD calling `python` would otherwise get a mise-managed interpreter
+that can't see the pacman `makedepends` it just declared — and a build that
+survived that would bake mise paths into the packaged files.
+
+A few packages need a group membership they can't grant themselves (chirp needs
+`uucp` to open `/dev/ttyUSB*`). Those are listed in `PACKAGE_GROUPS`, applied
+only when the package is actually installed, and take effect on the next login.
 
 ## Updates
 
