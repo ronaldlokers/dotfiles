@@ -32,10 +32,11 @@ Two lists, split by where a tool is wanted rather than by what installs it:
 | CLI / TUI tools | host **and** devpod containers | `dot_config/mise/config.toml` |
 | Desktop apps | host only | `run_after_20-install-host-packages.sh.tmpl` |
 
-Anything that runs in a terminal belongs in mise, even when the distro also
-packages it (`yazi` and `superfile` are in Arch's `extra`, but a file manager is
-wanted inside a container too). mise pins versions and Renovate bumps them; the
-host list is unpinned and tracks whatever the distro ships.
+Anything that runs in a terminal belongs in mise, even when a distro package
+exists — `yazi` and `superfile` are in Arch's `extra` and `sugarrush` has its own
+AUR package, but all three are TUIs, wanted inside a container as much as on the
+host. mise pins versions and Renovate bumps them; the host list is unpinned and
+tracks whatever the distro ships.
 
 The host script is deliberately a plain `run_after`, not a `run_onchange`:
 chezmoi records a `run_onchange` script's hash as soon as it exits 0, so a run
