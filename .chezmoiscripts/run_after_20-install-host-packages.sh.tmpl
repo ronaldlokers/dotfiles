@@ -26,6 +26,11 @@ REPO_PACKAGES=(
 	prusa-slicer
 	rpi-imager
 	signal-desktop
+	# Mesh VPN. Host-only: it owns a network interface and routing table for the
+	# whole machine, which a devpod container inherits through the host anyway —
+	# a second tailscaled inside a container would be a separate node fighting
+	# for the same routes.
+	tailscale
 	# YubiKey PIV: pcsclite provides the pcscd smartcard daemon that
 	# age-plugin-yubikey talks to, yubikey-manager the ykman CLI for inspecting
 	# and resetting the PIV applet. Host-only — they exist to drive physical
@@ -198,6 +203,11 @@ done
 # pcscd.service directly would keep it resident for nothing.
 declare -A PACKAGE_UNITS=(
 	[pcsclite]=pcscd.socket
+	# tailscaled only brings the daemon up. Joining a tailnet still needs
+	# `sudo tailscale up`, which opens a browser to authenticate — deliberately
+	# not automated here, since the alternative is an auth key, and that is a
+	# credential this repo would then have to hold.
+	[tailscale]=tailscaled.service
 )
 
 for pkg in "${!PACKAGE_UNITS[@]}"; do
