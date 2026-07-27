@@ -149,11 +149,47 @@ chmod 600 ~/.config/chezmoi/key.txt
 chezmoi apply        # re-derives the SSH/sops/gh secrets from the identity
 ```
 
+If the passphrase is gone, use the **backup key** instead. Every blob is
+encrypted to two recipients, so the backup identity alone reconstitutes
+everything — drop it in as the identity and apply:
+
+```sh
+install -m600 /path/to/backup-identity.txt ~/.config/chezmoi/key.txt
+chezmoi init && chezmoi apply
+```
+
+That path is exercised, not assumed: the backup key was used as the sole
+identity to re-derive all four secrets into a throwaway HOME.
+
 > [!WARNING]
-> If **both** the passphrase and its Proton Pass backup are lost, `key.txt.age`
-> — and therefore every secret encrypted to this recipient — is permanently
-> unrecoverable. Keep the passphrase in a second location, and re-verify the
-> restore path above after any key rotation.
+> The backup key is only worth having if it lives somewhere the passphrase and
+> its Proton Pass backup do **not** — a hardware token, paper in a safe, a
+> different password manager. Two copies in one vault is one copy. It is
+> deliberately absent from this repo and from every machine.
+
+### Rotating the recipient set
+
+Adding a recipient does **not** re-encrypt existing blobs — they stay readable
+only by whoever was a recipient when written, so a new key silently can't open
+old secrets. After changing `recipients` in `.chezmoi.toml.tmpl`, run
+`chezmoi init` to regenerate the live config, then rewrite every blob:
+
+```sh
+for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+  chezmoi decrypt "$blob" | chezmoi encrypt --output "$blob.new" && mv "$blob.new" "$blob"
+done
+mise run secrets-restore   # every blob still opens with the current identity
+```
+
+Then confirm the *new* key works, which `secrets-restore` cannot tell you — it
+only ever tries the configured identity:
+
+```sh
+mise x age@1.3.1 -- age -d -i /path/to/new-identity.txt <some-blob> >/dev/null && echo ok
+```
+
+`key.txt.age` is excluded throughout: it is passphrase-encrypted rather than
+encrypted to a recipient, and it is the thing the working identity comes from.
 
 ## Layout
 

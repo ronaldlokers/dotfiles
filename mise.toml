@@ -7,6 +7,11 @@
 [tools]
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
+# NOTE: age is deliberately NOT pinned here. chezmoi encrypts and decrypts with
+# a built-in age, so the CLI is only wanted for `age-keygen`, which runs once in
+# a key's lifetime. Listing it created an `age` shim on PATH that broke applies
+# run against a different HOME ("No version is set for shim: age"). For the
+# one-off, use: mise x age@1.3.1 -- age-keygen -o <path>
 # renovate is deliberately NOT a `npm:renovate` tool here. mise's npm backend
 # enforces a provenance trust policy, and renovate's tree currently trips it:
 # @yarnpkg/libzip 3.2.0 shipped a SLSA attestation, 3.2.2 ships none, which

@@ -9,7 +9,21 @@ encryption = "age"
 
 [age]
     identity = "~/.config/chezmoi/key.txt"
-    recipient = "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy"
+    # Two recipients, so every blob can be opened by either key and no single
+    # loss is fatal. The first is the working key (~/.config/chezmoi/key.txt,
+    # itself committed as key.txt.age under a passphrase). The second is a
+    # cold-storage backup that deliberately lives nowhere on this machine and
+    # nowhere in this repo — it only earns its keep if it is stored somewhere
+    # the passphrase and its Proton Pass backup are not.
+    #
+    # Adding a recipient does NOT re-encrypt existing blobs; they stay readable
+    # only by whoever was a recipient when they were written. Any change here
+    # means re-encrypting every blob (see "Rotating the recipient set" in
+    # README.md) — otherwise the backup key silently can't open older secrets.
+    recipients = [
+        "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy",
+        "age1678zya72an976d3982u3gs7ul7p438zk73r53p9shgklufjrlc5qwzah2l",
+    ]
 
 [data]
     email = {{ $email | quote }}
