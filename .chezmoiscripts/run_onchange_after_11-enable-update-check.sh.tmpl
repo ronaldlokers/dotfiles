@@ -1,0 +1,22 @@
+#!/bin/sh
+# Enable the timer that notifies when this machine's dotfiles are behind the
+# remote. Same shape as the ssh-agent enable script next door.
+# Re-runs whenever any of the three pieces changes:
+# service hash: {{ include "dot_config/systemd/user/dotfiles-update-check.service" | sha256sum }}
+# timer hash:   {{ include "dot_config/systemd/user/dotfiles-update-check.timer" | sha256sum }}
+# script hash:  {{ include "dot_local/bin/executable_dotfiles-update-check.tmpl" | sha256sum }}
+set -eu
+
+# Only where a systemd user manager is running — hosts, not devpod containers.
+# Probe the manager's own socket rather than systemctl's exit code: devcontainer
+# images ship a systemctl shim that exits 0 while printing "systemd is not
+# running", so trusting the exit code enables a timer that will never fire.
+if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
+    echo "No systemd user session, skipping update-check timer." >&2
+    exit 0
+fi
+
+systemctl --user daemon-reload
+# The timer, not the service: the service is oneshot and pulled in by the timer.
+# Enabling the service itself would run a check on every login instead.
+systemctl --user enable --now dotfiles-update-check.timer

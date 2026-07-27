@@ -1,0 +1,16 @@
+# Daily check for unapplied dotfiles commits. Paired with
+# dotfiles-update-check.service, which only ever notifies.
+[Unit]
+Description=Daily check for unapplied dotfiles commits
+
+[Timer]
+OnCalendar=daily
+# Spread the fetch out: without this every machine and every boot hits the
+# remote at the same instant, and the notification always lands at midnight.
+RandomizedDelaySec=4h
+# Catch up after the machine was off — a laptop that misses midnight should
+# still check once it's awake, rather than waiting a full day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

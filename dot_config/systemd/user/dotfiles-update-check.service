@@ -1,0 +1,21 @@
+# Notify when the dotfiles repo has commits this machine hasn't applied.
+# Deliberately read-only: it fetches and compares, it never pulls or applies.
+# An unattended `chezmoi update` can restart services and re-run scripts at an
+# arbitrary moment — including the secret decryption, which would pop a YubiKey
+# PIN prompt with no terminal to answer it.
+#
+# Enabled automatically by
+# .chezmoiscripts/run_onchange_after_11-enable-update-check.sh.tmpl
+[Unit]
+Description=Check whether the dotfiles repo has unapplied commits
+# Pointless without a network, and starting early just means a failed fetch.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/dotfiles-update-check
+# A failed check is noise, not an incident: no network, no remote, a shallow
+# clone. The unit exits 0 on all of those itself, but keep systemd quiet about
+# any it doesn't anticipate rather than mailing failures into the journal.
+SuccessExitStatus=0

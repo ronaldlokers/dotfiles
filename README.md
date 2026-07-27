@@ -78,6 +78,20 @@ a weekly canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
 runs inside an Arch container to prove the host-only gates actually skip there.
 Renovate automerges patch/minor bumps once CI is green; majors wait for review.
 
+### Staying current
+
+A user timer (`dotfiles-update-check.timer`, daily with a 4h jitter) fetches and
+reports when this machine is behind the remote. It **only notifies** — it never
+pulls and never applies. An unattended `chezmoi update` would restart services
+and re-run scripts at an arbitrary moment, including secret decryption, which
+now means a YubiKey PIN prompt with no terminal to answer it.
+
+It stays silent when there's nothing to say, and distinguishes a clean
+fast-forward from a diverged branch. Run it by hand with
+`dotfiles-update-check`. Enabled by
+`run_onchange_after_11-enable-update-check.sh.tmpl`, which skips where no
+systemd user session exists — so containers don't get it.
+
 ## Working on this repo
 
 `mise.toml` pins the tooling and defines the checks, so local runs and CI use
