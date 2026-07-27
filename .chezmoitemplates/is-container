@@ -1,0 +1,5 @@
+{{- /* Single source of truth for "are we inside a container?".
+       /.dockerenv is docker's own marker (the devpod provider used here) and
+       /run/.containerenv is podman's. Renders the literal string "true" or
+       "false" so both Go templates and rendered shell can consume it. */ -}}
+{{- if or (stat "/.dockerenv") (stat "/run/.containerenv") -}}true{{- else -}}false{{- end -}}

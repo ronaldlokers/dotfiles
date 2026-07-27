@@ -71,10 +71,37 @@ self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
 `workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
-`chezmoi apply`. CI (`.github/workflows/ci.yaml`) shellchecks the scripts,
-scans history with gitleaks, and test-bootstraps the repo into a clean HOME
-on every push, PR, and a weekly canary run. Renovate automerges patch/minor
-bumps once CI is green; majors wait for review.
+`chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans history with
+gitleaks, and test-bootstraps the repo into a clean HOME on every push, PR, and
+a weekly canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
+`host-ssh-agent` brings up a real systemd user session, and `container-gates`
+runs inside an Arch container to prove the host-only gates actually skip there.
+Renovate automerges patch/minor bumps once CI is green; majors wait for review.
+
+## Working on this repo
+
+`mise.toml` pins the tooling and defines the checks, so local runs and CI use
+identical versions:
+
+```sh
+mise run check     # lint + gitleaks + clean-HOME bootstrap (what CI runs)
+mise run lint      # shellcheck, settings.json, renovate config
+mise run verify    # bootstrap into a throwaway HOME, non-interactively
+```
+
+`mise run verify` is the one that matters before pushing: it redirects
+`/dev/null` into the apply, reproducing the no-TTY conditions of `devpod up` and
+CI. Running an apply that inherits your terminal exercises a different path and
+will happily hide a script that hangs waiting for input.
+
+Separately, and needing an unlocked identity:
+
+```sh
+mise run secrets-restore   # assert every .age blob still decrypts
+```
+
+Nothing else exercises the recovery path in [Recovery](#recovery) — a blob
+encrypted to the wrong recipient stays silent until the day you need it.
 
 ## Secrets
 

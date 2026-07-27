@@ -3,7 +3,8 @@
   "extends": ["config:recommended"],
   "mise": {
     "managerFilePatterns": [
-      "/(^|/)dot_config/mise/config\\.toml$/"
+      "/(^|/)dot_config/mise/config\\.toml$/",
+      "/(^|/)mise\\.toml$/"
     ]
   },
   "customManagers": [
@@ -28,6 +29,18 @@
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "jdx/mise"
+    },
+    {
+      "description": "Track the renovate version pinned inside the lint task's npx call (not a mise tool, so the mise manager can't see it)",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)mise\\.toml$/"
+      ],
+      "matchStrings": [
+        "--package renovate@(?<currentValue>[0-9][^ \"]*)"
+      ],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "renovate"
     },
     {
       "description": "Track the pinned pomo git tag (mise's pipx git backend isn't covered by the mise manager)",

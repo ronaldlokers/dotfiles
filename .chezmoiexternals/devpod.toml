@@ -1,10 +1,7 @@
 {{- /* DevPod drives the containers; it belongs on the host that starts them,
-       not inside one. `/.dockerenv` (docker, the provider used here) and
-       `/run/.containerenv` (podman) are the container's own markers, so the
-       whole external collapses to nothing on a devpod-provisioned box —
-       otherwise every container would download a CLI it can never usefully
-       run. */ -}}
-{{- if not (or (stat "/.dockerenv") (stat "/run/.containerenv")) -}}
+       not inside one. The container test lives in .chezmoitemplates/is-container
+       so this and the host-packages script can't drift apart. */ -}}
+{{- if eq (includeTemplate "is-container" .) "false" -}}
 # renovate: datasource=github-releases depName=loft-sh/devpod
 {{ $devpodVersion := "v0.6.15" }}
 # Pinned to an immutable release asset, same as the mise binary. The CLI is a
