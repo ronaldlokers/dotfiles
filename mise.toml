@@ -1,0 +1,44 @@
+# Tooling for working ON this repo, not for the machines it configures — those
+# tools live in dot_config/mise/config.toml. Pinned so a local `mise run lint`
+# and the CI job run byte-identical versions; CI installs from this same file.
+#
+# Repo-only, so it's listed in .chezmoiignore and never applied into $HOME.
+
+[tools]
+shellcheck = "0.11.0"
+gitleaks = "8.30.1"
+# Pinned rather than invoked via `npx --yes --package renovate`: npx happily
+# reuses whatever renovate is already in the local cache, and an old enough one
+# rejects `managerFilePatterns` as an unknown option — so the validator failed
+# locally while passing in CI, which starts cache-cold. Renovate's own `npm`
+# manager keeps this line bumped.
+"npm:renovate" = "43.285.0"
+
+[tasks.lint]
+description = "shellcheck the scripts and validate the JSON/Renovate config"
+run = [
+	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh",
+	"jq empty dot_claude/settings.json",
+	"renovate-config-validator .github/renovate.json",
+]
+
+[tasks.secrets]
+description = "scan the full history for committed secrets, as CI does"
+run = "gitleaks git --no-banner ."
+
+[tasks.verify]
+description = "bootstrap into a throwaway HOME the way CI does"
+# </dev/null is the point of the exercise, not an afterthought: it's what makes
+# this reproduce `devpod up` and CI, where scripts have no TTY to prompt on. A
+# run that inherits a terminal silently exercises a different code path.
+run = '''
+set -eu
+testhome="$(mktemp -d)"
+trap 'rm -rf "$testhome"' EXIT
+HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
+echo "clean-HOME apply succeeded"
+'''
+
+[tasks.check]
+description = "everything CI runs, in one command"
+depends = ["lint", "secrets", "verify"]

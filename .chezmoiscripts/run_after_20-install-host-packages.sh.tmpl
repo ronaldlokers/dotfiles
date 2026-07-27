@@ -47,8 +47,18 @@ AUR_PACKAGES=(
 
 # Containers get none of this: no display, no system package manager worth
 # mutating, and a devpod container is rebuilt too often to carry GUI apps.
-# Same markers the devpod external gates on.
-if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+# The test itself lives in .chezmoitemplates/is-container, shared with the
+# devpod external — the two gates have to agree, so they read from one place.
+# Unquoted on purpose: the template renders a bare true/false, and quoting it
+# would nest quotes inside the Go action, which shellcheck reads as "A"B"C".
+# The pragmas are unavoidable — CI lints this template, not the rendered script,
+# so shellcheck sees a literal open-brace pair and an assignment it can't
+# follow. (Don't spell that pair out here: it would open a template action and
+# swallow the rest of the file.)
+# shellcheck disable=SC1083
+is_container={{ includeTemplate "is-container" . }}
+# shellcheck disable=SC2154
+if [ "$is_container" = "true" ]; then
 	exit 0
 fi
 

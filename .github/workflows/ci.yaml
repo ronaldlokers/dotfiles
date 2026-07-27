@@ -18,12 +18,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - name: shellcheck
-        run: shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh
-      - name: validate claude settings.json
-        run: jq empty dot_claude/settings.json
-      - name: validate renovate config
-        run: npx --yes --package renovate renovate-config-validator .github/renovate.json
+      # The checks themselves live in mise.toml, which also pins the tools that
+      # run them. Previously this job used the runner's shellcheck and an `npx
+      # --yes` renovate, so "CI is green" said nothing about which versions a
+      # contributor had locally — the validator in particular passed here and
+      # failed on a developer machine with a stale npx cache.
+      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+      - name: lint
+        run: mise run lint
 
   gitleaks:
     runs-on: ubuntu-latest
@@ -154,3 +156,60 @@ jobs:
           systemctl --user is-active --quiet ssh-agent.service
           test -S "$XDG_RUNTIME_DIR/ssh-agent.socket"
           echo "host-path ssh-agent verified: unit active, socket present"
+
+  container-gates:
+    # The bootstrap job runs on a bare runner, so the container branch of the
+    # devpod external and the host-packages script is never exercised — a broken
+    # gate would ship green. Run those two gates for real inside a container.
+    #
+    # Arch on purpose, not Ubuntu: pacman exists here, so a skip can only come
+    # from the container gate. On a distro without pacman the script's
+    # no-package-manager branch would make this pass for the wrong reason.
+    runs-on: ubuntu-latest
+    container: archlinux:base
+    steps:
+      - name: install prerequisites
+        run: pacman -Sy --noconfirm --needed git curl
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: assert this really is a container
+        run: |
+          # Both gates key on these markers. If the runner ever stops providing
+          # them, every assertion below would pass vacuously — so fail loudly
+          # here instead of silently testing nothing.
+          if [ ! -f /.dockerenv ] && [ ! -f /run/.containerenv ]; then
+            echo "::error::no container marker present; the gates below would pass vacuously"
+            exit 1
+          fi
+          command -v pacman >/dev/null || { echo "::error::pacman missing; skip could be for the wrong reason"; exit 1; }
+      - name: install chezmoi
+        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /usr/local/bin
+      - name: devpod external renders to nothing
+        run: |
+          out="$(chezmoi execute-template --source "$PWD" < .chezmoiexternals/devpod.toml)"
+          if [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
+            echo "::error::devpod external is non-empty inside a container:"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          echo "devpod external correctly empty"
+      - name: host-packages script detects the container and skips
+        run: |
+          chezmoi execute-template --source "$PWD" \
+            < .chezmoiscripts/run_after_20-install-host-packages.sh.tmpl > /tmp/pkgs.sh
+          # The shared .chezmoitemplates/is-container must have resolved true.
+          grep -qx 'is_container=true' /tmp/pkgs.sh \
+            || { echo "::error::is-container template did not detect the container"; exit 1; }
+          # The container gate sits above every echo in the script, so a correct
+          # skip is silent. Any output means execution ran past it.
+          out="$(bash /tmp/pkgs.sh </dev/null 2>&1)"; rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::script exited $rc inside a container, expected 0"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          if [ -n "$out" ]; then
+            echo "::error::script produced output, so it ran past the container gate:"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          echo "host-packages script correctly skipped, silently"
