@@ -26,6 +26,21 @@ REPO_PACKAGES=(
 	prusa-slicer
 	rpi-imager
 	signal-desktop
+	# YubiKey PIV: pcsclite provides the pcscd smartcard daemon that
+	# age-plugin-yubikey talks to, yubikey-manager the ykman CLI for inspecting
+	# and resetting the PIV applet. Host-only — they exist to drive physical
+	# hardware, so a container has no use for them.
+	pcsclite
+	yubikey-manager
+	# Ships the udev rules that make the YubiKey's OTP/HID interface reachable
+	# without root. yubikey-manager alone leaves /dev/hidraw* owned by root, so
+	# `ykman otp ...` fails with "connection type not supported/enabled" — which
+	# reads like a disabled applet rather than the permission problem it is.
+	yubikey-personalization
+	# The age PIV plugin. Comes from pacman rather than mise because upstream's
+	# releases carry darwin and windows assets only — there is no linux binary
+	# for a release-based backend to fetch.
+	age-plugin-yubikey
 )
 
 # Not in the official repos, so these go through an AUR helper. Building from
@@ -172,6 +187,31 @@ for pkg in "${!PACKAGE_GROUPS[@]}"; do
 	else
 		echo "[packages] failed to add $user to '$group'; run: sudo usermod -aG $group $user" >&2
 	fi
+done
+
+# System units a package ships but leaves disabled. Same shape as
+# PACKAGE_GROUPS, and keyed on the package for the same reason: a machine that
+# never installed the package has no business running its daemon.
+#
+# pcscd is socket-activated, so enabling the *socket* is what matters — the
+# daemon then starts on the first smartcard access and exits when idle. Enabling
+# pcscd.service directly would keep it resident for nothing.
+declare -A PACKAGE_UNITS=(
+	[pcsclite]=pcscd.socket
+)
+
+for pkg in "${!PACKAGE_UNITS[@]}"; do
+	unit="${PACKAGE_UNITS[$pkg]}"
+	missing "$pkg" && continue
+	# System units, not --user: this needs a real init, which a container
+	# generally hasn't got. The container gate above already returned, so
+	# reaching here means a host — but systemctl can still be a shim.
+	command -v systemctl >/dev/null 2>&1 || continue
+	systemctl is-enabled --quiet "$unit" 2>/dev/null && continue
+
+	echo "[packages] enabling $unit (needed by $pkg)" >&2
+	sudo systemctl enable --now "$unit" \
+		|| echo "[packages] failed to enable $unit; run: sudo systemctl enable --now $unit" >&2
 done
 
 # Best-effort by design: report and exit 0. A hard failure here would block

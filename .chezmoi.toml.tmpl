@@ -8,8 +8,34 @@
 encryption = "age"
 
 [age]
-    identity = "~/.config/chezmoi/key.txt"
-    recipient = "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy"
+    # An explicit command, not chezmoi's built-in age: built-in age cannot load
+    # plugins, and the YubiKey identity below is a plugin identity. The cost is
+    # that decrypting now needs an `age` binary on PATH — mise installs one, but
+    # not until after run_before_00-unlock-secrets has already run on a fresh
+    # machine, which is why that script skips instead of failing when it's absent.
+    command = "age"
+
+    # Tried in order. The YubiKey comes first, so routine decryption goes
+    # through hardware; the file identity is the fallback that keeps a lost or
+    # forgotten key from being fatal. Reaching the plugin means a PIN prompt,
+    # so anything without a TTY can't get past the first identity — again, the
+    # unlock script skips rather than failing there.
+    identities = [
+        "~/.config/chezmoi/yubikey-identity.txt",
+        "~/.config/chezmoi/key.txt",
+    ]
+
+    # Both keys are recipients of every blob, so either opens any secret.
+    # Changing this list does NOT rewrite existing blobs — see "Rotating the
+    # recipient set" in README.md, or the new key silently can't read old ones.
+    recipients = [
+        # YubiKey 5Ci serial 15092063, PIV slot 82. Private key generated
+        # on-device and not extractable.
+        "age1yubikey1qvx4q749ymqzfhxfpwhgcmflyvae0daf84n67rpn2lwh9a4xuuk3j74tvpm",
+        # File identity, itself committed as key.txt.age under a passphrase
+        # (backup: Proton Pass). The independent path in if the YubiKey is lost.
+        "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy",
+    ]
 
 [data]
     email = {{ $email | quote }}

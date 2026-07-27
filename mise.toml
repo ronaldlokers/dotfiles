@@ -38,7 +38,16 @@ run = '''
 set -eu
 testhome="$(mktemp -d)"
 trap 'rm -rf "$testhome"' EXIT
-HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
+
+# Clearing HOME is not enough to get a clean run: this desktop exports
+# XDG_CONFIG_HOME and friends pointing back at the real ~/.config, so chezmoi
+# and mise keep reading — and writing — the live config even with HOME
+# redirected. A drill once regenerated the real ~/.config/chezmoi/chezmoi.toml
+# that way. CI has no XDG_* set, so only local runs need this.
+clean_env="env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME"
+
+$clean_env HOME="$testhome" chezmoi init --source "$PWD" </dev/null >/dev/null
+$clean_env HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 
 # The same assertion CI's bootstrap job makes. It lives here too because the
 # first version of this task didn't have it, and CI caught a failure that a

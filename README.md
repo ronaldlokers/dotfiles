@@ -127,7 +127,7 @@ Currently decrypted by the script:
 | --- | --- | --- |
 | SSH signing key | `~/.ssh/id_ed25519_signing` | `private_dot_ssh/private_id_ed25519_signing.age` |
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
-| `gh` token | `~/.config/gh/hosts.yml` | `dot_config/gh/private_hosts.yml.age` |
+| `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
 
 To **add** a secret: encrypt it to the repo recipient as a `<name>.age` blob
 (`chezmoi encrypt --output <path>.age <file>`, `private_` prefix for `0600`

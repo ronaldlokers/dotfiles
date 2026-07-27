@@ -30,6 +30,14 @@ superfile = "1.6.0"
 # from the release and verifies its SLSA provenance. (Not `ubi:` — mise
 # deprecated that backend in favour of `github:`, removal in 2027.1.0.)
 "github:ronaldlokers/sugarrush" = "2026.7.3"
+# chezmoi decrypts with a built-in age normally, but built-in age can't load
+# plugins — so driving a YubiKey-backed identity means pointing age.command at
+# a real binary, and every machine that decrypts a secret then needs one.
+age = "1.3.1"
+# NB: age-plugin-yubikey is NOT here. Its GitHub releases ship darwin and
+# windows assets only, so the github backend has nothing to fetch on linux —
+# Arch packages it in extra instead, and it's host-only regardless since it
+# exists to talk to physical hardware. See the host package list.
 # nvim-treesitter (main branch) shells out to the tree-sitter CLI to
 # compile parsers; without it :TSUpdate fails and parsers go stale
 tree-sitter = "0.26.11"
