@@ -31,6 +31,11 @@ REPO_PACKAGES=(
 	# a second tailscaled inside a container would be a separate node fighting
 	# for the same routes.
 	tailscale
+	# Touch-to-sudo. pam-u2f pulls in libfido2, which is also what OpenSSH needs
+	# for ed25519-sk keys. Host-only: it authenticates a human at this physical
+	# machine, and a container has neither the USB device nor its own PAM stack
+	# worth touching.
+	pam-u2f
 	# YubiKey PIV: pcsclite provides the pcscd smartcard daemon that
 	# age-plugin-yubikey talks to, yubikey-manager the ykman CLI for inspecting
 	# and resetting the PIV applet. Host-only — they exist to drive physical

@@ -119,21 +119,35 @@ encrypted to the wrong recipient stays silent until the day you need it.
 
 ## Secrets
 
-Secrets are stored as plain `<name>.age` blobs, each encrypted to the repo's
-dedicated age recipient (pinned in `.chezmoi.toml.tmpl`) — **not** with
-`chezmoi add --encrypt` (that `encrypted_` flow decrypts at apply time and
-breaks the non-interactive bootstrap; see [`CLAUDE.md`](CLAUDE.md)). Each blob's
-target path is listed in `.chezmoiignore` so the raw ciphertext isn't copied
-into `$HOME`.
+Secrets are stored as plain `<name>.age` blobs — **not** with `chezmoi add
+--encrypt` (that `encrypted_` flow decrypts at apply time and breaks the
+non-interactive bootstrap; see [`CLAUDE.md`](CLAUDE.md)). Each blob's target path
+is listed in `.chezmoiignore` so the raw ciphertext isn't copied into `$HOME`.
 
-The age identity that decrypts everything, `~/.config/chezmoi/key.txt`, is
-itself passphrase-protected and committed as `key.txt.age` (passphrase backup:
-Proton Pass). `.chezmoiscripts/run_before_00-unlock-secrets.sh.tmpl` — a plain
-`run_before` that re-runs on every apply and is a fast no-op once unlocked —
-first unlocks the identity (this needs a real TTY for the passphrase, so
-non-interactive applies like `devpod up` and CI skip it by design), then uses it
-to decrypt the secrets below. A later interactive `chezmoi apply` finishes what a
-non-interactive one had to skip.
+Every blob is encrypted to **two recipients**, so either key opens any secret:
+
+| Recipient | Where it lives |
+| --- | --- |
+| YubiKey (PIV slot 82) | On the key itself; generated on-device, not extractable |
+| File identity | `~/.config/chezmoi/key.txt`, committed as `key.txt.age` under a passphrase (backup: Proton Pass) |
+
+Adding a recipient does **not** re-encrypt existing blobs — see
+[Rotating the recipient set](#rotating-the-recipient-set).
+
+`[age]` points at `~/.config/chezmoi/identities.txt`, which
+`run_before_00-unlock-secrets.sh.tmpl` assembles from whichever identities the
+machine has, YubiKey first. It has to be one generated file rather than a list
+of paths: **age treats a listed-but-missing identity as fatal**, so naming both
+directly breaks any machine with only one — a container has no YubiKey, and a
+fresh machine has no `key.txt` until the passphrase step creates it mid-apply.
+
+A missing *plugin* is fine by contrast: age falls through to the next identity,
+so containers decrypt via `key.txt` with no YubiKey and no plugin installed.
+
+That script is a plain `run_before` — it re-runs every apply and is a fast no-op
+once settled, so a later interactive apply finishes what a non-interactive one
+skipped. It skips rather than fails when `age` is absent (mise installs it only
+*after* this script runs on a fresh machine).
 
 Currently decrypted by the script:
 
@@ -142,6 +156,7 @@ Currently decrypted by the script:
 | SSH signing key | `~/.ssh/id_ed25519_signing` | `private_dot_ssh/private_id_ed25519_signing.age` |
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
 | `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
+| sugarrush config | `~/.config/sugarrush/config.toml` | `dot_config/private_sugarrush/private_config.toml.age` |
 
 To **add** a secret: encrypt it to the repo recipient as a `<name>.age` blob
 (`chezmoi encrypt --output <path>.age <file>`, `private_` prefix for `0600`
@@ -163,11 +178,104 @@ chmod 600 ~/.config/chezmoi/key.txt
 chezmoi apply        # re-derives the SSH/sops/gh secrets from the identity
 ```
 
+The YubiKey is the other way in, and needs no passphrase — drop its identity in
+and apply:
+
+```sh
+install -m600 /path/to/yubikey-identity.txt ~/.config/chezmoi/yubikey-identity.txt
+chezmoi init && chezmoi apply
+```
+
 > [!WARNING]
-> If **both** the passphrase and its Proton Pass backup are lost, `key.txt.age`
-> — and therefore every secret encrypted to this recipient — is permanently
-> unrecoverable. Keep the passphrase in a second location, and re-verify the
-> restore path above after any key rotation.
+> The two recipients are only independent if their backups are. Losing the
+> passphrase *and* its Proton Pass copy leaves the YubiKey as the sole way in,
+> and vice versa. Re-verify the restore path after any key rotation.
+
+### Rotating the recipient set
+
+Adding a recipient does **not** rewrite existing blobs — they stay readable only
+by whoever was a recipient when written, so a new key silently can't open old
+secrets. After changing `recipients` in `.chezmoi.toml.tmpl`, run `chezmoi init`
+to regenerate the live config, then rewrite every blob:
+
+```sh
+for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+  chezmoi decrypt "$blob" | chezmoi encrypt --output "$blob.new" && mv "$blob.new" "$blob"
+done
+mise run secrets-restore   # every blob still opens with the current identity
+```
+
+Then confirm the *new* key works, which `secrets-restore` cannot tell you — it
+only ever tries the configured identity:
+
+```sh
+age -d -i /path/to/new-identity.txt <some-blob> >/dev/null && echo ok
+```
+
+`key.txt.age` is excluded throughout: it's passphrase-encrypted rather than
+encrypted to a recipient, and it's where the file identity comes from.
+
+## YubiKey
+
+A YubiKey 5Ci holds the primary age identity (PIV slot 82, generated on-device,
+PIN policy `once`, touch policy `cached` — one touch covers a whole apply rather
+than one per secret). Tooling comes from the host package list: `pcsclite`,
+`yubikey-manager`, `yubikey-personalization`, `age-plugin-yubikey`, `pam-u2f`.
+
+The key carries **three unrelated PINs** — PIV (secrets), FIDO2 (sudo, passkeys)
+and OpenPGP (unused here). Mixing them up costs retry attempts. **FIDO2 has no
+PUK:** exhausting it forces a reset that destroys every passkey on the key. PIV
+is more forgiving, having one.
+
+### Touch-to-sudo
+
+`pam-u2f` is installed by the host package list, but the setup is **deliberately
+manual** — `/etc/pam.d` is outside `$HOME` so chezmoi can't manage it, and a
+script that rewrites the sudo auth stack on every machine is a bad trade: one bad
+edit locks you out of sudo everywhere, including the means to fix it.
+
+Register the key. This wants the **FIDO2** PIN, not the PIV one:
+
+```sh
+pamu2fcfg > /tmp/u2f.line          # PIN + touch
+sudo install -m644 /tmp/u2f.line /etc/u2f_mappings && shred -u /tmp/u2f.line
+sudo cut -d: -f1 /etc/u2f_mappings # sanity check: prints your username
+```
+
+Do it in two steps like that, not `pamu2fcfg | sudo tee`: `sudo` would truncate
+the file before `pamu2fcfg` produces anything, and both processes then compete
+for the terminal — one wanting the FIDO2 PIN, the other your sudo password.
+
+**Open a root shell in another terminal and keep it open** (`sudo -i`). It's the
+escape hatch if the next step is wrong. Then add one line to `/etc/pam.d/sudo`:
+
+```
+#%PAM-1.0
+auth		sufficient	pam_u2f.so cue authfile=/etc/u2f_mappings
+auth		include		system-auth
+...
+```
+
+`sufficient`, not `required`, and above the `include`: a touch satisfies auth,
+and if the key is absent PAM falls through to the normal password prompt.
+`required` would demand both and lock you out whenever the key isn't plugged in.
+`cue` prints "Please touch the device" so sudo doesn't hang silently.
+
+Verify both paths before closing the root shell:
+
+```sh
+sudo -k && sudo true    # prompts for a touch
+                        # then unplug the key and repeat — should ask for a password
+```
+
+Registration is host-specific: `pamu2fcfg` defaults to origin `pam://$HOSTNAME`,
+so this credential won't work on a second machine. Fixing that means passing a
+shared `-o`/`-i` origin at registration time.
+
+This does **not** remove the `sudo needs a password; skipping` message from
+automated applies — `sudo -n` can't wait for a touch any more than it can prompt
+for a password. What it gives you is `sudo -v` (a touch) followed by a
+`chezmoi apply` that works non-interactively for the credential cache window.
 
 ## Layout
 
