@@ -158,8 +158,28 @@ jobs:
       - name: assert the ssh-agent service is active with a live socket
         run: |
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-          systemctl --user is-active --quiet ssh-agent.service
-          test -S "$XDG_RUNTIME_DIR/ssh-agent.socket"
+          # `enable --now` returns as soon as systemd accepts the job, not when
+          # ssh-agent has created its socket. Asserting immediately is a race
+          # this job lost only occasionally, which is worse than losing it
+          # always — it read as a flaky suite rather than a missing wait.
+          for _ in $(seq 1 30); do
+            systemctl --user is-active --quiet ssh-agent.service \
+              && [ -S "$XDG_RUNTIME_DIR/ssh-agent.socket" ] && break
+            sleep 1
+          done
+          # Re-assert outside the loop so a real failure still fails the job,
+          # and print why rather than leaving a bare non-zero exit.
+          if ! systemctl --user is-active --quiet ssh-agent.service; then
+            echo "::error::ssh-agent.service is not active after 30s"
+            systemctl --user status ssh-agent.service --no-pager || true
+            journalctl --user -u ssh-agent.service -n 20 --no-pager || true
+            exit 1
+          fi
+          if [ ! -S "$XDG_RUNTIME_DIR/ssh-agent.socket" ]; then
+            echo "::error::unit is active but $XDG_RUNTIME_DIR/ssh-agent.socket is missing"
+            ls -la "$XDG_RUNTIME_DIR" || true
+            exit 1
+          fi
           echo "host-path ssh-agent verified: unit active, socket present"
 
   container-gates:
