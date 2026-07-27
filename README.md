@@ -52,9 +52,8 @@ terminal on.
 shell has to be listed in `/etc/shells` and already be running before anything
 gets far enough to activate mise, so mise can't be what provides it. The host
 script also sets it as the login shell, once the package is installed. `setup`
-tries
-that too, but on a fresh machine it runs *before* zsh exists, so its check
-no-ops — the package step is what actually lands the change.
+tries that too, but on a fresh machine it runs *before* zsh exists, so its
+check no-ops — the package step is what actually lands the change.
 
 The host script is deliberately a plain `run_after`, not a `run_onchange`:
 chezmoi records a `run_onchange` script's hash as soon as it exits 0, so a run
