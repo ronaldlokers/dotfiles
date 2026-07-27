@@ -33,7 +33,8 @@
     "session-report@claude-plugins-official": true,
     "superpowers@claude-plugins-official": true,
     "chrome-devtools-mcp@claude-plugins-official": true,
-    "playground@claude-plugins-official": true
+    "playground@claude-plugins-official": true,
+    "impeccable@impeccable": true
   },
   "extraKnownMarketplaces": {
     "karpathy-skills": {
@@ -54,6 +55,13 @@
       "source": {
         "source": "github",
         "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "impeccable": {
+      "source": {
+        "source": "github",
+        "repo": "pbakaus/impeccable",
+        "ref": "5e572c8b8af3e108ab52ce4180adb4d6eb1c2ebc"
       }
     }
   },
