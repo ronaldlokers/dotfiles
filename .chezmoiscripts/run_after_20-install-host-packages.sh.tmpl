@@ -32,6 +32,11 @@ REPO_PACKAGES=(
 	# hardware, so a container has no use for them.
 	pcsclite
 	yubikey-manager
+	# Ships the udev rules that make the YubiKey's OTP/HID interface reachable
+	# without root. yubikey-manager alone leaves /dev/hidraw* owned by root, so
+	# `ykman otp ...` fails with "connection type not supported/enabled" — which
+	# reads like a disabled applet rather than the permission problem it is.
+	yubikey-personalization
 	# The age PIV plugin. Comes from pacman rather than mise because upstream's
 	# releases carry darwin and windows assets only — there is no linux binary
 	# for a release-based backend to fetch.
