@@ -92,6 +92,34 @@ fast-forward from a diverged branch. Run it by hand with
 `run_onchange_after_11-enable-update-check.sh.tmpl`, which skips where no
 systemd user session exists — so containers don't get it.
 
+## Project checkouts
+
+Personal repos live under `$XDG_PROJECTS_DIR` (`~/Projects`, declared in
+`~/.config/user-dirs.dirs`) in `host/owner/repo` layout:
+
+```
+~/Projects/github.com/ronaldlokers/homelab
+```
+
+The host level is more than six GitHub repos need, but it's what stops a
+third-party clone of the same name — or a second forge — from colliding later.
+Depth costs nothing to navigate with zoxide.
+
+```sh
+repos-sync    # clone whatever isn't checked out yet
+```
+
+Deliberately **not** part of `chezmoi apply`: a fresh machine shouldn't be made
+to pull every repo before it's usable, and a devpod container has no business
+holding them. It only ever clones — an existing checkout is left alone, branch,
+remotes and uncommitted work included. Add a repo by editing the list in
+`dot_local/bin/executable_repos-sync`.
+
+Clones use **HTTPS**, authenticated by the `gh` credential helper already in
+`dot_config/git/config.tmpl`. Note `gh` itself is configured to prefer SSH for
+git operations while this machine has no SSH *auth* key (only the signing key),
+so `gh repo clone` would take a path that doesn't work here.
+
 ## Working on this repo
 
 `mise.toml` pins the tooling and defines the checks, so local runs and CI use

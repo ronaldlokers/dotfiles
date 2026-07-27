@@ -1,0 +1,65 @@
+#!/bin/bash
+# Clone the personal repos that aren't checked out yet.
+#
+# On demand, not part of `chezmoi apply`: a fresh machine shouldn't be made to
+# pull every repo before it's usable, and a devpod container has no business
+# holding them at all. Adding a repo here is a one-line edit.
+#
+# Idempotent — an existing checkout is left completely alone, including its
+# branch, remotes and uncommitted work. This clones; it never updates.
+set -euo pipefail
+
+# XDG_PROJECTS_DIR is declared in ~/.config/user-dirs.dirs but isn't exported
+# into the shell environment, so read it from there before falling back.
+root="${XDG_PROJECTS_DIR:-}"
+if [ -z "$root" ] && [ -r "$HOME/.config/user-dirs.dirs" ]; then
+	root="$(. "$HOME/.config/user-dirs.dirs" 2>/dev/null && echo "${XDG_PROJECTS_DIR:-}")"
+fi
+root="${root:-$HOME/Projects}"
+
+# host/owner/repo, mirroring the checkout layout. The host level looks like
+# overkill for six GitHub repos, but it's what keeps a third-party clone of the
+# same name — or a second forge — from colliding later.
+REPOS=(
+	github.com/ronaldlokers/homelab
+	github.com/ronaldlokers/lab
+	github.com/ronaldlokers/lokilabs.nl
+	github.com/ronaldlokers/sugarrush
+	github.com/ronaldlokers/WalkFit
+	github.com/ronaldlokers/Zenith
+)
+
+command -v git >/dev/null 2>&1 || { echo "repos-sync: git not found" >&2; exit 1; }
+
+cloned=0
+skipped=0
+failed=()
+
+for repo in "${REPOS[@]}"; do
+	target="$root/$repo"
+	if [ -d "$target/.git" ]; then
+		skipped=$((skipped + 1))
+		continue
+	fi
+
+	mkdir -p "$(dirname "$target")"
+	echo "repos-sync: cloning $repo" >&2
+	# HTTPS, not SSH: the gh credential helper in ~/.config/git/config already
+	# authenticates it, and this machine has no SSH *auth* key — only a signing
+	# key. HTTPS also works unchanged inside a devpod container, which has the
+	# gh token but not necessarily a forwarded agent.
+	if git clone --quiet "https://$repo.git" "$target"; then
+		cloned=$((cloned + 1))
+	else
+		# Leave nothing half-cloned behind for the next run to mistake for a
+		# real checkout — the `.git` test above would skip a partial directory.
+		rm -rf "$target"
+		failed+=("$repo")
+	fi
+done
+
+echo "repos-sync: $cloned cloned, $skipped already present" >&2
+if [ ${#failed[@]} -gt 0 ]; then
+	echo "repos-sync: failed: ${failed[*]}" >&2
+	exit 1
+fi
