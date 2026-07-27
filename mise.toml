@@ -39,6 +39,41 @@ HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 echo "clean-HOME apply succeeded"
 '''
 
+[tasks.secrets-restore]
+description = "check every .age blob still decrypts with the configured identity"
+# The recovery path in README.md is the only thing standing between a dead
+# machine and every secret in here, and nothing exercises it — a blob encrypted
+# to the wrong recipient, or corrupted by a bad merge, stays silent until the
+# day it's needed. CI can't cover this (it has no identity), so it's a local
+# task. Deliberately not part of `check`: it needs an unlocked key.txt.
+run = '''
+set -eu
+key="${HOME}/.config/chezmoi/key.txt"
+if [ ! -f "$key" ]; then
+	echo "no age identity at $key — run an interactive 'chezmoi apply' first"
+	exit 0
+fi
+rc=0
+# key.txt.age is excluded on purpose: it's passphrase-protected rather than
+# identity-encrypted, so it can't be checked without a TTY — and it is the very
+# thing every other blob is checked with.
+for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+	# `| wc -c` rather than reading the plaintext into a variable: this only
+	# needs to know the blob produced bytes, and counting them keeps the
+	# secret out of the shell's memory and any `set -x` output. (An earlier
+	# `head -c1 | read` was wrong here — read reports failure at EOF when
+	# there's no trailing newline, so every blob looked broken.)
+	if size="$(chezmoi decrypt "$blob" 2>/dev/null | wc -c)" && [ "$size" -gt 0 ]; then
+		echo "ok    $blob"
+	else
+		echo "FAIL  $blob (does not decrypt, or decrypts empty)"
+		rc=1
+	fi
+done
+[ "$rc" -eq 0 ] && echo "all blobs decrypt with the current identity"
+exit "$rc"
+'''
+
 [tasks.check]
 description = "everything CI runs, in one command"
 depends = ["lint", "secrets", "verify"]
