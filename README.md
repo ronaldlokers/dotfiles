@@ -15,7 +15,9 @@ Applying pulls in everything else automatically:
 
 - **externals** (`.chezmoiexternals/`) download the mise binary, the
   [pure](https://github.com/sindresorhus/pure) prompt, and the
-  zsh-autosuggestions / zsh-syntax-highlighting plugins, refreshed weekly
+  zsh-autosuggestions / zsh-syntax-highlighting plugins, refreshed weekly.
+  The [DevPod](https://devpod.sh) CLI external is host-only — it renders to
+  nothing inside a container, so devpod-provisioned boxes skip it
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
 
