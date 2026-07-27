@@ -9,3 +9,10 @@ key.txt.age
 .config/gh/hosts.yml.age
 .config/sugarrush/config.toml.age
 /docs
+{{ if eq (includeTemplate "is-container" .) "true" -}}
+# Picks which terminal emulator Super+Return opens, which only means something
+# on a machine with a display. The container test lives in
+# .chezmoitemplates/is-container, shared with the host-packages script and the
+# devpod external, so the gates can't drift apart.
+.config/xdg-terminals.list
+{{ end -}}

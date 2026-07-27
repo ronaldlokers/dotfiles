@@ -21,6 +21,12 @@ set -euo pipefail
 # Shipped by the distro's own repos.
 REPO_PACKAGES=(
 	discord
+	# The terminal emulator itself, so it belongs here and not in mise despite
+	# the "anything that runs in a terminal goes in mise" rule — it needs a
+	# display, and a container reaches a terminal through the host's. Which
+	# terminal Super+Return actually opens is decided separately, by
+	# dot_config/xdg-terminals.list.
+	ghostty
 	obsidian
 	proton-vpn-gtk-app
 	prusa-slicer
