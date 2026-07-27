@@ -183,6 +183,65 @@ if command -v fzf > /dev/null ; then
   eval "$(fzf --bash)"
 fi
 
+# Syntax-highlighted, paged man pages, same as in .zshrc. `col -bx` strips
+# the backspace-overstrike sequences groff emits for bold and underline,
+# which bat would otherwise print literally; MANROFFOPT=-c stops newer
+# groff re-introducing them.
+if command -v bat > /dev/null ; then
+  export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+  export MANROFFOPT="-c"
+fi
+
+# zoxide-backed cd, same as in .zshrc. --cmd cd replaces cd outright: a
+# real path still goes straight through (cd .., cd -, cd ~/x), and only an
+# argument that isn't a directory falls back to frecency matching. `cdi` is
+# the interactive picker, `z` the old name. Placed after the PROMPT_COMMAND
+# assignment above, which zoxide's hook appends itself to.
+if command -v zoxide > /dev/null ; then
+  eval "$(zoxide init bash --cmd cd)"
+  alias z="cd"
+fi
+
+# Aliases, kept deliberately in step with the ones in .zshrc — the two
+# files have no shared alias source, so a change to one wants the same
+# change here. Each is guarded on its tool, so a machine (or container)
+# missing one just keeps the stock command.
+#
+# These come last on purpose: `ls` is already aliased to `ls --color=auto`
+# by the dircolors block further up, and the later definition is the one
+# that sticks.
+
+if command -v nvim > /dev/null ; then
+  alias v="nvim"
+fi
+
+if command -v git > /dev/null ; then
+  alias gp="git pull"
+fi
+
+if command -v lazygit > /dev/null ; then
+  alias lg="lazygit"
+fi
+
+if command -v kubectl > /dev/null ; then
+  alias k="kubectl"
+fi
+
+if command -v bat > /dev/null ; then
+  alias cat="bat"
+fi
+
+if command -v lsd > /dev/null ; then
+  alias ls="lsd"
+  alias ll="ls -lgh"
+  alias la='ls -lathr'
+  alias lla='ls -lgha'
+  alias lt='ls --tree'
+  # `tree` isn't installed anywhere here, so this fills a gap rather than
+  # shadowing a real command.
+  alias tree='ls --tree'
+fi
+
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
