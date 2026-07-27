@@ -10,6 +10,14 @@ export LANG="en_US.UTF-8"
 
 export RIPGREP_CONFIG_PATH="$HOME/.config/ripgrep/config"
 
+# Syntax-highlighted, paged man pages. `col -bx` strips the backspace-overstrike
+# sequences groff emits for bold and underline, which bat would otherwise print
+# literally; MANROFFOPT=-c stops newer groff re-introducing them.
+if command -v bat > /dev/null ; then
+  export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+  export MANROFFOPT="-c"
+fi
+
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_bashrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
@@ -109,10 +117,20 @@ if command -v fzf > /dev/null ; then
   fi
 fi
 
-# zoxide wants to run after compinit; omarchy's cd->zd alias needs its
-# `z` function too
+# zoxide wants to run after compinit. --cmd cd replaces cd outright rather than
+# adding a `z` beside it: a real path still goes straight through (cd .., cd -,
+# cd ~/x), and only an argument that isn't a directory falls back to frecency
+# matching. `cdi` is the interactive picker.
+#
+# omarchy's aliases file defines `cd=zd`, its own near-identical wrapper. An
+# alias is expanded before a function is looked up, so on a machine that has
+# omarchy-zsh it would shadow the cd defined here and leave the two kinds of
+# machine behaving differently. Drop it, the way the rest of this file wins
+# over the omarchy block; `z` is kept as an alias so the old name still works.
 if command -v zoxide > /dev/null ; then
-  eval "$(zoxide init zsh)"
+  unalias cd 2>/dev/null
+  eval "$(zoxide init zsh --cmd cd)"
+  alias z="cd"
 fi
 
 
@@ -176,6 +194,10 @@ if command -v lsd > /dev/null ; then
   alias la='ls -lathr'
   alias lla='ls -lgha'
   alias lt='ls --tree'
+  # `tree` isn't installed anywhere here, so this fills a gap rather than
+  # shadowing a real command — same engine as lt, under the name muscle memory
+  # reaches for.
+  alias tree='ls --tree'
 fi
 
 

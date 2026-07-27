@@ -353,10 +353,10 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 
 | Path | Contents |
 | --- | --- |
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv/zoxide, cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_config/lazygit/` | lazygit config: delta as diff pager |
-| `dot_bashrc` | bash fallback config |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
