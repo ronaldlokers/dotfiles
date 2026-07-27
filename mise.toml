@@ -7,19 +7,22 @@
 [tools]
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
-# Pinned rather than invoked via `npx --yes --package renovate`: npx happily
-# reuses whatever renovate is already in the local cache, and an old enough one
-# rejects `managerFilePatterns` as an unknown option — so the validator failed
-# locally while passing in CI, which starts cache-cold. Renovate's own `npm`
-# manager keeps this line bumped.
-"npm:renovate" = "43.285.0"
+# renovate is deliberately NOT a `npm:renovate` tool here. mise's npm backend
+# enforces a provenance trust policy, and renovate's tree currently trips it:
+# @yarnpkg/libzip 3.2.0 shipped a SLSA attestation, 3.2.2 ships none, which
+# reads as a trust downgrade and fails the install. Silencing that with
+# trust_policy_excludes would be a real security decision, not a build fix, so
+# the validator is invoked through a version-pinned npx in the lint task below.
+# The pin is the part that matters: the original bug was an *unversioned*
+# `--package renovate`, which reuses whatever is already in the npx cache.
 
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
 	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh",
 	"jq empty dot_claude/settings.json",
-	"renovate-config-validator .github/renovate.json",
+	# renovate: datasource=npm depName=renovate
+	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
 
 [tasks.secrets]
@@ -36,7 +39,20 @@ set -eu
 testhome="$(mktemp -d)"
 trap 'rm -rf "$testhome"' EXIT
 HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
-echo "clean-HOME apply succeeded"
+
+# The same assertion CI's bootstrap job makes. It lives here too because the
+# first version of this task didn't have it, and CI caught a failure that a
+# green local run had just missed — which is the exact gap this file exists to
+# close. Run from $testhome: mise merges configs up the cwd hierarchy, so
+# standing in the repo would pull in this very file and report the repo's lint
+# tooling as missing dotfiles tools.
+missing="$(cd "$testhome" && HOME="$testhome" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>/dev/null || true)"
+if [ -n "$missing" ]; then
+	echo "configured mise tools are not installed:" >&2
+	printf '%s\n' "$missing" >&2
+	exit 1
+fi
+echo "clean-HOME apply succeeded, all configured tools present"
 '''
 
 [tasks.secrets-restore]

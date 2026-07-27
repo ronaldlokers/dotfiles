@@ -110,7 +110,12 @@ jobs:
           # directly which configured tools are missing — no hard-coded list to
           # drift from mise/config.toml, and no reliance on interactive-shell
           # PATH activation (which doesn't fire under `zsh -ic`).
-          missing="$(HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
+          # Run from $TESTHOME, not the checkout: mise merges every config in
+          # the cwd hierarchy, so standing in the repo pulls in its own
+          # mise.toml — the tooling that lints this repo — and reports
+          # shellcheck/gitleaks as "missing" dotfiles tools. They are neither
+          # installed into the test HOME nor meant to be.
+          missing="$(cd "$TESTHOME" && HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
           if [ -n "$missing" ]; then
             echo "::error::configured mise tools are not installed:"
             printf '%s\n' "$missing"
