@@ -88,6 +88,27 @@ A few packages need a group membership they can't grant themselves (chirp needs
 `uucp` to open `/dev/ttyUSB*`). Those are listed in `PACKAGE_GROUPS`, applied
 only when the package is actually installed, and take effect on the next login.
 
+### Shell keybindings
+
+Both shells get the same set, so a machine where zsh isn't the login shell yet
+behaves the same:
+
+| Key | Does |
+| --- | --- |
+| `Ctrl-R` | atuin history search, all directories |
+| `Up` | atuin history search, this directory only |
+| `Ctrl-T` | fzf file picker |
+| `Alt-C` | fzf directory picker |
+| `Ctrl-F` | sesh picker: tmux sessions + zoxide directories |
+| `prefix o` | the same sesh picker, in a tmux popup |
+
+`Ctrl-R` used to be fzf's. Both tools bind it explicitly, so the one initialised
+last in the rc file wins — atuin's block sits below fzf's in both files, and
+moving it breaks the binding silently.
+
+atuin history is **local to each machine and each container**: sync is off, so a
+rebuilt devpod container starts with an empty database.
+
 ## Updates
 
 Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
