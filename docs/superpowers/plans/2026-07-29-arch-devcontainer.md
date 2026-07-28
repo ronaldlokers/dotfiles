@@ -333,10 +333,15 @@ use the pinned one, because `dot_zshrc` prefers it explicitly.
 
 - [ ] **Step 2: Check no stale Debian reference survives in the template**
 
-Run: `grep -rn "trixie\|debian" dot_local/share/devcontainer-template/ dot_local/bin/executable_devcontainer-init`
+What must not survive is anything that still *configures* Debian. Explanatory prose naming it is fine and expected — the Dockerfile's own comments say why Debian was rejected, and so does the README.
+
+Run: `grep -rnE '"image".*debian|^FROM debian' dot_local/share/devcontainer-template/ dot_local/bin/executable_devcontainer-init README.md`
 Expected: no output.
 
-Note the README is deliberately excluded: the replacement prose above names `debian:trixie` on purpose, explaining what changed and why. A grep over README would match that and mean nothing. What must not survive is a template or script that still *configures* Debian.
+Then read the remaining mentions and confirm each is explanation rather than configuration:
+
+Run: `grep -rn "trixie\|debian" dot_local/share/devcontainer-template/ dot_local/bin/executable_devcontainer-init`
+Expected: only comment lines in `Dockerfile` explaining the `libatomic` gap and the features refusing to run on Arch. Anything outside a comment is a finding.
 
 - [ ] **Step 3: Run the full check**
 
