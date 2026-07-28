@@ -178,6 +178,28 @@ prompt pure
 bindkey -v
 export KEYTIMEOUT=1 # make switching between modes faster
 
+# Ctrl-F opens the sesh picker: live tmux sessions and zoxide's directory list
+# in one fzf prompt, attaching or creating as needed. Bound here, after
+# `bindkey -v` above, and into all three keymaps — vi mode means a binding on
+# the emacs keymap alone would be dead.
+#
+# The stdin/stdout redirection is what lets fzf take over the terminal from
+# inside a zle widget; `zle reset-prompt` puts the prompt back afterwards.
+if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
+  sesh-connect() {
+    { exec < /dev/tty; exec <&1; }
+    local session
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    zle reset-prompt > /dev/null 2>&1 || true
+    [ -z "$session" ] && return 0
+    sesh connect "$session"
+  }
+  zle -N sesh-connect
+  bindkey -M emacs '^F' sesh-connect
+  bindkey -M viins '^F' sesh-connect
+  bindkey -M vicmd '^F' sesh-connect
+fi
+
 
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 

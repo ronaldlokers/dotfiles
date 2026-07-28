@@ -26,6 +26,11 @@ delta = "0.19.2"
 zoxide = "0.10.0"
 gh = "2.96.0"
 tmux = "3.7b"
+# One picker over live tmux sessions plus zoxide's frecency list; picking an
+# entry attaches or creates. Not in the mise registry, so the github backend
+# fetches the release binary directly — same arrangement as sugarrush above.
+# Renovate's mise manager understands `github:` pins natively.
+"github:joshmedeski/sesh" = "2.28.0"
 # both are in Arch's extra repo too, but they're TUIs — wanted inside devpod
 # containers as much as on the host, so mise pins them instead of pacman
 yazi = "26.5.6"

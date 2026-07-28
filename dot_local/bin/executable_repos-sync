@@ -50,6 +50,12 @@ for repo in "${REPOS[@]}"; do
 	# gh token but not necessarily a forwarded agent.
 	if git clone --quiet "https://$repo.git" "$target"; then
 		cloned=$((cloned + 1))
+		# Seed zoxide so a just-cloned checkout shows up in the sesh picker
+		# before anyone has cd'd into it — zoxide's database is the only
+		# source of directories sesh has.
+		if command -v zoxide >/dev/null 2>&1; then
+			zoxide add "$target"
+		fi
 	else
 		# Leave nothing half-cloned behind for the next run to mistake for a
 		# real checkout — the `.git` test above would skip a partial directory.

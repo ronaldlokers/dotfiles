@@ -244,6 +244,20 @@ if command -v lsd > /dev/null ; then
   alias tree='ls --tree'
 fi
 
+# Ctrl-F opens the sesh picker, same as in .zshrc. Bound into both keymaps:
+# `set -o vi` at the top of the custom section means an emacs-only binding
+# would never fire.
+if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
+  sesh-connect() {
+    local session
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    [ -z "$session" ] && return 0
+    sesh connect "$session"
+  }
+  bind -m emacs -x '"\C-f": sesh-connect'
+  bind -m vi-insert -x '"\C-f": sesh-connect'
+fi
+
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"

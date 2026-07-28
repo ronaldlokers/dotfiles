@@ -130,6 +130,11 @@ The host level is more than six GitHub repos need, but it's what stops a
 third-party clone of the same name — or a second forge — from colliding later.
 Depth costs nothing to navigate with zoxide.
 
+A successful clone is also added to zoxide's database. That is what puts a
+brand-new checkout in the `sesh` picker (`Ctrl-F`, or `prefix o` in tmux)
+before anyone has ever `cd`'d into it — zoxide is the only source of
+directories sesh has.
+
 ```sh
 repos-sync    # clone whatever isn't checked out yet
 ```
@@ -470,11 +475,11 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 
 | Path | Contents |
 | --- | --- |
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_config/lazygit/` | lazygit config: delta as diff pager |
-| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
-| `dot_tmux.conf` | tmux config |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, sesh picker, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+| `dot_tmux.conf` | tmux config; `prefix o` opens the sesh session picker |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/atuin/` | atuin: SQLite shell history, sync deliberately off — container history is local and dies with the container |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
