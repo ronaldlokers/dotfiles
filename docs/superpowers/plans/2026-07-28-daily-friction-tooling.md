@@ -606,8 +606,8 @@ In `dot_config/mise/config.toml`, inside `[tools]`, next to `tmux`:
 ```toml
 # One picker over live tmux sessions plus zoxide's frecency list; picking an
 # entry attaches or creates. Not in the mise registry, so the github backend
-# fetches the release binary directly — same arrangement as sugarrush above.
-# Renovate's mise manager understands `github:` pins natively.
+# fetches the release binary directly — same arrangement as the sugarrush pin
+# further down. Renovate's mise manager understands `github:` pins natively.
 "github:joshmedeski/sesh" = "2.28.0"
 ```
 
@@ -626,8 +626,10 @@ In `dot_zshrc`, immediately after the `export KEYTIMEOUT=1` line (line 168), bef
 # `bindkey -v` above, and into all three keymaps — vi mode means a binding on
 # the emacs keymap alone would be dead.
 #
-# The stdin/stdout redirection is what lets fzf take over the terminal from
-# inside a zle widget; `zle reset-prompt` puts the prompt back afterwards.
+# The stdin/stdout redirection is a defensive habit borrowed from sesh's own
+# documented zsh widget, not something this widget has been observed to need
+# under normal use — it guards against stdin ever not being the tty. `zle
+# reset-prompt` afterwards is what actually restores the prompt.
 if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
   sesh-connect() {
     { exec < /dev/tty; exec <&1; }
@@ -693,8 +695,17 @@ to:
 		# Seed zoxide so a just-cloned checkout shows up in the sesh picker
 		# before anyone has cd'd into it — zoxide's database is the only
 		# source of directories sesh has.
+		#
+		# `|| true`: under `set -e`, only an `if` CONDITION is exempt from
+		# triggering exit-on-error — a bare statement in its body is not.
+		# Without this, a `zoxide add` failure (locked database,
+		# permissions, anything) would abort the whole run mid-loop,
+		# skipping every repo still left to clone and never reaching the
+		# `failed` summary or exit-1 reporting below. Seeding the picker
+		# is a convenience; cloning is the job, and the job must never be
+		# able to fail because of the convenience.
 		if command -v zoxide >/dev/null 2>&1; then
-			zoxide add "$target"
+			zoxide add "$target" || true
 		fi
 	else
 ```

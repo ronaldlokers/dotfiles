@@ -183,8 +183,10 @@ export KEYTIMEOUT=1 # make switching between modes faster
 # `bindkey -v` above, and into all three keymaps — vi mode means a binding on
 # the emacs keymap alone would be dead.
 #
-# The stdin/stdout redirection is what lets fzf take over the terminal from
-# inside a zle widget; `zle reset-prompt` puts the prompt back afterwards.
+# The stdin/stdout redirection is a defensive habit borrowed from sesh's own
+# documented zsh widget, not something this widget has been observed to need
+# under normal use — it guards against stdin ever not being the tty. `zle
+# reset-prompt` afterwards is what actually restores the prompt.
 if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
   sesh-connect() {
     { exec < /dev/tty; exec <&1; }

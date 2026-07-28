@@ -53,8 +53,17 @@ for repo in "${REPOS[@]}"; do
 		# Seed zoxide so a just-cloned checkout shows up in the sesh picker
 		# before anyone has cd'd into it — zoxide's database is the only
 		# source of directories sesh has.
+		#
+		# `|| true`: under `set -e`, only an `if` CONDITION is exempt from
+		# triggering exit-on-error — a bare statement in its body is not.
+		# Without this, a `zoxide add` failure (locked database,
+		# permissions, anything) would abort the whole run mid-loop,
+		# skipping every repo still left to clone and never reaching the
+		# `failed` summary or exit-1 reporting below. Seeding the picker
+		# is a convenience; cloning is the job, and the job must never be
+		# able to fail because of the convenience.
 		if command -v zoxide >/dev/null 2>&1; then
-			zoxide add "$target"
+			zoxide add "$target" || true
 		fi
 	else
 		# Leave nothing half-cloned behind for the next run to mistake for a
