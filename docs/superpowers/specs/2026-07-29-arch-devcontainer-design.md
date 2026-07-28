@@ -40,11 +40,36 @@ host: `pacman` in both places, and versions from the same rolling repos.
 Dockerfile takes that over: user and group at 1000, passwordless sudo, zsh as the
 login shell.
 
-**mise comes from pacman, not the feature.** Ordering forces this:
-`postCreateCommand` runs *before* DevPod clones the dotfiles, and
-`post-create.sh` calls `mise trust`/`mise install` for the project's own
-`mise.toml` — so mise has to exist before `chezmoi apply` ever runs. Arch's
-`extra` repo has it (2026.7.10 at time of writing).
+**mise comes from pacman, not the feature.** Two measured facts force this.
+
+First, *no lifecycle hook runs after the dotfiles arrive*. A throwaway workspace
+with markers in all three hooks produced this order:
+
+```
+postCreate  → NO-MISE
+postStart   → NO-DOTFILES-MISE
+postAttach  → NO-DOTFILES-MISE
+Cloning dotfiles …
+```
+
+DevPod does its dotfiles step last, after the entire devcontainer lifecycle. So
+"move the post-create call somewhere later and use the dotfiles' own mise" is not
+available — there is no later.
+
+Second, the `devcontainers-extra` mise feature is currently broken, on every
+distro. It resolves the latest release of `jdx/mise` and upstream has since
+published a non-release tag, so it 404s:
+
+```
+no release exists for repo:jdx/mise and tag: vfox-v2026.7.20
+ERROR: Feature "Mise" (ghcr.io/devcontainers-extra/features/mise) failed to install!
+```
+
+The Zenith bootstrap on 2026-07-28 got v2026.7.15 through the same feature, so
+this broke in between — which is the argument against depending on it at all.
+
+Arch's `extra` repo has mise (2026.7.10-1 at time of writing), installed in the
+Dockerfile alongside the rest.
 
 That leaves two mise binaries in the container: pacman's, and the pinned
 `~/.local/bin/mise` the dotfiles install via `.chezmoiexternals/mise.toml`.
@@ -113,6 +138,17 @@ Each of these was run, not assumed:
 - Arch `extra` provides `mise` (2026.7.10-1).
 - Arch base locales are `C C.utf8 POSIX` only, and `LANG=en_US.UTF-8` errors
   without `locale-gen`.
+- `postCreate`, `postStart` and `postAttach` all run before DevPod's dotfiles
+  step — measured with markers in a throwaway workspace, since this decides
+  whether the pacman mise is avoidable. It is not.
+- The `devcontainers-extra` mise feature fails today with a 404 resolving
+  `jdx/mise` `latest`.
+
+Not verified end to end: a full `devpod up` on the Arch template through to a
+finished `chezmoi apply`. The throwaway run got as far as the dotfiles clone and
+then failed on `git@github.com` SSH auth, because the test shell had no agent
+forwarded — an artifact of how it was driven, not of the template. Closing that
+gap is the first item under Verification.
 
 ## Risks
 
