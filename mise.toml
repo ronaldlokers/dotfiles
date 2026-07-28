@@ -48,18 +48,29 @@ run = [
 	# never actually runs the script without jq on PATH; excluding jq's
 	# mise install alone wouldn't be enough. Build a scratch PATH holding
 	# only a symlink to `cat` -- the one external command the script's
-	# empty-stdin path needs (`command -v jq` and `printf` are bash
-	# builtins, so nothing else has to resolve) -- so jq is genuinely
-	# unreachable, and confirm the fallback still emits valid JSON rather
-	# than failing the apply. `jq empty` itself runs with the real PATH
-	# restored, so validation doesn't depend on the thing being excluded.
+	# no-jq path needs (`command -v jq` and `printf` are bash builtins, so
+	# nothing else has to resolve) -- so jq is genuinely unreachable, and
+	# confirm the fallback still emits valid JSON rather than failing the
+	# apply. `jq empty` itself runs with the real PATH restored, so
+	# validation doesn't depend on the thing being excluded.
+	#
+	# Stdin here has to be non-empty, unlike the check above feeding this
+	# same script: an *empty* stdin hits modify_settings.json's very first
+	# branch (no on-disk file yet) and returns before the script ever gets
+	# to `command -v jq` at all, regardless of what's on PATH. `< /dev/null`
+	# here would build the whole scratch-PATH apparatus and then exercise
+	# nothing with it -- the empty-stdin branch, not the no-jq fallback,
+	# would be what actually ran. Piping in the same representative JSON as
+	# the check above is what forces execution to reach, and exercise, the
+	# `printf '%s\n' "$current"` fallback line.
+	#
 	# Same command-substitution shape as the check above, for the same
 	# dash-portability reason -- see its comment for why a bare pipeline
 	# can't be trusted here either. The scratch dir is cleaned up via
 	# `trap ... EXIT` (mirroring [tasks.verify] below) rather than a
 	# manual `rm` at the end, so it's removed even if errexit aborts this
 	# line early on a failure.
-	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(PATH=\"$d\" ./dot_claude/modify_settings.json < /dev/null)\"; printf '%s' \"$out\" | jq empty",
+	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
