@@ -252,10 +252,11 @@ Expected: exit 0. This shellchecks `devcontainer-init`.
 
 A guard that never trips is not a guard, and right now you have the ideal fixture for free: Task 1 committed the Dockerfile to the source tree, but until `chezmoi apply` runs, the *applied* template at `~/.local/share/devcontainer-template/` still has only two files. So run the new script against it now.
 
+Run the **edited source file**, not `$HOME/.local/bin/devcontainer-init` — the applied copy is still the pre-change script and has no new guard to test:
+
 ```bash
-chezmoi apply --dry-run >/dev/null   # sanity: does not write
 ls -1 ~/.local/share/devcontainer-template/
-d=$(mktemp -d) && (cd "$d" && "$HOME/.local/bin/devcontainer-init"; echo "exit=$?") ; rm -rf "$d"
+d=$(mktemp -d) && (cd "$d" && bash "$OLDPWD/dot_local/bin/executable_devcontainer-init"; echo "exit=$?") ; rm -rf "$d"
 ```
 
 Expected: the listing shows only `devcontainer.json` and `post-create.sh`, and the run prints `incomplete template … expected devcontainer.json, post-create.sh and Dockerfile` with a non-zero exit.
