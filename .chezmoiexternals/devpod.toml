@@ -1,7 +1,15 @@
 {{- /* DevPod drives the containers; it belongs on the host that starts them,
        not inside one. The container test lives in .chezmoitemplates/is-container
-       so this and the host-packages script can't drift apart. */ -}}
-{{- if eq (includeTemplate "is-container" .) "false" -}}
+       so this and the host-packages script can't drift apart.
+
+       Also gated on .chezmoitemplates/is-devpod-platform: the asset below is
+       a platform-specific binary (linux-amd64 only), and this gate is what
+       keeps a machine on another platform from downloading a binary it
+       can't run — chezmoi would still mark it executable, and the failure
+       would only surface later, at the first `devpod` invocation. Shared
+       with the configure script so the two checks can't drift apart
+       either. */ -}}
+{{- if and (eq (includeTemplate "is-container" .) "false") (eq (includeTemplate "is-devpod-platform" .) "true") -}}
 # renovate: datasource=github-releases depName=loft-sh/devpod
 {{ $devpodVersion := "v0.6.15" }}
 # Pinned to an immutable release asset, same as the mise binary. The CLI is a

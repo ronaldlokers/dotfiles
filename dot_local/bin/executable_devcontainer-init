@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# patsub_replacement (on by default since bash 5.2) makes a bare & in the
+# replacement of ${var//pattern/replacement} stand for the matched text, the
+# same way sed's & does. Turned off so the substitution near the bottom of
+# this script is always purely literal, regardless of this bash's default.
+# The option itself only exists on bash 5.2+; older bashes don't have it,
+# but they don't need it either — & is already literal there, so a failed
+# `shopt -u` on an unknown option is fine to swallow.
+shopt -u patsub_replacement 2>/dev/null || true
+
+# Scaffold a project devcontainer from the managed starter in
+# ~/.local/share/devcontainer-template. Exists because the alternative is copying
+# .devcontainer/ out of whichever project last had one and deleting its
+# project-specific parts by hand — which is how the template drifts.
+
+# Hard-coded, not ${XDG_DATA_HOME:-$HOME/.local/share}: chezmoi maps
+# dot_local/share/... to $HOME/.local/share/... unconditionally, ignoring
+# XDG_DATA_HOME. Deferring to XDG_DATA_HOME here would only diverge from
+# where chezmoi actually writes — and if it ever did, the "run 'chezmoi
+# apply' first" advice below could never fix it, since apply keeps writing
+# to the other path.
+template="$HOME/.local/share/devcontainer-template"
+target=".devcontainer"
+force=false
+
+# Writes to stdout: requested help (-h/--help) is not an error and belongs
+# there. The unknown-argument path below is the error case, and redirects
+# this call to stderr itself instead.
+usage() {
+	cat <<'EOF'
+usage: devcontainer-init [--force]
+
+Writes .devcontainer/{devcontainer.json,post-create.sh} into the current
+directory, naming the container after the directory.
+
+  --force   overwrite an existing .devcontainer/
+EOF
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--force) force=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "unknown argument: $1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+	shift
+done
+
+if [ ! -d "$template" ]; then
+	echo "no template at $template — run 'chezmoi apply' first" >&2
+	exit 1
+fi
+
+# Both files must exist and be non-empty before anything is written. This
+# catches a missing or zero-length file — the template outright absent, or
+# caught mid `chezmoi apply` before any content landed — but not a file
+# truncated partway through with some bytes already written; that case is
+# rarer and not worth a content-aware check here.
+if [ ! -s "$template/devcontainer.json" ] || [ ! -s "$template/post-create.sh" ]; then
+	echo "incomplete template at $template — expected devcontainer.json and post-create.sh" >&2
+	exit 1
+fi
+
+# The directory name, verbatim. Casing is left alone: a project called WalkFit
+# should show up as WalkFit in `devpod list`, not walkfit.
+name="$(basename "$PWD")"
+
+# A name with a double quote, a backslash, or a control character (a newline
+# included) can't be dropped raw into the JSON "name" field below. This
+# script deliberately doesn't escape it — refusing is honest, the case is
+# rare, and renaming the directory is the real fix.
+if [[ "$name" == *'"'* || "$name" == *'\'* || "$name" =~ [[:cntrl:]] ]]; then
+	echo "directory name '$name' can't go into JSON as-is (contains \", \\, or a control character) — rename the directory and try again" >&2
+	exit 1
+fi
+
+# A symlinked .devcontainer is refused outright, --force or not: following it
+# would write straight through into whatever directory it points at,
+# silently, outside the project.
+if [ -L "$target" ]; then
+	echo "$target is a symlink; refusing to write through it" >&2
+	exit 1
+fi
+
+if [ -e "$target" ] && [ "$force" = false ]; then
+	echo "$target already exists; pass --force to overwrite" >&2
+	exit 1
+fi
+
+# Build the new .devcontainer in a scratch directory first, on the same
+# filesystem as the project — not $TMPDIR, which is typically a different
+# filesystem and would make the move into place below degrade to
+# copy-plus-unlink. Moving the whole scratch directory into place as one
+# rename means a failure partway through (a full disk, an interrupted run)
+# never leaves a half-written target for the next invocation to mistake for
+# a real one.
+staging="$(mktemp -d "./.devcontainer-init.XXXXXX")"
+trap 'rm -rf "$staging"' EXIT
+# mktemp -d always creates at 0700, ignoring umask — fine for a scratch dir,
+# but this one gets renamed into place as $target below, so it needs the
+# permissions a plain `mkdir -p "$target"` would have given it instead.
+chmod "$(printf '%04o' "$(( 0777 & ~$(umask) ))")" "$staging"
+
+# Bash pattern substitution, not sed: the replacement is used literally, so
+# a name containing a sed-special character like & or \ can't corrupt the
+# output the way `sed "s/.../$name/"` would.
+template_json="$(cat "$template/devcontainer.json")"
+printf '%s\n' "${template_json//__PROJECT_NAME__/$name}" >"$staging/devcontainer.json"
+# post-create.sh is copied as-is; nothing is rewritten there.
+cp "$template/post-create.sh" "$staging/post-create.sh"
+
+# Only reachable with an existing $target when --force was passed — the
+# non-force case already exited above, and the symlink case already exited
+# even earlier, so this never follows a link. A real directory is cleared
+# recursively; a plain file is just removed.
+if [ -e "$target" ]; then
+	if [ -d "$target" ]; then
+		rm -rf "$target"
+	else
+		rm -f "$target"
+	fi
+fi
+
+# One rename for the whole directory, not one per file: a single same-
+# filesystem rename is atomic, so there's no window where $target holds one
+# file but not the other.
+mv "$staging" "$target"
+
+echo "wrote $target/devcontainer.json"
+echo "wrote $target/post-create.sh"

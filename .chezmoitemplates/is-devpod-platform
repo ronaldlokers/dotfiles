@@ -1,0 +1,9 @@
+{{- /* Single source of truth for "is this a platform the devpod binary
+       supports?". The external only ships a linux-amd64 asset
+       (.chezmoiexternals/devpod.toml), and the configure script
+       (run_onchange_after_30-configure-devpod.sh.tmpl) needs to tell an
+       unsupported platform (no binary, by design) apart from a supported
+       one missing its binary (a real error) — sharing this keeps the two
+       checks from drifting apart. Renders the literal string "true" or
+       "false", same convention as is-container. */ -}}
+{{- if and (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}true{{- else -}}false{{- end -}}
