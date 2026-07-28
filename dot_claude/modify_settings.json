@@ -61,17 +61,17 @@ baseline() {
     "security-guidance@claude-plugins-official": true,
     "hookify@claude-plugins-official": true,
     "andrej-karpathy-skills@karpathy-skills": true,
-    "frontend-design@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
     "github@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": false,
+    "feature-dev@claude-plugins-official": false,
     "playwright@claude-plugins-official": true,
     "skill-creator@claude-plugins-official": true,
-    "claude-code-setup@claude-plugins-official": true,
-    "session-report@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": false,
+    "session-report@claude-plugins-official": false,
     "superpowers@claude-plugins-official": true,
     "chrome-devtools-mcp@claude-plugins-official": true,
-    "playground@claude-plugins-official": true,
+    "playground@claude-plugins-official": false,
     "impeccable@impeccable": true
   },
   "extraKnownMarketplaces": {
@@ -104,7 +104,13 @@ baseline() {
     }
   },
   "theme": "dark",
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "skillOverrides": {
+    "workers-best-practices": "off"
+  },
+  "permissions": {
+    "defaultMode": "auto"
+  }
 }
 EOF
 }

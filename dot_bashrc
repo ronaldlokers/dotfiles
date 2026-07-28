@@ -245,3 +245,8 @@ fi
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
+
+# Hand gh's token to the GitHub MCP server, which reads it from the
+# environment. Shared logic, also sourced by dot_zshrc.
+# See ~/.config/shell/github-token.sh.
+[ -r "$HOME/.config/shell/github-token.sh" ] && . "$HOME/.config/shell/github-token.sh"

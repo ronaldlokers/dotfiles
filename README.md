@@ -210,6 +210,16 @@ repo stays the sole authority over which plugins are enabled) while an
 unrecognized top-level key like `agentPushNotifEnabled`, absent from the
 repo's baseline, passes through untouched.
 
+Being the sole authority over `enabledPlugins` means the baseline is where
+plugin state is decided, not `/plugin` — a plugin re-enabled interactively is
+reverted by the next apply, so a lasting change is an edit to
+`modify_settings.json`. The baseline pins the same way for `skillOverrides`
+(individual skills switched off) and `permissions.defaultMode`, which is set
+to `auto`: routine per-action approvals go to the safety classifier instead
+of prompting. That one has to be user-scope — an `auto` default mode in a
+project's own settings is ignored as repo-controllable — and it can't lock
+anyone out, since an unavailable auto mode falls back to prompting.
+
 The third case is not managing the file at all. `~/.devpod/config.yaml` is
 entirely DevPod's own bookkeeping — the provider's `initialized` flag and
 creation timestamp included — so chezmoi doesn't touch it directly;
@@ -462,6 +472,7 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
+| `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` — the merged baseline for `~/.claude/settings.json` (see [Co-owned configuration files](#co-owned-configuration-files)) |
 
 Project-specific tooling (kubectl, flux, krew, ...) is intentionally *not*
 here — it lives in each project's own `mise.toml`.
