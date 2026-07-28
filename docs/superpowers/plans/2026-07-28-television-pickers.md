@@ -371,13 +371,19 @@ if command -v tv > /dev/null ; then
   # bash has no zle, so readline's own READLINE_LINE/READLINE_POINT are how a
   # widget edits the line being typed.
   tv-menu-widget() {
-    local channel selection
+    local channel selection quoted
     channel="$(tv list-channels | tv)" || return 0
     [ -z "$channel" ] && return 0
     selection="$(tv "$channel")" || return 0
     [ -z "$selection" ] && return 0
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${selection}${READLINE_LINE:$READLINE_POINT}"
-    READLINE_POINT=$((READLINE_POINT + ${#selection}))
+    # Quoted the way zsh's `${(q-)}` does it on the other side: the inserted
+    # text has to be one shell word, or a path with a space word-splits into
+    # several bogus arguments the moment the line is submitted. READLINE_POINT
+    # advances by the *quoted* length — quoting can lengthen the string, and
+    # using the raw length puts the cursor in the wrong place.
+    printf -v quoted '%q' "$selection"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${quoted}${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$((READLINE_POINT + ${#quoted}))
   }
 
   # Alt-C cds in this shell rather than the nested one the dirs channel's own
