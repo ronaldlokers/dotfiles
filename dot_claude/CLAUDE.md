@@ -10,7 +10,7 @@
 - Commit subjects use conventional-commit style: `fix: ...`, `feat: ...` — lowercase, imperative.
 
 ## Secrets
-- Secrets age-encrypted (chezmoi `--encrypt` with dotfiles keypair, or sops). Never write secrets plaintext to repo; flag if found.
+- Secrets age-encrypted (`chezmoi encrypt --output <path>.age` with dotfiles keypair, or sops). Never `chezmoi add --encrypt` — makes `encrypted_` source file chezmoi decrypt at apply time, breaks non-interactive apply. Never write secrets plaintext to repo; flag if found.
 
 ## Model routing
 <!-- MODEL-POLICY:START -->
