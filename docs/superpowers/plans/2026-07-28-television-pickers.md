@@ -539,7 +539,9 @@ overlaps atuin and reads `~/.bash_history`, which is a partial record here
 - [ ] **Step 4: Check no stale reference survives**
 
 Run: `grep -rn "Ctrl-X\|ctrl-x\|fzf file picker\|fzf directory picker" README.md dot_zshrc dot_bashrc dot_tmux.conf`
-Expected: no output.
+Expected: at most one hit — `dot_zshrc`'s comment on the sesh widget, explaining that the channel's own `Ctrl-D` is why the hand-written `Ctrl-X` kill binding is gone. That is a legitimate explanation of an absence, not a stale reference; leave it.
+
+Anything else is stale and must go: a README row or a comment that still tells the reader to press a key nothing binds.
 
 (The `docs/superpowers/` spec and plan for the earlier work describe `Ctrl-X` as it was then. Those are historical records — leave them.)
 
