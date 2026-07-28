@@ -1,0 +1,54 @@
+#!/bin/sh
+# DevPod's host-side configuration: which provider runs containers, which IDE it
+# opens, and the context options every workspace inherits. The binary itself is
+# an external (.chezmoiexternals/devpod.toml); this is the setup that used to be
+# three manual commands after installing it.
+#
+# Driven through the CLI rather than by managing ~/.devpod/config.yaml as a file.
+# DevPod writes that file itself — `initialized: true` and `creationTimestamp`
+# under the provider entry are its own bookkeeping — so a managed copy would be
+# reverted on every apply and show as permanent drift in `chezmoi status`.
+set -eu
+
+# Same container test as the DevPod external and the host-packages script, from
+# .chezmoitemplates/is-container so the three can't drift apart. DevPod belongs
+# on the host that starts containers; inside one the binary isn't even installed.
+# The pragmas are unavoidable — CI lints this template, not the rendered script,
+# so shellcheck sees a literal open-brace pair and an assignment it can't follow.
+# shellcheck disable=SC1083
+is_container={{ includeTemplate "is-container" . }}
+# shellcheck disable=SC2154
+if [ "$is_container" = "true" ]; then
+    echo "Inside a container, skipping DevPod configuration." >&2
+    exit 0
+fi
+
+# Not `command -v`: $HOME/.local/bin is on PATH in an interactive shell but not
+# during a clean-HOME apply, where this script runs right after the external has
+# put the binary there.
+devpod="$HOME/.local/bin/devpod"
+if [ ! -x "$devpod" ]; then
+    echo "No devpod binary at $devpod, skipping DevPod configuration." >&2
+    exit 0
+fi
+
+# `provider use` fails when the provider was never added, so it doubles as the
+# "is it already there?" test. `provider add` defaults to --use, so the fallback
+# path also makes docker the default. The alternative — parsing `provider list
+# --output json` — would need jq, which isn't guaranteed to exist yet.
+# docker is internal to the binary ("source": {"internal": true}), so adding it
+# resolves locally and needs no network.
+"$devpod" provider use docker >/dev/null 2>&1 || "$devpod" provider add docker
+
+# Terminal-only workflow: DevPod should start the container and stop, not try to
+# launch an editor.
+"$devpod" ide use none
+
+# Context options, inherited by every workspace:
+# - DOTFILES_URL is what makes a fresh container run this very repo's apply. SSH
+#   rather than HTTPS because the container has the agent forwarded in.
+# - GIT_SSH_SIGNATURE_FORWARDING off: the forwarded agent holds the auth key, and
+#   asking it to sign commits inside the container fails rather than falling back.
+"$devpod" context set-options \
+    -o DOTFILES_URL=git@github.com:ronaldlokers/dotfiles.git \
+    -o GIT_SSH_SIGNATURE_FORWARDING=false
