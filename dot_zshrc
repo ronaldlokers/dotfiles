@@ -195,7 +195,14 @@ if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
   sesh-connect() {
     { exec < /dev/tty; exec <&1; }
     local session
-    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    # Ctrl-X kills the highlighted session and redraws the list in place —
+    # sesh itself has no kill of any kind, so this is tmux's job. `{2..}` is
+    # every field after the icon, which is the bare session name with the
+    # ANSI colouring already stripped by fzf. Most entries are zoxide
+    # directories rather than live sessions; kill-session simply errors on
+    # those, which execute-silent swallows.
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ' \
+      --bind='ctrl-x:execute-silent(tmux kill-session -t {2..})+reload(sesh list --icons)')"
     zle reset-prompt > /dev/null 2>&1 || true
     [ -z "$session" ] && return 0
     sesh connect "$session"

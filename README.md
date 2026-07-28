@@ -101,6 +101,7 @@ behaves the same:
 | `Alt-C` | fzf directory picker |
 | `Ctrl-F` | sesh picker: tmux sessions + zoxide directories |
 | `prefix o` | the same sesh picker, in a tmux popup |
+| `Ctrl-X` | *inside* the picker: kill the highlighted session and redraw |
 
 `Ctrl-R` used to be fzf's. Both tools bind it explicitly, so the one initialised
 last in the rc file wins — atuin's block sits below fzf's in both files, and
