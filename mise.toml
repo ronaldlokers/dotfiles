@@ -19,7 +19,7 @@ gitleaks = "8.30.1"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh dot_local/share/devcontainer-template/post-create.sh dot_local/bin/executable_devcontainer-init",
+	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl .chezmoiscripts/run_after_12-ensure-ssh-include.sh dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh dot_local/share/devcontainer-template/post-create.sh dot_local/bin/executable_devcontainer-init",
 	"jq empty dot_claude/settings.json",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
