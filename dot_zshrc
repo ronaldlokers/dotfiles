@@ -111,7 +111,9 @@ fi
 # fzf's own widgets are gone: atuin owns Ctrl-R, tv owns Ctrl-T and Alt-C (see
 # the tv block further down), and `source <(fzf --zsh)` was left binding
 # nothing. fzf itself stays — fzf-tab, the completion menu loaded at the
-# bottom of this file, is built on it and reads FZF_DEFAULT_COMMAND.
+# bottom of this file, is built on it, though fzf-tab pipes its own
+# candidates to fzf and never reads this variable. FZF_DEFAULT_COMMAND is
+# kept for ad-hoc `fzf` invocations.
 if command -v fzf > /dev/null && command -v fd > /dev/null ; then
   export FZF_DEFAULT_COMMAND="fd --type f --hidden --exclude .git"
 fi
