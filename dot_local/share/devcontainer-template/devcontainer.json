@@ -3,23 +3,14 @@
   // below with the directory name. Starting point only — ports, mounts and
   // extra features are per-project and belong in the copy, not here.
   "name": "__PROJECT_NAME__",
-  "image": "debian:trixie",
+  // Built from the Dockerfile beside this file rather than pulled as an
+  // image: the user, sudo, zsh and locale setup that devcontainer features
+  // used to provide has to happen somewhere, and those features refuse to
+  // run on Arch.
+  "build": { "dockerfile": "Dockerfile" },
   "remoteUser": "dev",
+  // Keeps the container user's UID in step with the host's, so files
+  // written in the workspace are not owned by the wrong id.
   "updateRemoteUserUID": true,
-  // The same pattern the upstream base-debian image uses to create its user:
-  // common-utils sets up the account, the sudoers entry and zsh, so there are no
-  // manual usermod hacks in post-create.
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "username": "dev",
-      "userUid": "1000",
-      "userGid": "1000",
-      "installZsh": true,
-      "configureZshAsDefaultShell": true,
-      "upgradePackages": true
-    },
-    "ghcr.io/devcontainers/features/git:1": { "version": "os-provided" },
-    "ghcr.io/devcontainers-extra/features/mise:1": {}
-  },
   "postCreateCommand": "bash .devcontainer/post-create.sh"
 }
