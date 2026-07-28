@@ -123,12 +123,14 @@ else in either rc file binds either key. fzf itself stays installed
 regardless: tv owns the pickers above and atuin owns history search, but
 zsh's completion menu (fzf-tab) is built on fzf and still needs it on `PATH`.
 
-Bash lost something in this move, with no replacement: dropping `eval "$(fzf
---bash)"` also dropped fzf's `**<TAB>` path-completion trigger (type a path
-fragment, `**`, then Tab, for a fuzzy-complete menu). fzf-tab, mentioned just
-above, is zsh's completion menu and a zsh plugin — it was never wired into
-bash, so there's nothing there to carry the trigger over either. `Ctrl-T`/
-`Alt-C` above are the closest substitutes; bash's `**<TAB>` is simply gone.
+Bash keeps fzf's `**<TAB>` path-completion trigger — type a path fragment,
+`**`, then Tab for a fuzzy-complete menu — because `dot_bashrc` sources the
+*completion half* of `fzf --bash` and nothing else. Sourcing the whole thing
+would also install fzf's `Ctrl-T`, `Alt-C` and `Ctrl-R` bindings; tv and atuin
+override most of those, but atuin only binds `Ctrl-R` in the emacs and
+vi-insert keymaps, so fzf's would survive in vi-command and `Esc` then `Ctrl-R`
+would open the wrong history search. The completion half needs one variable
+(`__fzf_awk`) from the other half, which `dot_bashrc` sets itself.
 
 atuin history is **local to each machine and each container**: sync is off, so a
 rebuilt devpod container starts with an empty database.
