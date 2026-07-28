@@ -179,12 +179,6 @@ elif command -v mise > /dev/null ; then
   eval "$(mise activate bash)"
 fi
 
-# fzf keybindings (fuzzy Ctrl-R etc.), same as in .zshrc, so bash
-# stays usable on machines where zsh isn't the login shell yet
-if command -v fzf > /dev/null ; then
-  eval "$(fzf --bash)"
-fi
-
 # Syntax-highlighted, paged man pages, same as in .zshrc. `col -bx` strips
 # the backspace-overstrike sequences groff emits for bold and underline,
 # which bat would otherwise print literally; MANROFFOPT=-c stops newer
@@ -244,21 +238,54 @@ if command -v lsd > /dev/null ; then
   alias tree='ls --tree'
 fi
 
-# Ctrl-F opens the sesh picker, same as in .zshrc. Bound into both keymaps:
-# `set -o vi` at the top of the custom section means an emacs-only binding
-# would never fire.
-if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
-  sesh-connect() {
-    local session
-    # Ctrl-X kills the highlighted session, same as in .zshrc — see the
-    # comment there for why `{2..}` is the session name.
-    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ' \
-      --bind='ctrl-x:execute-silent(tmux kill-session -t {2..})+reload(sesh list --icons)')"
-    [ -z "$session" ] && return 0
-    sesh connect "$session"
+# tv's pickers, mirroring .zshrc — see the comments there, including why the
+# Ctrl-T menu is two `tv` calls rather than the `channels` meta-channel. Bound
+# into emacs, vi-insert *and* vi-command because `set -o vi` at the top of
+# this section means an emacs-only binding would never fire, and vi-command is
+# reachable from vi-insert with a single Esc — fzf's own `--bash` integration
+# bound all three for the same reason, and atuin does too.
+if command -v tv > /dev/null ; then
+  # bash has no zle, so readline's own READLINE_LINE/READLINE_POINT are how a
+  # widget edits the line being typed.
+  tv-menu-widget() {
+    local channel selection quoted
+    channel="$(tv list-channels | tv)" || return 0
+    [ -z "$channel" ] && return 0
+    selection="$(tv "$channel")" || return 0
+    [ -z "$selection" ] && return 0
+    # Quote before splicing in, mirroring zsh's ${(q-)selection}: unquoted, a
+    # path with a space would word-split into several bogus arguments the
+    # moment the line is submitted, instead of the one real path tv picked.
+    # Trailing space matches zsh's widget (`... ${(q-)selection} `) — without
+    # it, typing right after an insertion runs the next characters straight
+    # into the selection instead of starting a new word. READLINE_POINT
+    # advances by the length of what was actually inserted (quoted string plus
+    # that space), not the raw selection's — quoting can grow the string, and
+    # using the wrong length would leave the cursor short of where the
+    # inserted text actually ends.
+    printf -v quoted '%q' "$selection"
+    quoted="${quoted} "
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${quoted}${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$((READLINE_POINT + ${#quoted}))
   }
-  bind -m emacs -x '"\C-f": sesh-connect'
-  bind -m vi-insert -x '"\C-f": sesh-connect'
+
+  # Alt-C cds in this shell rather than the nested one the dirs channel's own
+  # cd action would spawn.
+  tv-dirs-widget() {
+    local dir
+    dir="$(tv dirs)" || return 0
+    [ -z "$dir" ] && return 0
+    cd "$dir" || return 0
+  }
+
+  tv-sesh-widget() { tv sesh; }
+
+  for keymap in emacs vi-insert vi-command; do
+    bind -m "$keymap" -x '"\C-t": tv-menu-widget'
+    bind -m "$keymap" -x '"\ec": tv-dirs-widget'
+    bind -m "$keymap" -x '"\C-f": tv-sesh-widget'
+  done
+  unset keymap
 fi
 
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
@@ -326,8 +353,8 @@ if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
   precmd_functions+=(__bp_reassert_ignorespace)
 fi
 
-# atuin owns Ctrl-R here too, same as in .zshrc — after the fzf block above,
-# since whichever binds last wins. Settings are shared: ~/.config/atuin/config.toml.
+# atuin owns Ctrl-R here too, same as in .zshrc. Settings are shared:
+# ~/.config/atuin/config.toml.
 #
 # --disable-ai: atuin's default init also binds `?` to its account-gated AI
 # TUI. In bash this lands in vi-insert (set -o vi runs earlier in this file),

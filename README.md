@@ -45,6 +45,20 @@ The coreutils replacements (`dust`, `duf`, `btop`, `sd`, `jless`) are in mise fo
 the same reason — a container has no pacman, and reaching for `du` inside one
 should not be a worse experience than on the host.
 
+tv's channels come from a pinned archive external rather than `tv
+update-channels`, so the host and a container see the same set, and Renovate
+bumps them with everything else. Several are host-only in practice:
+`pacman-packages`, `systemd-units`, the `docker-*` pair and `tldr` have nothing
+to list inside a devpod container, and the `k8s-*` channels need a `kubectl` on
+PATH, which comes from a project's own `mise.toml` rather than the global pin.
+An empty channel there is the tool missing, not the channel broken.
+
+Three channels in the `Ctrl-T` list — `bash-history`, `git-diff` and `text` —
+come from tv itself rather than that set: tv compiles ten defaults into the
+binary, and only a same-named channel file can override one. `bash-history`
+overlaps atuin and reads `~/.bash_history`, which is a partial record here
+(see the keybindings section); atuin's `Ctrl-R` remains the full history.
+
 Ghostty is the entry that only looks like it breaks that rule: it runs in a
 terminal because it *is* the terminal, and it needs a display, so it's a desktop
 app. Which terminal `Super + Return` opens is a separate question, answered by
@@ -97,15 +111,24 @@ behaves the same:
 | --- | --- |
 | `Ctrl-R` | atuin history search, all directories |
 | `Up` | atuin history search, this directory only |
-| `Ctrl-T` | fzf file picker |
-| `Alt-C` | fzf directory picker |
-| `Ctrl-F` | sesh picker: tmux sessions + zoxide directories |
-| `prefix o` | the same sesh picker, in a tmux popup |
-| `Ctrl-X` | *inside* the picker: kill the highlighted session and redraw |
+| `Ctrl-T` | tv channel menu — pick a channel, then pick in it; the result lands on the command line |
+| `Alt-C` | tv directory picker, cds this shell |
+| `Ctrl-F` | tv sesh channel: tmux sessions + zoxide directories |
+| `prefix o` | the same sesh channel, in a tmux popup |
+| `Ctrl-S` | *inside* the sesh channel: cycle source (all/tmux/configs/zoxide/dirs) |
+| `Ctrl-D` | *inside* the sesh channel: kill the highlighted session and reload |
 
-`Ctrl-R` used to be fzf's. Both tools bind it explicitly, so the one initialised
-last in the rc file wins — atuin's block sits below fzf's in both files, and
-moving it breaks the binding silently.
+`Ctrl-R` used to be fzf's; atuin owns it and `Up` exclusively now — nothing
+else in either rc file binds either key. fzf itself stays installed
+regardless: tv owns the pickers above and atuin owns history search, but
+zsh's completion menu (fzf-tab) is built on fzf and still needs it on `PATH`.
+
+Bash lost something in this move, with no replacement: dropping `eval "$(fzf
+--bash)"` also dropped fzf's `**<TAB>` path-completion trigger (type a path
+fragment, `**`, then Tab, for a fuzzy-complete menu). fzf-tab, mentioned just
+above, is zsh's completion menu and a zsh plugin — it was never wired into
+bash, so there's nothing there to carry the trigger over either. `Ctrl-T`/
+`Alt-C` above are the closest substitutes; bash's `**<TAB>` is simply gone.
 
 atuin history is **local to each machine and each container**: sync is off, so a
 rebuilt devpod container starts with an empty database.
@@ -116,11 +139,11 @@ Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
 self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
-`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec) refresh
-weekly on `chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans
-history with gitleaks, and test-bootstraps the repo into a clean HOME on
-every push, PR, and a weekly canary run. Two jobs cover paths the clean-HOME
-bootstrap can't reach:
+`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec, tv's
+channel set) refresh weekly on `chezmoi apply`. CI
+(`.github/workflows/ci.yaml`) lints, scans history with gitleaks, and
+test-bootstraps the repo into a clean HOME on every push, PR, and a weekly
+canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
 `host-ssh-agent` brings up a real systemd user session, and `container-gates`
 runs inside an Arch container to prove the host-only gates actually skip there.
 Renovate automerges patch/minor bumps once CI is green; majors wait for review.
@@ -497,13 +520,14 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 
 | Path | Contents |
 | --- | --- |
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), tv pickers (`Ctrl-T`/`Alt-C`/`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_config/lazygit/` | lazygit config: delta as diff pager |
-| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, sesh picker, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
-| `dot_tmux.conf` | tmux config; `prefix o` opens the sesh session picker |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's tv keys, zoxide-backed `cd`, atuin history, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+| `dot_tmux.conf` | tmux config; `prefix o` opens the tv sesh channel |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/atuin/` | atuin: SQLite shell history, sync deliberately off — container history is local and dies with the container |
+| `dot_config/television/` | television: the one locally-modified channel (`cable/alias.toml`); the rest arrive from a pinned external |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` — the merged baseline for `~/.claude/settings.json` (see [Co-owned configuration files](#co-owned-configuration-files)) |
 

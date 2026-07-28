@@ -1,0 +1,45 @@
+# Upstream's channel definitions, pinned rather than pulled at runtime by
+# `tv update-channels`, which would drop unversioned files into $HOME outside
+# chezmoi's control. The include list is the curated set: everything here has
+# a tool behind it on at least one machine (see README for which are
+# host-only). `channels` is deliberately absent — the Ctrl-T menu is built
+# from `tv list-channels` in the shell widgets, because a channel launched by
+# the meta-channel's execute action writes its selection to the terminal
+# instead of back to the caller.
+# renovate: datasource=github-tags depName=alexpasmantier/television
+{{ $televisionVersion := "0.15.9" }}
+[".config/television/cable"]
+type = "archive"
+url = "https://github.com/alexpasmantier/television/archive/refs/tags/{{ $televisionVersion }}.tar.gz"
+stripComponents = 3
+refreshPeriod = "168h"
+include = [
+	"*/cable/unix/files.toml",
+	"*/cable/unix/dirs.toml",
+	"*/cable/unix/zoxide.toml",
+	"*/cable/unix/sesh.toml",
+	"*/cable/unix/tmux-sessions.toml",
+	"*/cable/unix/tmux-windows.toml",
+	"*/cable/unix/git-branch.toml",
+	"*/cable/unix/git-log.toml",
+	"*/cable/unix/git-stash.toml",
+	"*/cable/unix/git-worktrees.toml",
+	"*/cable/unix/git-repos.toml",
+	"*/cable/unix/gh-prs.toml",
+	"*/cable/unix/gh-issues.toml",
+	"*/cable/unix/k8s-contexts.toml",
+	"*/cable/unix/k8s-pods.toml",
+	"*/cable/unix/k8s-services.toml",
+	"*/cable/unix/k8s-deployments.toml",
+	"*/cable/unix/pacman-packages.toml",
+	"*/cable/unix/systemd-units.toml",
+	"*/cable/unix/ports.toml",
+	"*/cable/unix/procs.toml",
+	"*/cable/unix/mounts.toml",
+	"*/cable/unix/man-pages.toml",
+	"*/cable/unix/tldr.toml",
+	"*/cable/unix/env.toml",
+	"*/cable/unix/path.toml",
+	"*/cable/unix/docker-containers.toml",
+	"*/cable/unix/docker-images.toml",
+]

@@ -108,18 +108,14 @@ if [ -z "${_omarchy_zsh:-}" ]; then
   fi
 fi
 
-if command -v fzf > /dev/null ; then
-  source <(fzf --zsh)
-
-  if command -v fd > /dev/null ; then
-    export FZF_DEFAULT_COMMAND="fd --type f --hidden --exclude .git"
-    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-    export FZF_ALT_C_COMMAND="fd --type d --hidden --exclude .git"
-  fi
-
-  if command -v bat > /dev/null ; then
-    export FZF_CTRL_T_OPTS="--preview 'bat --color=always --style=numbers --line-range=:200 {}'"
-  fi
+# fzf's own widgets are gone: atuin owns Ctrl-R, tv owns Ctrl-T and Alt-C (see
+# the tv block further down), and `source <(fzf --zsh)` was left binding
+# nothing. fzf itself stays — fzf-tab, the completion menu loaded at the
+# bottom of this file, is built on it, though fzf-tab pipes its own
+# candidates to fzf and never reads this variable. FZF_DEFAULT_COMMAND is
+# kept for ad-hoc `fzf` invocations.
+if command -v fzf > /dev/null && command -v fd > /dev/null ; then
+  export FZF_DEFAULT_COMMAND="fd --type f --hidden --exclude .git"
 fi
 
 # zoxide wants to run after compinit. --cmd cd replaces cd outright rather than
@@ -151,9 +147,9 @@ setopt share_history      # share history between all shells (tmux panes)
 setopt hist_ignore_dups   # don't record consecutive duplicates
 setopt hist_ignore_space  # don't record commands starting with a space
 
-# atuin owns Ctrl-R from here on. Initialisation has to come *after* the fzf
-# block above: both bind Ctrl-R explicitly, and whichever runs last wins. fzf
-# keeps Ctrl-T (files) and Alt-C (cd). Up is atuin's directory-filtered search,
+# atuin is the only thing binding Ctrl-R now — the fzf block above just
+# exports FZF_DEFAULT_COMMAND and binds nothing, and tv (further down) owns
+# Ctrl-T and Alt-C instead. Up is atuin's directory-filtered search,
 # configured in ~/.config/atuin/config.toml.
 #
 # The zsh options above still apply: atuin records into its own database, but
@@ -182,35 +178,62 @@ prompt pure
 bindkey -v
 export KEYTIMEOUT=1 # make switching between modes faster
 
-# Ctrl-F opens the sesh picker: live tmux sessions and zoxide's directory list
-# in one fzf prompt, attaching or creating as needed. Bound here, after
-# `bindkey -v` above, and into all three keymaps — vi mode means a binding on
-# the emacs keymap alone would be dead.
+# tv's pickers, bound into every keymap that is actually live: `bindkey -v`
+# above means an emacs-only binding would be dead in insert mode, which is
+# where these are used.
 #
-# The stdin/stdout redirection is a defensive habit borrowed from sesh's own
-# documented zsh widget, not something this widget has been observed to need
-# under normal use — it guards against stdin ever not being the tty. `zle
-# reset-prompt` afterwards is what actually restores the prompt.
-if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
-  sesh-connect() {
-    { exec < /dev/tty; exec <&1; }
-    local session
-    # Ctrl-X kills the highlighted session and redraws the list in place —
-    # sesh itself has no kill of any kind, so this is tmux's job. `{2..}` is
-    # every field after the icon, which is the bare session name with the
-    # ANSI colouring already stripped by fzf. Most entries are zoxide
-    # directories rather than live sessions; kill-session simply errors on
-    # those, which execute-silent swallows.
-    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ' \
-      --bind='ctrl-x:execute-silent(tmux kill-session -t {2..})+reload(sesh list --icons)')"
-    zle reset-prompt > /dev/null 2>&1 || true
-    [ -z "$session" ] && return 0
-    sesh connect "$session"
+# `tv init zsh` is deliberately not sourced — in 0.15.9 it emits completions
+# only, no bindings, so these widgets are the whole integration.
+if command -v tv > /dev/null ; then
+  # Ctrl-T is the channel menu: pick a channel, then pick inside it, and the
+  # result lands on the command line. It is two `tv` calls rather than the
+  # `channels` meta-channel because that channel's enter action runs `tv {}`
+  # in execute mode, and the inner picker then writes its selection to the
+  # terminal instead of back here — the command line would stay empty.
+  #
+  # Channels whose enter action *does* something (sesh connects, git-branch
+  # checks out) print nothing, so nothing is inserted. That is correct: the
+  # action already happened.
+  tv-menu-widget() {
+    local channel selection
+    channel="$(tv list-channels | tv)" || return 0
+    [ -z "$channel" ] && return 0
+    selection="$(tv "$channel")" || return 0
+    [ -n "$selection" ] && LBUFFER="${LBUFFER}${(q-)selection} "
+    zle reset-prompt
   }
-  zle -N sesh-connect
-  bindkey -M emacs '^F' sesh-connect
-  bindkey -M viins '^F' sesh-connect
-  bindkey -M vicmd '^F' sesh-connect
+
+  # Alt-C changes directory in *this* shell. The dirs channel ships an
+  # `[actions.cd]` running `cd {} && $SHELL`, which would strand the user in a
+  # nested shell — so take the printed path and cd here instead.
+  tv-dirs-widget() {
+    local dir
+    dir="$(tv dirs)" || return 0
+    [ -z "$dir" ] && return 0
+    cd "$dir" || return 0
+    zle reset-prompt
+  }
+
+  # Ctrl-F is the sesh picker. Unlike the fzf pipeline it replaces, the
+  # channel's own enter action runs `sesh connect`, so there is nothing to
+  # capture. Ctrl-S cycles sources (all/tmux/configs/zoxide/dirs) and Ctrl-D
+  # kills the highlighted session and reloads — both from the channel, which
+  # is why the hand-written Ctrl-X kill binding is gone.
+  tv-sesh-widget() {
+    tv sesh
+    zle reset-prompt
+  }
+
+  zle -N tv-menu-widget
+  zle -N tv-dirs-widget
+  zle -N tv-sesh-widget
+
+  for keymap in emacs viins vicmd; do
+    bindkey -M "$keymap" '^T' tv-menu-widget
+    bindkey -M "$keymap" '^[c' tv-dirs-widget
+    bindkey -M "$keymap" '^F' tv-sesh-widget
+  done
+  unset keymap
 fi
 
 
