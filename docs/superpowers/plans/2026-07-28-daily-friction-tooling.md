@@ -438,10 +438,13 @@ Expected: at least one binding line mentioning atuin, and `preexec_functions` pr
 
 - [ ] **Step 8: Update the README**
 
-In the Layout table, change the `dot_bashrc` row to:
+In the Layout table, change the `dot_bashrc` row to (sesh-free deliberately,
+same reasoning as Task 3's `dot_zshrc` row: sesh doesn't exist yet at this
+point in the branch — Task 6 adds the mention back once it lands, see its
+Step 9):
 
 ```markdown
-| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, sesh picker, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
 ```
 
 In the Updates section, change "Externals (mise binary, zsh plugins) refresh weekly on `chezmoi apply`." to:
@@ -711,6 +714,19 @@ to:
 
 ```markdown
 | `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
+```
+
+Also in the Layout table, change the `dot_bashrc` row (Task 4 left it
+sesh-free deliberately, for the same reason) from:
+
+```markdown
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+```
+
+to:
+
+```markdown
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, sesh picker, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
 ```
 
 - [ ] **Step 10: Commit**

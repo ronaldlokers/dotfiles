@@ -149,22 +149,24 @@ export PROMPT_DIRTRIM=4
 
 # Check if the terminal is xterm
 if [[ "$TERM" == "xterm" ]]; then
-    # Function to set the terminal title to the current command
-    preexec() {
-        local cmd="${BASH_COMMAND}"
+    # These were plain `preexec`/`precmd` functions driving their own DEBUG
+    # trap. bash-preexec (sourced at the end of this file, for atuin) installs
+    # *its* DEBUG trap and calls anything named `preexec`, so the old shape
+    # would either lose the trap or fire the title twice. Registering renamed
+    # functions on bash-preexec's arrays is the supported way to do this, and
+    # the arrays are plain variables — appending here, before the shim loads,
+    # is fine.
+    __title_preexec() {
+        local cmd="$1"
         echo -ne "\033]0;${USER}@${HOSTNAME}: ${cmd}\007"
     }
 
-    # Function to reset the terminal title to the shell type after the command is executed
-    precmd() {
+    __title_precmd() {
         echo -ne "\033]0;${USER}@${HOSTNAME}: ${SHELL}\007"
     }
 
-    # Trap DEBUG signal to call preexec before each command
-    trap 'preexec' DEBUG
-
-    # Append to PROMPT_COMMAND to call precmd before displaying the prompt
-    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }precmd"
+    preexec_functions+=(__title_preexec)
+    precmd_functions+=(__title_precmd)
 fi
 
 # Ronald's Custom Additions
@@ -250,3 +252,19 @@ fi
 # environment. Shared logic, also sourced by dot_zshrc.
 # See ~/.config/shell/github-token.sh.
 [ -r "$HOME/.config/shell/github-token.sh" ] && . "$HOME/.config/shell/github-token.sh"
+
+# bash-preexec gives bash the preexec/precmd hooks atuin needs; it is a chezmoi
+# external (.chezmoiexternals/bash-preexec.toml). Guarded on the file so a shell
+# still starts on a machine that hasn't applied since this change, or in a
+# container where the external hasn't been fetched. Sourced this late on
+# purpose: it adopts whatever PROMPT_COMMAND already holds, which by now
+# includes zoxide's hook.
+if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
+  . "$HOME/.bash/bash-preexec.sh"
+fi
+
+# atuin owns Ctrl-R here too, same as in .zshrc — after the fzf block above,
+# since whichever binds last wins. Settings are shared: ~/.config/atuin/config.toml.
+if command -v atuin > /dev/null ; then
+  eval "$(atuin init bash)"
+fi

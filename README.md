@@ -94,10 +94,11 @@ Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
 self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
-`workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
-`chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans history with
-gitleaks, and test-bootstraps the repo into a clean HOME on every push, PR, and
-a weekly canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
+`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec) refresh
+weekly on `chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans
+history with gitleaks, and test-bootstraps the repo into a clean HOME on
+every push, PR, and a weekly canary run. Two jobs cover paths the clean-HOME
+bootstrap can't reach:
 `host-ssh-agent` brings up a real systemd user session, and `container-gates`
 runs inside an Arch container to prove the host-only gates actually skip there.
 Renovate automerges patch/minor bumps once CI is green; majors wait for review.
@@ -472,7 +473,7 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 | `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_config/lazygit/` | lazygit config: delta as diff pager |
-| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
 | `dot_tmux.conf` | tmux config |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/atuin/` | atuin: SQLite shell history, sync deliberately off — container history is local and dies with the container |
