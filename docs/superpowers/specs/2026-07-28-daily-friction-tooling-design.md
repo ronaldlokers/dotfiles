@@ -90,9 +90,12 @@ to match the other externals.
   history, `Ctrl-R` searches everything.
 - inline height rather than fullscreen, so the picker does not blow away the screen.
 
-`dot_config/sesh/sesh.toml`: minimal. zoxide and tmux as sources, plus the projects
-root read from `XDG_PROJECTS_DIR` (declared in `~/.config/user-dirs.dirs`, the same
-place `repos-sync` reads it from, with the same `$HOME/Projects` fallback).
+sesh gets **no** config file. Its list is built from live tmux sessions plus
+zoxide's database, and it has no "scan this directory" source to point at
+`XDG_PROJECTS_DIR` — so a config file here would carry nothing but defaults. The
+gap that leaves is a freshly cloned repo that has never been `cd`'d into and so is
+absent from zoxide. `repos-sync` closes it: after a successful clone it runs
+`zoxide add` on the new checkout, guarded on zoxide being installed.
 
 ### Shell wiring
 
@@ -140,15 +143,21 @@ machine the import would run before atuin existed, find nothing, and — being
 
 ## Verification
 
-`mise run all` — shellcheck over the scripts, gitleaks over history, and the
+`mise run check` — shellcheck over the scripts, gitleaks over history, and the
 clean-HOME bootstrap that CI runs.
 
-Then, because a broken shell init line is invisible to all of the above:
+A broken shell init line is invisible to all three: neither rc file is in the
+shellcheck list, and the bootstrap never starts a shell. So a fourth repo task,
+`mise run shells`, is added and folded into `check`. It starts each installed
+shell interactively and fails on any output or non-zero exit:
 
 ```sh
 zsh -ic true    # must exit 0, no output
 bash -ic true   # must exit 0, no output
 ```
+
+It reads the *applied* files in `$HOME`, so it runs after `chezmoi apply`, and it
+stays out of CI, which has no applied `$HOME` to start a shell in.
 
 And by hand, once, on the host: `Ctrl-R` opens atuin, `Up` shows only this
 directory's commands, `Ctrl-T` and `Alt-C` still open fzf, `Ctrl-F` and `prefix o`
@@ -163,8 +172,16 @@ the change silently does nothing visible. Caught by the manual check above.
 history. Direct consequence of the local-only decision, documented in the README so
 it does not read as a bug later.
 
-**Renovate coverage.** The `github:` backend pin and the new external both need the
-comment markers Renovate keys on, or they silently stop being updated.
+**Renovate coverage.** The new external needs the `# renovate:` comment marker the
+repo's custom regex manager keys on, or it silently stops being updated. The `sesh`
+pin needs nothing extra — Renovate's mise manager supports the `github:` backend
+natively.
+
+**bash DEBUG trap collision.** `dot_bashrc` already defines `preexec`/`precmd` and
+installs its own `trap ... DEBUG` for xterm titles. bash-preexec takes over the
+DEBUG trap and invokes any function named `preexec`, so leaving both in place risks
+a lost trap or a double invocation. The title functions get renamed and registered
+through bash-preexec's `preexec_functions`/`precmd_functions` arrays instead.
 
 ## Documentation
 
