@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Scaffold a project devcontainer from the managed starter in
+# ~/.local/share/devcontainer-template. Exists because the alternative is copying
+# .devcontainer/ out of whichever project last had one and deleting its
+# project-specific parts by hand — which is how the template drifts.
+
+template="${XDG_DATA_HOME:-$HOME/.local/share}/devcontainer-template"
+target=".devcontainer"
+force=false
+
+usage() {
+	cat >&2 <<'EOF'
+usage: devcontainer-init [--force]
+
+Writes .devcontainer/{devcontainer.json,post-create.sh} into the current
+directory, naming the container after the directory.
+
+  --force   overwrite an existing .devcontainer/
+EOF
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--force) force=true ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "unknown argument: $1" >&2
+		usage
+		exit 2
+		;;
+	esac
+	shift
+done
+
+if [ ! -d "$template" ]; then
+	echo "no template at $template — run 'chezmoi apply' first" >&2
+	exit 1
+fi
+
+if [ -e "$target" ] && [ "$force" = false ]; then
+	echo "$target already exists; pass --force to overwrite" >&2
+	exit 1
+fi
+
+# The directory name, verbatim. Casing is left alone: a project called WalkFit
+# should show up as WalkFit in `devpod list`, not walkfit.
+name="$(basename "$PWD")"
+
+mkdir -p "$target"
+# The placeholder is substituted only in devcontainer.json; post-create.sh is
+# copied as-is. A plain cp for the latter keeps it obvious that nothing is
+# rewritten there.
+sed "s/__PROJECT_NAME__/$name/" "$template/devcontainer.json" >"$target/devcontainer.json"
+cp "$template/post-create.sh" "$target/post-create.sh"
+
+echo "wrote $target/devcontainer.json"
+echo "wrote $target/post-create.sh"
