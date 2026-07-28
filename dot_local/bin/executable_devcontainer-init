@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# patsub_replacement (on by default since bash 5.2) makes a bare & in the
+# replacement of ${var//pattern/replacement} stand for the matched text, the
+# same way sed's & does. Turned off so the substitution near the bottom of
+# this script is always purely literal, regardless of this bash's default.
+shopt -u patsub_replacement
+
 # Scaffold a project devcontainer from the managed starter in
 # ~/.local/share/devcontainer-template. Exists because the alternative is copying
 # .devcontainer/ out of whichever project last had one and deleting its
@@ -42,8 +48,11 @@ if [ ! -d "$template" ]; then
 	exit 1
 fi
 
-if [ -e "$target" ] && [ "$force" = false ]; then
-	echo "$target already exists; pass --force to overwrite" >&2
+# Both files are required before anything is written. A half-built template
+# (or one caught mid `chezmoi apply`) fails loudly here instead of leaving a
+# half-written .devcontainer/ behind for the next run to trip over.
+if [ ! -f "$template/devcontainer.json" ] || [ ! -f "$template/post-create.sh" ]; then
+	echo "incomplete template at $template — expected devcontainer.json and post-create.sh" >&2
 	exit 1
 fi
 
@@ -51,12 +60,58 @@ fi
 # should show up as WalkFit in `devpod list`, not walkfit.
 name="$(basename "$PWD")"
 
+# A name with a double quote, a backslash, or a control character (a newline
+# included) can't be dropped raw into the JSON "name" field below. This
+# script deliberately doesn't escape it — refusing is honest, the case is
+# rare, and renaming the directory is the real fix.
+if [[ "$name" == *'"'* || "$name" == *'\'* || "$name" =~ [[:cntrl:]] ]]; then
+	echo "directory name '$name' can't go into JSON as-is (contains \", \\, or a control character) — rename the directory and try again" >&2
+	exit 1
+fi
+
+# A symlinked .devcontainer is refused outright, --force or not: following it
+# would write straight through into whatever directory it points at,
+# silently, outside the project.
+if [ -L "$target" ]; then
+	echo "$target is a symlink; refusing to write through it" >&2
+	exit 1
+fi
+
+if [ -e "$target" ] && [ "$force" = false ]; then
+	echo "$target already exists; pass --force to overwrite" >&2
+	exit 1
+fi
+
+# Build the new .devcontainer in a scratch directory first, and only move it
+# into place once both files have been written successfully — so a failure
+# partway through (a full disk, an interrupted run) never leaves a
+# half-written target for the next invocation to mistake for a real one.
+staging="$(mktemp -d "${TMPDIR:-/tmp}/devcontainer-init.XXXXXX")"
+trap 'rm -rf "$staging"' EXIT
+
+# Bash pattern substitution, not sed: the replacement is used literally, so
+# a name containing a sed-special character like & or \ can't corrupt the
+# output the way `sed "s/.../$name/"` would.
+template_json="$(cat "$template/devcontainer.json")"
+printf '%s\n' "${template_json//__PROJECT_NAME__/$name}" >"$staging/devcontainer.json"
+# post-create.sh is copied as-is; nothing is rewritten there.
+cp "$template/post-create.sh" "$staging/post-create.sh"
+
+# Only reachable with an existing $target when --force was passed — the
+# non-force case already exited above, and the symlink case already exited
+# even earlier, so this never follows a link. A real directory is cleared
+# recursively; a plain file is just removed.
+if [ -e "$target" ]; then
+	if [ -d "$target" ]; then
+		rm -rf "$target"
+	else
+		rm -f "$target"
+	fi
+fi
+
 mkdir -p "$target"
-# The placeholder is substituted only in devcontainer.json; post-create.sh is
-# copied as-is. A plain cp for the latter keeps it obvious that nothing is
-# rewritten there.
-sed "s/__PROJECT_NAME__/$name/" "$template/devcontainer.json" >"$target/devcontainer.json"
-cp "$template/post-create.sh" "$target/post-create.sh"
+mv "$staging/devcontainer.json" "$target/devcontainer.json"
+mv "$staging/post-create.sh" "$target/post-create.sh"
 
 echo "wrote $target/devcontainer.json"
 echo "wrote $target/post-create.sh"
