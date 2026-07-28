@@ -60,16 +60,49 @@ if [ ! -e "$config" ]; then
 	exit 0
 fi
 
-if grep -qxF "$include_line" "$config"; then
-	# Common path, runs on every apply: already in place, nothing to do and
-	# nothing to say.
+# Presence alone isn't the invariant -- position is. OpenSSH takes the
+# *first* value it sees for a given keyword and scopes anything below a
+# `Host`/`Match` line to that block, so an Include that exists but sits below
+# one only applies there (or nowhere relevant), while `grep -qxF` would
+# happily report it as already in place. A config that reads
+#   Host myws.devpod
+#     User vscode
+#   Include config.d/*.conf
+# has the line, but `ssh -G` for any other host never picks up the fragment.
+# Don't "simplify" this back to a presence check -- find the first line
+# number the Include appears on and the first line number a Host/Match block
+# starts on (ignoring comments, since a commented-out `# Host ...` isn't a
+# block), and only treat the Include as correctly placed if it comes first
+# (or there's no Host/Match block at all yet).
+position_ok="$(awk -v inc="$include_line" '
+	BEGIN { inc_line = 0; host_line = 0 }
+	{
+		if (inc_line == 0 && $0 == inc) inc_line = NR
+		line = $0
+		sub(/^[ \t]+/, "", line)
+		if (host_line == 0 && line !~ /^#/ && line ~ /^([Hh][Oo][Ss][Tt]|[Mm][Aa][Tt][Cc][Hh])[ \t]/) host_line = NR
+	}
+	END {
+		if (inc_line > 0 && (host_line == 0 || inc_line < host_line)) print "ok"
+		else print "no"
+	}
+' "$config")"
+
+if [ "$position_ok" = "ok" ]; then
+	# Common path, runs on every apply: already in place and above any
+	# Host/Match block, nothing to do and nothing to say.
 	exit 0
 fi
 
-# From here the file needs rewriting: the Include is missing, so it has to be
-# prepended (OpenSSH takes the first value it sees for any keyword, so this
-# has to end up above DevPod's blocks). Preserve the mode before touching
-# anything.
+# From here the file needs rewriting: the Include is either missing or sits
+# below a Host/Match block, so a correct one has to be prepended (OpenSSH
+# takes the first value it sees for any keyword, so this has to end up above
+# DevPod's blocks). If a misplaced Include already exists further down, this
+# leaves it in place rather than trying to delete it -- OpenSSH is
+# first-value-wins, so the duplicate is inert, and hunting it out of
+# arbitrary surrounding content (possibly inside a Host/Match block meant to
+# stay exactly as-is) is a much easier way to corrupt someone's config than
+# a harmless extra line. Preserve the mode before touching anything.
 mode="$(stat -c %a "$config" 2>/dev/null || stat -f %Lp "$config")"
 
 # Temp files live alongside the real config, not in /tmp, so the final `mv`
