@@ -1,0 +1,43 @@
+# Shell history as a tv channel, backed by atuin's database rather than a
+# history file. This is ours, not upstream's — tv ships `bash-history` and
+# `zsh-history` channels that read the raw files, which here are a partial
+# record: `HISTCONTROL=ignorespace` keeps space-prefixed commands out, and
+# bash-preexec's rewrite of it is why dot_bashrc re-asserts the value.
+#
+# Deliberately NOT bound to Ctrl-R — that stays atuin's own TUI, which does
+# filter modes, time syntax and stats better than a channel can express. This
+# exists for the questions atuin's TUI is awkward at ("what did I run in this
+# directory", "what failed") and for reaching history without leaving the
+# picker already open on Ctrl-T.
+#
+# ATUIN_SESSION is set by atuin's shell init, but a tv launched somewhere it
+# isn't (a tmux popup, say) would otherwise make every source error out, so
+# each command falls back to a throwaway id.
+
+[metadata]
+name = "atuin"
+description = "Shell history from atuin: all, this directory, or failures"
+requirements = ["atuin", "awk"]
+
+[source]
+# `awk '!seen[$0]++'` collapses repeats: history is full of the same command
+# run dozens of times, and the picker only needs it once.
+#
+# "Failures" cannot use atuin's own `--exclude-exit 0`. Imported history has
+# no exit code at all, recorded as -1, and -1 is not 0 — so that filter
+# returns all ~1000 imported entries and hides the handful that actually
+# failed. `$1+0 > 0` keeps genuine non-zero exits and drops both 0 and -1.
+command = [
+	{ name = "All", run = "ATUIN_SESSION=\"${ATUIN_SESSION:-$(atuin uuid)}\" atuin search --cmd-only '' 2>/dev/null | awk '!seen[$0]++'" },
+	{ name = "This dir", run = "ATUIN_SESSION=\"${ATUIN_SESSION:-$(atuin uuid)}\" atuin search --cmd-only --cwd \"$PWD\" '' 2>/dev/null | awk '!seen[$0]++'" },
+	{ name = "Failures", run = "ATUIN_SESSION=\"${ATUIN_SESSION:-$(atuin uuid)}\" atuin search --format '{exit} {command}' '' 2>/dev/null | awk '$1+0 > 0 { sub(/^[^ ]* /, \"\"); print }' | awk '!seen[$0]++'" },
+]
+# atuin already returns newest-first; re-sorting would throw that away.
+no_sort = true
+
+[preview]
+# When this command last ran, how it exited, and where. Imported entries show
+# `exit=-1` and `unknown` — that is the import having no such data, not a
+# failure. Single-quoted like every other channel's preview, so a command
+# containing a single quote previews empty; the selection itself is unaffected.
+command = "ATUIN_SESSION=\"${ATUIN_SESSION:-$(atuin uuid)}\" atuin search --format '{relativetime} ago | exit={exit} | {directory}' --limit 10 '{}' 2>/dev/null"

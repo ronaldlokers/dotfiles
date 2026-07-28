@@ -56,8 +56,19 @@ An empty channel there is the tool missing, not the channel broken.
 Three channels in the `Ctrl-T` list — `bash-history`, `git-diff` and `text` —
 come from tv itself rather than that set: tv compiles ten defaults into the
 binary, and only a same-named channel file can override one. `bash-history`
-overlaps atuin and reads `~/.bash_history`, which is a partial record here
-(see the keybindings section); atuin's `Ctrl-R` remains the full history.
+reads `~/.bash_history`, which is a partial record here (see the keybindings
+section) — the `atuin` channel below supersedes it.
+
+Two channels are local rather than upstream's. `alias` is a faster rewrite of
+one that shipped (see `dot_config/television/cable/`), and `atuin` has no
+upstream equivalent: it searches atuin's database instead of a history file,
+cycling with `Ctrl-S` between all history, this directory only, and commands
+that actually failed. The preview shows when a command last ran, how it
+exited, and where. Imported history predates that bookkeeping and shows
+`exit=-1` / `unknown`, which is the import having no such data rather than a
+failure. `Ctrl-R` is still atuin's own TUI, which does filter modes, time
+syntax and stats better than a channel can; this is for reaching history
+without leaving the picker that is already open.
 
 Ghostty is the entry that only looks like it breaks that rule: it runs in a
 terminal because it *is* the terminal, and it needs a display, so it's a desktop
@@ -529,7 +540,7 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 | `dot_tmux.conf` | tmux config; `prefix o` opens the tv sesh channel |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
 | `dot_config/atuin/` | atuin: SQLite shell history, sync deliberately off — container history is local and dies with the container |
-| `dot_config/television/` | television: the one locally-modified channel (`cable/alias.toml`); the rest arrive from a pinned external |
+| `dot_config/television/` | television: the local channels (`cable/alias.toml`, `cable/atuin.toml`); the rest arrive from a pinned external |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` — the merged baseline for `~/.claude/settings.json` (see [Co-owned configuration files](#co-owned-configuration-files)) |
 
