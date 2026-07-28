@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+
+# Pull existing zsh/bash history into atuin, once. Without this, atuin starts
+# empty and the first weeks of Ctrl-R are worse than what it replaced.
+#
+# The `zz-` name is load-bearing. chezmoi runs scripts in name order, and atuin
+# is installed by run_onchange_after_install_packages.sh.tmpl (`mise install`).
+# A numeric prefix like `40-` sorts *before* `install_packages`, so on a fresh
+# machine this would run before atuin existed, import nothing, and — being
+# run_onchange — never run again.
+#
+# The database check, not chezmoi's run_onchange hash, is what makes this safe
+# to re-run: an import over a populated database would duplicate every entry.
+
+# Same PATH fix as the package script: ~/.local/bin isn't on PATH yet during a
+# fresh bootstrap, and mise shims live under it.
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v atuin > /dev/null 2>&1; then
+	echo "atuin-import: atuin not on PATH, skipping" >&2
+	exit 0
+fi
+
+db="${XDG_DATA_HOME:-$HOME/.local/share}/atuin/history.db"
+if [ -e "$db" ]; then
+	echo "atuin-import: $db already exists, skipping" >&2
+	exit 0
+fi
+
+# `atuin import auto` picks an importer from $SHELL, which a script run by
+# chezmoi during a devpod bootstrap can't be trusted to have — name both
+# shells explicitly instead, each guarded on its history file existing.
+if [ -f "$HOME/.zsh_history" ]; then
+	echo "atuin-import: importing zsh history" >&2
+	atuin import zsh
+fi
+
+if [ -f "$HOME/.bash_history" ]; then
+	echo "atuin-import: importing bash history" >&2
+	atuin import bash
+fi
