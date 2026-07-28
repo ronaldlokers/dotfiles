@@ -41,6 +41,10 @@ AUR package, but all three are TUIs, wanted inside a container as much as on the
 host. mise pins versions and Renovate bumps them; the host list is unpinned and
 tracks whatever the distro ships.
 
+The coreutils replacements (`dust`, `duf`, `btop`, `sd`, `jless`) are in mise for
+the same reason — a container has no pacman, and reaching for `du` inside one
+should not be a worse experience than on the host.
+
 Ghostty is the entry that only looks like it breaks that rule: it runs in a
 terminal because it *is* the terminal, and it needs a display, so it's a desktop
 app. Which terminal `Super + Return` opens is a separate question, answered by

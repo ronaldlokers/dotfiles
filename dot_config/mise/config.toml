@@ -25,6 +25,16 @@ tmux = "3.7b"
 # containers as much as on the host, so mise pins them instead of pacman
 yazi = "26.5.6"
 superfile = "1.6.0"
+# Coreutils replacements. In mise rather than the host package list for the
+# same reason as yazi and superfile: a devpod container has no pacman, so
+# anything not pinned here simply isn't there.
+dust = "1.2.4"       # du, sorted by size
+duf = "0.9.1"        # df
+btop = "1.4.7"       # top
+sd = "1.1.0"         # sed, for the plain-substitution case
+jless = "0.9.0"      # JSON pager, next to the pinned jq/yq
+hyperfine = "1.20.0" # command benchmarking
+gping = "1.20.4"     # ping, plotted
 # github, not cargo: the cargo backend compiles from source and so needs a Rust
 # toolchain the way rtk does, while this pulls the cargo-dist binary straight
 # from the release and verifies its SLSA provenance. (Not `ubi:` — mise
