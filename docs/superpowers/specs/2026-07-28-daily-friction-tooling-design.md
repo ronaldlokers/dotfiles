@@ -213,6 +213,18 @@ before every prompt, not just once) right after sourcing bash-preexec in
 `dot_bashrc`. zsh's `setopt hist_ignore_space` is unaffected — the two rc files
 were verified to still agree on this point.
 
+That fix has a second-order effect: bash's DEBUG trap still fires for the
+excluded line, and bash-preexec rebuilds "the command" for that firing via
+`history 1` — which, since nothing new landed there, resolves to the *previous*
+command again. Every registered preexec function, atuin's included, would
+normally run again with that stale text, double-logging the previous command.
+Fixed by wrapping atuin's own `__atuin_preexec` in a guard that tracks the
+history number and skips a repeat firing against the same number, swapped into
+`preexec_functions` right after the atuin init in `dot_bashrc`. Guarded on
+`__atuin_preexec` existing (`declare -F`), so a future atuin release that
+renames its hook degrades to the double-logging behavior rather than dropping
+every atuin entry or breaking shell startup.
+
 ## Documentation
 
 README: add the new tools to the Packages section, note the new keybindings, and

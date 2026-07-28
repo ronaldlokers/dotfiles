@@ -288,16 +288,14 @@ if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
   # command is typed, HISTCONTROL is back to ignoreboth, so a leading-space
   # command still lands in neither ~/.bash_history nor atuin.
   #
-  # There is still a cost, just not the one it looks like at first glance:
-  # bash's own DEBUG trap (which is what invokes atuin's preexec hook)
-  # never fires for the excluded command either, since HISTCONTROL kept it
-  # out of the history list `history 1` reads from. Verified under a real
-  # pty with this repo's pinned atuin (18.17.1) / bash-preexec (0.6.0): the
-  # excluded command produced no `atuin history start` call at all — atuin
-  # simply logs one fewer entry for that keystroke, not a duplicate of the
-  # one before it. A different atuin/bash-preexec pairing could still
-  # behave differently here, since the guard lives in bash-preexec's own
-  # `history 1` lookup, not in anything this file controls.
+  # This does not come for free: bash's DEBUG trap still fires for the
+  # excluded command (HISTCONTROL only kept it out of the history list, not
+  # off the trap), and bash-preexec rebuilds "the command" for that firing
+  # via `history 1` — which, since nothing new landed there, returns the
+  # command *before* it instead. Every registered preexec function would
+  # normally run again with that stale text. See the atuin preexec guard
+  # below the atuin init for how that gets caught before it reaches atuin's
+  # database.
   __bp_restore_histcontrol() { export HISTCONTROL=ignoreboth; }
   precmd_functions+=(__bp_restore_histcontrol)
 fi
@@ -312,4 +310,31 @@ fi
 # can only ever open a dead end.
 if command -v atuin > /dev/null ; then
   eval "$(atuin init bash --disable-ai)"
+
+  # atuin registers __atuin_preexec in preexec_functions (just above). The
+  # HISTCONTROL precmd hook further up restores the leading-space escape
+  # hatch, but bash-preexec's own trap still fires for the excluded line and
+  # rebuilds "the command" with `history 1` — which, since the excluded line
+  # never became a history entry, resolves to the *previous* command again.
+  # Left alone, that means __atuin_preexec runs a second time with the
+  # previous command's text, and atuin logs it twice. Guarding on the
+  # history number actually advancing catches exactly that case: a repeat
+  # firing for the same number is the stale-lookup replay, not a new
+  # command, so it's dropped before it reaches atuin.
+  #
+  # Guarded on __atuin_preexec existing: if a future atuin release renames
+  # or restructures its hook, this whole block quietly no-ops rather than
+  # erroring at shell start or, worse, swapping in a guard function that
+  # calls nothing — the swap below never happens, and atuin falls back to
+  # today's already-working (if occasionally double-logging) behaviour.
+  if declare -F __atuin_preexec > /dev/null; then
+    __atuin_preexec_guarded() {
+      local histnum rest
+      read -r histnum rest <<< "$(LC_ALL=C HISTTIMEFORMAT='' builtin history 1)"
+      [ "$histnum" = "${__atuin_last_histnum:-}" ] && return 0
+      __atuin_last_histnum=$histnum
+      __atuin_preexec "$@"
+    }
+    preexec_functions=("${preexec_functions[@]/__atuin_preexec/__atuin_preexec_guarded}")
+  fi
 fi
