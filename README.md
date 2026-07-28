@@ -17,7 +17,10 @@ Applying pulls in everything else automatically:
   [pure](https://github.com/sindresorhus/pure) prompt, and the
   zsh-autosuggestions / zsh-syntax-highlighting plugins, refreshed weekly.
   The [DevPod](https://devpod.sh) CLI external is host-only — it renders to
-  nothing inside a container, so devpod-provisioned boxes skip it
+  nothing inside a container, so devpod-provisioned boxes skip it. Its
+  configuration follows, from
+  `.chezmoiscripts/run_onchange_after_30-configure-devpod.sh.tmpl` — see
+  [Dev containers](#dev-containers)
 - the **run_onchange script** (`.chezmoiscripts/`) runs `mise install`
   whenever `dot_config/mise/config.toml` changes
 - **host packages** (`.chezmoiscripts/run_after_20-install-host-packages.sh.tmpl`)
@@ -136,6 +139,38 @@ Clones use **HTTPS**, authenticated by the `gh` credential helper already in
 `dot_config/git/config.tmpl`. Note `gh` itself is configured to prefer SSH for
 git operations while this machine has no SSH *auth* key (only the signing key),
 so `gh repo clone` would take a path that doesn't work here.
+
+## Dev containers
+
+Project work happens in [DevPod](https://devpod.sh) containers, driven by the
+docker provider. The host side of that is configured by
+`run_onchange_after_30-configure-devpod.sh.tmpl`: it adds and selects the docker
+provider, sets the default IDE to `none` (the workflow is a terminal, not an
+editor launch), and sets two context options every workspace inherits —
+`DOTFILES_URL`, which is what makes a fresh container apply this repo, and
+`GIT_SSH_SIGNATURE_FORWARDING=false`.
+
+The script drives the `devpod` CLI instead of managing `~/.devpod/config.yaml`
+directly, because DevPod writes that file itself — the provider's `initialized`
+flag and creation timestamp are its own bookkeeping. A managed copy would be
+reverted on every apply and show as permanent drift.
+
+Per-project, the container is defined by a `.devcontainer/` in the repo itself.
+Scaffold one from the managed starter:
+
+```sh
+cd ~/Projects/github.com/ronaldlokers/someproject
+devcontainer-init      # --force to overwrite an existing .devcontainer/
+```
+
+It writes `devcontainer.json` and `post-create.sh`, naming the container after
+the directory. The starter is deliberately thin — `debian:trixie`, a `dev` user
+with zsh, git, mise, and a post-create hook that runs `mise install` — because
+ports, mounts and extra features differ per project and belong in the copy. Edit
+the starter at `dot_local/share/devcontainer-template/`.
+
+Nothing installs the dotfiles from inside the container: DevPod clones and
+applies them itself, via the `DOTFILES_URL` option above.
 
 ## Working on this repo
 
