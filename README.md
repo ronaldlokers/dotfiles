@@ -231,11 +231,30 @@ cd ~/Projects/github.com/ronaldlokers/someproject
 devcontainer-init      # --force to overwrite an existing .devcontainer/
 ```
 
-It writes `devcontainer.json` and `post-create.sh`, naming the container after
-the directory. The starter is deliberately thin — `debian:trixie`, a `dev` user
-with zsh, git, mise, and a post-create hook that runs `mise install` — because
-ports, mounts and extra features differ per project and belong in the copy. Edit
-the starter at `dot_local/share/devcontainer-template/`.
+It writes `devcontainer.json`, `Dockerfile` and `post-create.sh`, naming the
+container after the directory. The starter is deliberately thin — `archlinux:base`
+with git, zsh, sudo and mise, a `dev` user at uid 1000 with passwordless sudo, and
+a post-create hook that runs `mise install` — because ports, mounts and extra
+packages differ per project and belong in the copy. Edit the starter at
+`dot_local/share/devcontainer-template/`.
+
+Arch rather than Debian for two reasons. It matches the host, so package
+commands and versions are the same either side of the container boundary. And
+`debian:trixie` ships no `libatomic.so.1`, which mise's prebuilt node links
+against — on Debian `mise install` failed on node, skipped `gemini-cli` as a
+dependent, and failed the whole `chezmoi apply` behind it.
+
+The cost is that the image is built from a `Dockerfile` rather than pulled: the
+`common-utils` and `git` devcontainer features accept debian, rhel and alpine
+only, and exit with `Linux distro arch not supported`. What they used to do —
+the `dev` user, the sudoers entry, zsh, and generating the `en_US.UTF-8` locale
+that `dot_zshrc` expects — the Dockerfile now does.
+
+mise is installed from Arch's repos rather than as a feature. `postCreateCommand`
+runs before DevPod clones the dotfiles — as do `postStartCommand` and
+`postAttachCommand` — so the pinned `~/.local/bin/mise` this repo installs does
+not exist yet when `post-create.sh` runs `mise install`. Interactive shells still
+use the pinned one, because `dot_zshrc` prefers it explicitly.
 
 Nothing installs the dotfiles from inside the container: DevPod clones and
 applies them itself, via the `DOTFILES_URL` option above.

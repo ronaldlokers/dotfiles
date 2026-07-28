@@ -32,8 +32,8 @@ usage() {
 	cat <<'EOF'
 usage: devcontainer-init [--force]
 
-Writes .devcontainer/{devcontainer.json,post-create.sh} into the current
-directory, naming the container after the directory.
+Writes .devcontainer/{devcontainer.json,Dockerfile,post-create.sh} into the
+current directory, naming the container after the directory.
 
   --force   overwrite an existing .devcontainer/
 EOF
