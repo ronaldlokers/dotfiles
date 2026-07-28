@@ -127,4 +127,16 @@ if ! command -v jq >/dev/null 2>&1; then
 	exit 0
 fi
 
+# What happens if $current is not valid JSON (a truncated/corrupted on-disk
+# file) is deliberate, not an oversight, in both branches above and below:
+#   - jq present: `jq -s` below fails to parse it, this script exits non-zero
+#     with empty stdout, and chezmoi fails the apply for this one target.
+#     Loud and stuck-until-fixed beats silently discarding whatever the user
+#     had -- there is no "managed" version of a key that isn't in the
+#     baseline, so there is nothing safe to merge into.
+#   - jq absent (just above): the corrupt bytes are passed straight through
+#     unchanged, same as any other unrecognized stdin. That is consistent
+#     with the loud-not-silent choice above -- it neither fixes the
+#     corruption nor further corrupts it, and the very next apply that has
+#     jq will surface the same parse failure instead of hiding it.
 jq -s '.[0] + .[1]' <(printf '%s' "$current") <(baseline)

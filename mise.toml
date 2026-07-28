@@ -25,8 +25,29 @@ run = [
 	# `jq empty`. What matters now is that the script itself still emits
 	# valid JSON. Feed it representative input with a key the repo doesn't
 	# manage, so this exercises the real jq merge path — not just the
-	# empty-stdin baseline shortcut — and would catch a broken jq filter.
-	"echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json | jq empty",
+	# empty-stdin baseline shortcut.
+	#
+	# `set -o pipefail` is load-bearing, not decoration: mise's task shell
+	# does not enable it by default, and `jq empty` exits 0 on *empty*
+	# stdin — so without pipefail, a modify_settings.json that dies midway
+	# and emits nothing would still make this whole line exit 0 (only the
+	# swallowed middle command's exit status would say otherwise). pipefail
+	# makes the pipeline's exit status the rightmost *non-zero* status, so a
+	# broken script actually fails this check instead of passing silently.
+	"set -o pipefail; echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json | jq empty",
+	# The no-jq fallback path (see modify_settings.json's comments) is only
+	# ever exercised by hand-testing today -- `jq` is a system package on
+	# this host *and* on GitHub's ubuntu-latest runners (normally sitting
+	# right next to `cat` in /usr/bin), so a bare `mise run lint`/`verify`
+	# never actually runs the script without jq on PATH; excluding jq's
+	# mise install alone wouldn't be enough. Build a scratch PATH holding
+	# only a symlink to `cat` -- the one external command the script's
+	# empty-stdin path needs (`command -v jq` and `printf` are bash
+	# builtins, so nothing else has to resolve) -- so jq is genuinely
+	# unreachable, and confirm the fallback still emits valid JSON rather
+	# than failing the apply. `jq empty` itself runs with the real PATH
+	# restored, so validation doesn't depend on the thing being excluded.
+	"set -o pipefail; d=$(mktemp -d); ln -s \"$(command -v cat)\" \"$d/cat\"; PATH=\"$d\" ./dot_claude/modify_settings.json < /dev/null | jq empty; rc=$?; rm -rf \"$d\"; exit $rc",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
