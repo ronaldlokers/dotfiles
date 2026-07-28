@@ -118,11 +118,17 @@ behaves the same:
 | `Ctrl-S` | *inside* the sesh channel: cycle source (all/tmux/configs/zoxide/dirs) |
 | `Ctrl-D` | *inside* the sesh channel: kill the highlighted session and reload |
 
-`Ctrl-R` used to be fzf's. Both tools bind it explicitly, so the one initialised
-last in the rc file wins — atuin's block sits below fzf's in both files, and
-moving it breaks the binding silently. fzf itself stays installed regardless:
-tv owns the pickers above and atuin owns history search, but zsh's completion
-menu (fzf-tab) is built on fzf and still needs it on `PATH`.
+`Ctrl-R` used to be fzf's; atuin owns it and `Up` exclusively now — nothing
+else in either rc file binds either key. fzf itself stays installed
+regardless: tv owns the pickers above and atuin owns history search, but
+zsh's completion menu (fzf-tab) is built on fzf and still needs it on `PATH`.
+
+Bash lost something in this move, with no replacement: dropping `eval "$(fzf
+--bash)"` also dropped fzf's `**<TAB>` path-completion trigger (type a path
+fragment, `**`, then Tab, for a fuzzy-complete menu). fzf-tab, mentioned just
+above, is zsh's completion menu and a zsh plugin — it was never wired into
+bash, so there's nothing there to carry the trigger over either. `Ctrl-T`/
+`Alt-C` above are the closest substitutes; bash's `**<TAB>` is simply gone.
 
 atuin history is **local to each machine and each container**: sync is off, so a
 rebuilt devpod container starts with an empty database.
@@ -133,11 +139,11 @@ Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
 self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
-`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec) refresh
-weekly on `chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans
-history with gitleaks, and test-bootstraps the repo into a clean HOME on
-every push, PR, and a weekly canary run. Two jobs cover paths the clean-HOME
-bootstrap can't reach:
+`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec, tv's
+channel set) refresh weekly on `chezmoi apply`. CI
+(`.github/workflows/ci.yaml`) lints, scans history with gitleaks, and
+test-bootstraps the repo into a clean HOME on every push, PR, and a weekly
+canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
 `host-ssh-agent` brings up a real systemd user session, and `container-gates`
 runs inside an Arch container to prove the host-only gates actually skip there.
 Renovate automerges patch/minor bumps once CI is green; majors wait for review.

@@ -147,9 +147,9 @@ setopt share_history      # share history between all shells (tmux panes)
 setopt hist_ignore_dups   # don't record consecutive duplicates
 setopt hist_ignore_space  # don't record commands starting with a space
 
-# atuin owns Ctrl-R from here on. Initialisation has to come *after* the fzf
-# block above: both bind Ctrl-R explicitly, and whichever runs last wins. fzf
-# keeps Ctrl-T (files) and Alt-C (cd). Up is atuin's directory-filtered search,
+# atuin is the only thing binding Ctrl-R now — the fzf block above just
+# exports FZF_DEFAULT_COMMAND and binds nothing, and tv (further down) owns
+# Ctrl-T and Alt-C instead. Up is atuin's directory-filtered search,
 # configured in ~/.config/atuin/config.toml.
 #
 # The zsh options above still apply: atuin records into its own database, but
