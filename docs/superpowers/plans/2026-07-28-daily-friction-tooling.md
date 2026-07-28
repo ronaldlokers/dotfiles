@@ -67,6 +67,13 @@ description = "start each interactive shell and fail on startup noise or errors"
 run = '''
 set -eu
 rc=0
+# Giving the checked shell a real pty (below, via `script`) has a side effect
+# beyond the tty noise it's there to fix: mise's own shell hooks (`eval "$(mise
+# activate ...)"` in both rc files) detect that stdout is now a terminal and
+# emit an OSC 9;4 progress escape on startup. That's mise reacting to the pty
+# this task handed it, not an rc-file regression, so it's silenced the same
+# way as the tty noise below — by not producing it in the first place.
+export MISE_TERMINAL_PROGRESS=false
 for shell in zsh bash; do
 	if ! command -v "$shell" >/dev/null 2>&1; then
 		echo "skip  $shell (not installed)"
@@ -75,7 +82,26 @@ for shell in zsh bash; do
 	# Both streams are captured: an init line that fails prints to stderr,
 	# and one that accidentally echoes prints to stdout. A clean interactive
 	# startup says nothing on either.
-	if out="$("$shell" -ic true 2>&1 </dev/null)"; then
+	#
+	# A shell with no controlling terminal on any fd — this task's own
+	# subshell, whenever mise itself runs from a context with no pty
+	# attached (an agent's tool sandbox, some other headless wrapper) —
+	# prints tty-acquisition noise that has nothing to do with the rc
+	# files: zsh's fzf integration can't restore the `zle` option on exit,
+	# bash can't claim a process group for job control. The whole point of
+	# this check is catching rc-file regressions, not tty plumbing, so give
+	# the shell a real pty via `script` when one is installed. `-e`
+	# (bundled into `-qec`) makes `script` return the wrapped command's own
+	# exit code rather than its own, so the non-zero-exit branch below
+	# still means what it says. Falls back to the direct, tty-less form
+	# when `script` is missing; that fallback can still report tty noise
+	# instead of a real rc-file problem.
+	if command -v script >/dev/null 2>&1; then
+		out="$(script -qec "$shell -ic true" /dev/null 2>&1 </dev/null)" && status=0 || status=$?
+	else
+		out="$("$shell" -ic true 2>&1 </dev/null)" && status=0 || status=$?
+	fi
+	if [ "$status" -eq 0 ]; then
 		if [ -n "$out" ]; then
 			echo "FAIL  $shell started but printed output:" >&2
 			printf '%s\n' "$out" >&2
@@ -118,7 +144,7 @@ depends = ["lint", "secrets", "verify", "shells"]
 Run: `mise run shells`
 Expected: `ok    zsh` and `ok    bash`, exit 0.
 
-If it reports FAIL on this unmodified checkout, the noise is **pre-existing** and unrelated to this plan. Do not proceed to Task 2 with a red baseline: capture the reported output, fix the offending init line in the chezmoi source (not in `$HOME`), `chezmoi apply`, and re-run until green. Report what was fixed.
+The check runs each shell under a real pty (via `script`) precisely so that a FAIL here means an actual rc-file regression, not tty-acquisition noise from a headless caller. If it reports FAIL on this unmodified checkout, capture the reported output, fix the offending init line in the chezmoi source (not in `$HOME`), `chezmoi apply`, and re-run until green. Do not proceed to Task 2 with a red baseline. Report what was fixed.
 
 - [ ] **Step 4: Commit**
 
