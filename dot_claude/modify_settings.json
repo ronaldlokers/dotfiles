@@ -1,0 +1,130 @@
+#!/bin/bash
+# chezmoi modify_ script for ~/.claude/settings.json.
+#
+# Claude Code treats this file as its own scratch space at runtime -- it
+# writes keys like "agentPushNotifEnabled" that this repo has never heard of.
+# A plain managed file would make every `chezmoi apply` silently revert
+# whatever Claude Code just wrote. chezmoi runs a `modify_` script with the
+# target's current on-disk contents on stdin, and whatever this script
+# prints on stdout becomes the new file -- so instead of asserting our
+# config wholesale, we merge it into whatever is already there.
+#
+# The merge is deliberately SHALLOW, managed-wins: `jq -s '.[0] + .[1]'` with
+# the on-disk contents first and this baseline second, so the baseline's
+# values win on any shared top-level key. That means "enabledPlugins" and
+# "extraKnownMarketplaces" get replaced wholesale rather than deep-merged --
+# this repo stays the sole authority over which plugins/marketplaces are
+# configured, so removing a plugin here actually removes it on the machine.
+# (A deep merge would let a stale on-disk entry linger forever, since nothing
+# would ever delete a key nested inside those objects.) Any top-level key the
+# repo has never heard of -- "agentPushNotifEnabled" being the motivating
+# example -- has no entry in the baseline at all, so `+` leaves it untouched.
+#
+# IMPORTANT -- the formatting trap: this script runs on *every* apply, and CI
+# asserts a second apply produces no drift. Its output must therefore be a
+# fixed point: feeding this script's own output back in as stdin has to
+# reproduce byte-identical output. The baseline below is pasted verbatim from
+# `jq . dot_claude/settings.json` (before that file was deleted) specifically
+# so its formatting matches jq's own pretty-printer. If the no-jq path below
+# ever emitted this heredoc with different spacing than jq would produce for
+# the same JSON, a clean-HOME first apply (no jq yet) and the second apply
+# (jq now installed) would disagree byte-for-byte and CI would see drift.
+
+current="$(cat)"
+
+# Quoted heredoc delimiter ('EOF') so nothing in this JSON is shell-expanded
+# -- it contains literal-looking "$HOME" references inside command strings.
+baseline() {
+	cat <<'EOF'
+{
+  "includeCoAuthoredBy": false,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME\"/.claude/hooks/rtk-rewrite.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash \"$HOME\"/.claude/statusline.sh"
+  },
+  "enabledPlugins": {
+    "caveman@caveman": true,
+    "commit-commands@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true,
+    "frontend-design@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "session-report@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true,
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "playground@claude-plugins-official": true,
+    "impeccable@impeccable": true
+  },
+  "extraKnownMarketplaces": {
+    "karpathy-skills": {
+      "source": {
+        "source": "github",
+        "repo": "multica-ai/andrej-karpathy-skills",
+        "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2"
+      }
+    },
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman",
+        "ref": "0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "impeccable": {
+      "source": {
+        "source": "github",
+        "repo": "pbakaus/impeccable",
+        "ref": "5e572c8b8af3e108ab52ce4180adb4d6eb1c2ebc"
+      }
+    }
+  },
+  "theme": "dark",
+  "skipDangerousModePermissionPrompt": true
+}
+EOF
+}
+
+# No file on disk yet: the clean-HOME case, before Claude Code has ever run.
+# There is nothing to merge with, so the baseline is the whole answer.
+if [ -z "$current" ]; then
+	baseline
+	exit 0
+fi
+
+# A first clean-HOME apply writes managed files *before* the run script that
+# installs mise's tools (see mise.toml's [tasks.verify]), so `jq` is
+# genuinely absent on that very first pass -- this is the expected path
+# there, not an error case. Emit whatever Claude Code already wrote rather
+# than fail the apply; losing the merge for one apply is acceptable, failing
+# it is not. The next apply, once jq is installed, merges properly.
+if ! command -v jq >/dev/null 2>&1; then
+	printf '%s\n' "$current"
+	exit 0
+fi
+
+jq -s '.[0] + .[1]' <(printf '%s' "$current") <(baseline)
