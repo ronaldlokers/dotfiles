@@ -5,7 +5,10 @@ set -euo pipefail
 # replacement of ${var//pattern/replacement} stand for the matched text, the
 # same way sed's & does. Turned off so the substitution near the bottom of
 # this script is always purely literal, regardless of this bash's default.
-shopt -u patsub_replacement
+# The option itself only exists on bash 5.2+; older bashes don't have it,
+# but they don't need it either — & is already literal there, so a failed
+# `shopt -u` on an unknown option is fine to swallow.
+shopt -u patsub_replacement 2>/dev/null || true
 
 # Scaffold a project devcontainer from the managed starter in
 # ~/.local/share/devcontainer-template. Exists because the alternative is copying
