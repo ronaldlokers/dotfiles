@@ -189,8 +189,11 @@ When the file supports an include mechanism, own a fragment beside it
 instead of the file itself. `~/.ssh/config` is deliberately unmanaged;
 chezmoi owns `~/.ssh/config.d/10-dotfiles.conf`
 (`private_dot_ssh/private_config.d/`), and `run_after_12-ensure-ssh-include.sh`
-only asserts that the real config has an `Include config.d/*.conf` line
-pointing at it — DevPod's blocks live below, untouched. That script runs on
+asserts that the real config has an `Include config.d/*.conf` line pointing at
+it — prepending one if it's missing or placed below a `Host`/`Match` block —
+and, the first time it has to rewrite the file, also migrates away the old
+three-line `AddKeysToAgent` block the fragment now supersedes. DevPod's blocks
+live below, untouched. That script runs on
 every apply rather than only on `run_onchange`, because it's re-asserting an
 invariant about a file chezmoi can't diff: if something later removed the
 Include line, a `run_onchange` script would only ever check once and never
