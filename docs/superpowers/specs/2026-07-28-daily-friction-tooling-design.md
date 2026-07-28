@@ -88,6 +88,9 @@ to match the other externals.
 - `update_check = false` — mise owns the version; a self-update prompt would fight it.
 - `filter_mode_shell_up_key_binding = "directory"` — Up searches this directory's
   history, `Ctrl-R` searches everything.
+- `enter_accept = false` — Enter puts the selected command on the command line
+  instead of running it, matching what fzf's `Ctrl-R` widget did before atuin
+  took the binding.
 - inline height rather than fullscreen, so the picker does not blow away the screen.
 
 sesh gets **no** config file. Its list is built from live tmux sessions plus
@@ -156,6 +159,15 @@ zsh -ic true    # must exit 0, no output
 bash -ic true   # must exit 0, no output
 ```
 
+What shipped wraps each of those in `script -qec` and exports
+`MISE_TERMINAL_PROGRESS=false` first: without a real pty, both shells print
+tty-acquisition noise that has nothing to do with the rc files (zsh's fzf
+integration failing to restore `zle`, bash failing to claim a process group),
+which would false-FAIL the check, and a pty makes mise's own shell hooks emit
+an OSC 9;4 progress escape that has to be silenced the same way. `script` is
+optional — the task falls back to the bare form when it is not installed, at
+the cost of reintroducing that tty noise as a false-FAIL risk.
+
 It reads the *applied* files in `$HOME`, so it runs after `chezmoi apply`, and it
 stays out of CI, which has no applied `$HOME` to start a shell in.
 
@@ -183,8 +195,30 @@ DEBUG trap and invokes any function named `preexec`, so leaving both in place ri
 a lost trap or a double invocation. The title functions get renamed and registered
 through bash-preexec's `preexec_functions`/`precmd_functions` arrays instead.
 
+**atuin's default `?` binding.** `atuin init` binds `?` to atuin's account-gated
+AI TUI unconditionally, unless told not to. This setup deliberately has no atuin
+account, so that binding can only open a dead end — in bash it lands live in
+vi-insert (`set -o vi` runs before the atuin init), and in zsh it is dormant on
+this host only because omarchy's zoptions already ran `bindkey -e` first, so it
+would be live in any container with no such block. Fixed by passing
+`--disable-ai` to `atuin init` in both `dot_zshrc` and `dot_bashrc`.
+
+**bash-preexec and the leading-space history escape hatch.** bash-preexec's own
+installer rewrites `HISTCONTROL` from `ignoreboth` to `ignoredups:` once, at the
+first prompt it draws — it reconstructs the previous command via `history 1`,
+which cannot express `ignorespace`. Left alone, a command typed with a leading
+space would start landing in `~/.bash_history`, where it did not before this
+branch. Fixed by re-asserting `HISTCONTROL=ignoreboth` from a precmd hook (run
+before every prompt, not just once) right after sourcing bash-preexec in
+`dot_bashrc`. zsh's `setopt hist_ignore_space` is unaffected — the two rc files
+were verified to still agree on this point.
+
 ## Documentation
 
 README: add the new tools to the Packages section, note the new keybindings, and
-record that container history is local and ephemeral. Add the two new config
-directories and the new external to the Layout section.
+record that container history is local and ephemeral. Add the new atuin config
+directory to the Layout section — sesh deliberately has no config file of its
+own (see Configuration files above), so there is only one to add. bash-preexec
+is not a Layout row either: it has no config of its own to describe there, and
+is instead mentioned in the Updates section, alongside the other externals it
+now refreshes with.

@@ -275,10 +275,41 @@ fi
 # includes zoxide's hook.
 if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
   . "$HOME/.bash/bash-preexec.sh"
+
+  # bash-preexec's own installer rewrites HISTCONTROL from "ignoreboth" to
+  # "ignoredups:" exactly once, at the very first prompt it draws (it
+  # reconstructs the previous command via `history 1`, which has no way to
+  # express "ignorespace"). That first prompt fires before any command of
+  # ours has been typed, so a plain one-shot re-export right here would
+  # already be too late — it would run *before* that rewrite, not after,
+  # and get clobbered the same way the original setting did. Re-asserting
+  # it from a precmd hook — run again before every prompt, not just once —
+  # is what actually restores the escape hatch: by the time the next
+  # command is typed, HISTCONTROL is back to ignoreboth, so a leading-space
+  # command still lands in neither ~/.bash_history nor atuin.
+  #
+  # There is still a cost, just not the one it looks like at first glance:
+  # bash's own DEBUG trap (which is what invokes atuin's preexec hook)
+  # never fires for the excluded command either, since HISTCONTROL kept it
+  # out of the history list `history 1` reads from. Verified under a real
+  # pty with this repo's pinned atuin (18.17.1) / bash-preexec (0.6.0): the
+  # excluded command produced no `atuin history start` call at all — atuin
+  # simply logs one fewer entry for that keystroke, not a duplicate of the
+  # one before it. A different atuin/bash-preexec pairing could still
+  # behave differently here, since the guard lives in bash-preexec's own
+  # `history 1` lookup, not in anything this file controls.
+  __bp_restore_histcontrol() { export HISTCONTROL=ignoreboth; }
+  precmd_functions+=(__bp_restore_histcontrol)
 fi
 
 # atuin owns Ctrl-R here too, same as in .zshrc — after the fzf block above,
 # since whichever binds last wins. Settings are shared: ~/.config/atuin/config.toml.
+#
+# --disable-ai: atuin's default init also binds `?` to its account-gated AI
+# TUI. In bash this lands in vi-insert (set -o vi runs earlier in this file),
+# so pressing `?` at an empty prompt would launch it. This setup deliberately
+# has no atuin account (see dot_config/atuin/config.toml), so that binding
+# can only ever open a dead end.
 if command -v atuin > /dev/null ; then
-  eval "$(atuin init bash)"
+  eval "$(atuin init bash --disable-ai)"
 fi

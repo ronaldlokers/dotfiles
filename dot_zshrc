@@ -158,8 +158,12 @@ setopt hist_ignore_space  # don't record commands starting with a space
 #
 # The zsh options above still apply: atuin records into its own database, but
 # ~/.zsh_history stays the fallback for any shell where atuin isn't installed.
+#
+# --disable-ai: atuin's default init also binds `?` to its account-gated AI
+# TUI. This setup deliberately has no atuin account (see the local-only
+# decision above), so that binding can only ever open a dead end.
 if command -v atuin > /dev/null ; then
-  eval "$(atuin init zsh)"
+  eval "$(atuin init zsh --disable-ai)"
 fi
 
 

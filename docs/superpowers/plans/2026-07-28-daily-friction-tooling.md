@@ -433,7 +433,7 @@ Expected: `ok    zsh`, `ok    bash`, exit 0.
 
 - [ ] **Step 7: Verify bash got the binding and the hooks are intact**
 
-Run: `bash -ic 'bind -p 2>/dev/null | grep -i atuin; declare -p preexec_functions' </dev/null`
+Run: `bash -ic 'bind -X 2>/dev/null | grep -i atuin; declare -p preexec_functions' </dev/null`
 Expected: at least one binding line mentioning atuin, and `preexec_functions` printed as an array. On a terminal where `$TERM` is not exactly `xterm` the array will not contain `__title_preexec` — that is correct, the title block is `xterm`-only.
 
 - [ ] **Step 8: Update the README**
@@ -719,7 +719,7 @@ Expected: exit 0 throughout; `ok    zsh`, `ok    bash`.
 
 - [ ] **Step 8: Verify the bindings exist**
 
-Run: `zsh -ic 'bindkey "^F"' </dev/null; bash -ic 'bind -p 2>/dev/null | grep -F "\\C-f"' </dev/null`
+Run: `zsh -ic 'bindkey "^F"' </dev/null; bash -ic 'bind -X 2>/dev/null | grep -F "\\C-f"' </dev/null`
 Expected: the zsh line names `sesh-connect`; the bash line binds `\C-f` to `sesh-connect`.
 
 For tmux, reload the applied config in the running server rather than starting a second one with `-f`:
