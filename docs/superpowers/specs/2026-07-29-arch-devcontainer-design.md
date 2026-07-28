@@ -71,6 +71,26 @@ this broke in between — which is the argument against depending on it at all.
 Arch's `extra` repo has mise (2026.7.10-1 at time of writing), installed in the
 Dockerfile alongside the rest.
 
+A third option was considered and rejected: drop `postCreateCommand` entirely and
+have a container-gated chezmoi `run_after` script invoke the project's
+`post-create.sh` once, after the global tools are installed. It is genuinely
+workable — the workspace is already mounted and the environment carries what a
+script needs, verified in a running container:
+
+```
+/workspaces/zenith/.devcontainer/post-create.sh
+DEVPOD=true
+DEVPOD_WORKSPACE_ID=zenith
+```
+
+By that point `~/.local/bin/mise` exists, so the pacman package would be
+unnecessary. It was rejected for two reasons. It couples the dotfiles to project
+layout — they would execute a script out of whatever repo happened to be open,
+inverting the dependency direction. And `postCreateCommand` is the hook VS Code
+Dev Containers and Codespaces use; dropping it makes the template DevPod-only,
+and those environments would get neither mise nor the project's tools. One extra
+package in the image is the cheaper trade.
+
 That leaves two mise binaries in the container: pacman's, and the pinned
 `~/.local/bin/mise` the dotfiles install via `.chezmoiexternals/mise.toml`.
 That is fine and deliberate — `dot_zshrc` prefers `~/.local/bin/mise`
