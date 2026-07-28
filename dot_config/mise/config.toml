@@ -13,6 +13,11 @@ python = "3.14.6"
 ripgrep = "15.1.0"
 neovim = "0.12.4"
 direnv = "2.37.1"
+# Shell history in SQLite: fuzzy search, exit status, and per-directory
+# filtering on the Up arrow. Sync is off (see ~/.config/atuin/config.toml), so
+# there is no account and no network call at shell start. 18.17.1 is the newest
+# release visible under this repo's minimum_release_age setting.
+atuin = "18.17.1"
 yq = "4.53.3"
 jq = "1.8.2"
 kubeconform = "0.8.0"
