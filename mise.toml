@@ -27,14 +27,20 @@ run = [
 	# manage, so this exercises the real jq merge path — not just the
 	# empty-stdin baseline shortcut.
 	#
-	# `set -o pipefail` is load-bearing, not decoration: mise's task shell
-	# does not enable it by default, and `jq empty` exits 0 on *empty*
-	# stdin — so without pipefail, a modify_settings.json that dies midway
-	# and emits nothing would still make this whole line exit 0 (only the
-	# swallowed middle command's exit status would say otherwise). pipefail
-	# makes the pipeline's exit status the rightmost *non-zero* status, so a
-	# broken script actually fails this check instead of passing silently.
-	"set -o pipefail; echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json | jq empty",
+	# A plain pipeline can't be trusted to report the middle command's
+	# failure here: `jq empty` exits 0 on *empty* stdin, so if
+	# modify_settings.json died and printed nothing, `... | jq empty` would
+	# still exit 0. `pipefail` would fix that, but it isn't portable to the
+	# shell mise actually runs this in -- mise's default task shell is
+	# plain `sh -c -o errexit` (`mise settings get
+	# unix_default_inline_shell_args`), and on Debian/Ubuntu (this repo's
+	# CI runner included) `/bin/sh` is dash, which has no `-o pipefail` and
+	# aborts the whole task on the attempt. Capture the script's output in
+	# a command substitution instead: `out="$(...)"` takes on the
+	# substituted command's own exit status, and mise's `errexit` aborts
+	# this task line right there if it's non-zero -- no shell-specific
+	# option required, and no pipe to swallow anything.
+	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# The no-jq fallback path (see modify_settings.json's comments) is only
 	# ever exercised by hand-testing today -- `jq` is a system package on
 	# this host *and* on GitHub's ubuntu-latest runners (normally sitting
@@ -47,7 +53,13 @@ run = [
 	# unreachable, and confirm the fallback still emits valid JSON rather
 	# than failing the apply. `jq empty` itself runs with the real PATH
 	# restored, so validation doesn't depend on the thing being excluded.
-	"set -o pipefail; d=$(mktemp -d); ln -s \"$(command -v cat)\" \"$d/cat\"; PATH=\"$d\" ./dot_claude/modify_settings.json < /dev/null | jq empty; rc=$?; rm -rf \"$d\"; exit $rc",
+	# Same command-substitution shape as the check above, for the same
+	# dash-portability reason -- see its comment for why a bare pipeline
+	# can't be trusted here either. The scratch dir is cleaned up via
+	# `trap ... EXIT` (mirroring [tasks.verify] below) rather than a
+	# manual `rm` at the end, so it's removed even if errexit aborts this
+	# line early on a failure.
+	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(PATH=\"$d\" ./dot_claude/modify_settings.json < /dev/null)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
