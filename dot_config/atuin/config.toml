@@ -19,7 +19,11 @@ filter_mode_shell_up_key_binding = "directory"
 # that executes on Enter turns a misfire into a run command.
 enter_accept = false
 
-# Inline rather than fullscreen, so the picker doesn't wipe the scrollback that
-# prompted the search in the first place.
+# `style` is pinned rather than left implicit: it's already atuin 18.17.1's
+# default (inline, not fullscreen), but spelling it out here means a future
+# atuin release changing that default can't silently wipe the scrollback that
+# prompted the search in the first place. `inline_height` IS an override —
+# atuin defaults to 40 lines; 20 leaves more of the scrollback visible above
+# the picker.
 style = "compact"
 inline_height = 20

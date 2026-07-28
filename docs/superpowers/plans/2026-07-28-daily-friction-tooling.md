@@ -318,8 +318,12 @@ And update the `dot_zshrc` row to mention it, changing:
 to:
 
 ```markdown
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), cached completions, autosuggestions + syntax highlighting, aliases |
 ```
+
+(Task 6 adds the sesh picker mention to this same row once sesh actually
+lands — see its Step 9. Keeping it out here keeps this task's commit
+self-consistent with what it actually ships.)
 
 - [ ] **Step 8: Commit**
 
@@ -694,6 +698,19 @@ In the Layout table, change the `dot_tmux.conf` row to:
 
 ```markdown
 | `dot_tmux.conf` | tmux config; `prefix o` opens the sesh session picker |
+```
+
+Also in the Layout table, change the `dot_zshrc` row (Task 3 left it
+sesh-free deliberately, since sesh didn't exist yet at that point) from:
+
+```markdown
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), cached completions, autosuggestions + syntax highlighting, aliases |
+```
+
+to:
+
+```markdown
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
 ```
 
 - [ ] **Step 10: Commit**
