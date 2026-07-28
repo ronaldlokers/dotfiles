@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move the `Ctrl-T`, `Alt-C` and sesh pickers from fzf to television, vendor a curated channel set into the repo, and add `Ctrl-G` for the channel menu.
+**Goal:** Replace fzf's `Ctrl-T` file widget with a television channel menu, move `Alt-C` and the sesh picker onto television, and install a curated channel set as a pinned archive external.
 
-**Architecture:** `television` is pinned in mise like every other CLI tool. Channel definitions are plain TOML files committed under `dot_config/television/cable/`, copied from upstream at a fixed commit rather than fetched at runtime, so a container and the host see the same set. Shell integration is hand-written `command -v`-guarded widgets in `dot_zshrc` and `dot_bashrc`, matching the existing style — `tv init` provides completions only, not bindings.
+**Architecture:** `television` is pinned in mise like every other CLI tool. Channel definitions arrive as a `.chezmoiexternals` archive pinned to upstream tag `0.15.9` with an `include` list, so Renovate's existing custom manager bumps them; one channel that needs local changes ships as a normal managed file inside the same directory. Shell integration is hand-written `command -v`-guarded widgets — `tv init` emits completions only, not bindings.
 
 **Tech Stack:** chezmoi, mise, television 0.15.9, zsh, bash, tmux, sesh, fzf (retained for fzf-tab).
 
@@ -14,50 +14,62 @@ Spec: `docs/superpowers/specs/2026-07-28-television-pickers-design.md`
 
 - Branch is `feat/television-pickers`. Never commit to `main`. Conventional-commit subjects, lowercase imperative.
 - **Never** edit a chezmoi-managed file in `$HOME` as a source of truth. Edit the source tree under `/home/ronald/.local/share/chezmoi`, then `chezmoi apply`.
-- Exact pin, no substitution: `television = "0.15.9"`, in `dot_config/mise/config.toml` — never the repo-root `mise.toml`, which is tooling for working on the repo.
-- Channels are copied from upstream commit `3e74ba4` (2026-07-25). Fetch by that commit SHA, never from `main`, or the set stops being reproducible.
+- Exact pin, no substitution: `television = "0.15.9"` in `dot_config/mise/config.toml` — never the repo-root `mise.toml`, which is tooling for working on the repo.
+- Channels come from upstream tag `0.15.9`. The external needs a `# renovate: datasource=github-tags depName=alexpasmantier/television` comment above its version variable and `refreshPeriod = "168h"`, or the repo's custom manager will not track it. Upstream tags carry **no** `v` prefix.
 - Every shell-integration block is guarded (`command -v tv`). A missing tool must never break shell startup.
 - Bindings must reach every live keymap: zsh runs `bindkey -v`, so `emacs`, `viins` and `vicmd`; bash runs `set -o vi`, so `emacs` and `vi-insert`.
 - fzf stays pinned. `fzf-tab` requires the binary. Only fzf's *widgets* are removed.
-- `Ctrl-R` belongs to atuin and is out of scope. Do not vendor `zsh-history` or `bash-history`.
-- Comment style explains *why*, not *what*, wrapped near 80 columns, in a block above the code — not trailing the line.
+- `Ctrl-R` belongs to atuin and is out of scope. Do not include `zsh-history` or `bash-history`.
+- Comment style explains *why*, not *what*, wrapped near 80 columns, in a block above the code.
 - `mise run check` must pass before the PR.
+
+## Established facts
+
+These were verified against the real binary and chezmoi 2.70.5 while writing this plan. Do not re-derive them; do not design around contradicting them.
+
+1. **tv captures cleanly.** `sel="$(tv files)"` returns the selection — the TUI goes to `/dev/tty`, the result to stdout.
+2. **A nested channel launch does NOT.** `sel="$(tv channels)"`, picking `files` and then a file, returns empty: the meta-channel's `enter` action runs `tv {}` in `execute` mode, and that inner picker writes its selection to the terminal. Confirmed by pty transcript — the filename appeared on screen, the capture was `[]`. **This is why the menu is built from two `tv` calls in our own widget** rather than by binding a key to `tv channels`.
+3. **Two sequential calls work.** `ch="$(tv list-channels | tv)"` then `out="$(tv "$ch")"` captured `files` and then `UNIQUEFILE.txt`.
+4. **A managed file survives inside an external's directory.** A managed `alias.toml` inside a `type = "archive"` external's target survived both the initial apply and `chezmoi apply --refresh-externals`.
+5. **`Ctrl-T` is free to take.** It is fzf's today and nothing else claims it. `Ctrl-G` was rejected — `send-break` in zsh's emacs keymap, `list-expand` in `viins` and `vicmd`. `Ctrl-Space` is the tmux prefix on this machine.
 
 ## File Structure
 
 **Created:**
-- `dot_config/television/cable/*.toml` — 30 vendored channel definitions.
-- `dot_config/television/config.toml` — only the settings this setup deviates on.
+- `.chezmoiexternals/tv-channels.toml` — pinned archive external selecting 29 channels.
+- `dot_config/television/cable/alias.toml` — the one locally-modified channel.
+- `dot_config/television/config.toml` — only if this setup genuinely deviates from tv's defaults.
 
 **Modified:**
 - `dot_config/mise/config.toml` — the television pin.
-- `dot_zshrc` — remove the `fzf --zsh` block; add four tv widgets.
-- `dot_bashrc` — remove the `fzf --bash` block; add four tv widgets.
+- `dot_zshrc` — remove the `fzf --zsh` block; add three tv widgets.
+- `dot_bashrc` — remove the `fzf --bash` block; add three tv widgets.
 - `dot_tmux.conf` — `prefix o` runs `tv sesh`.
 - `README.md` — keybindings table, Layout table, host-only channel note.
 
 ---
 
-### Task 1: Pin television and vendor the channel set
+### Task 1: Pin television and install the channel set
 
 **Files:**
 - Modify: `dot_config/mise/config.toml`
-- Create: `dot_config/television/cable/` (30 files)
-- Create: `dot_config/television/config.toml`
+- Create: `.chezmoiexternals/tv-channels.toml`
+- Create: `dot_config/television/cable/alias.toml`
+- Create (conditionally): `dot_config/television/config.toml`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `tv` on PATH; `tv list-channels` printing the 30 vendored names. Tasks 2-4 bind widgets that call `tv files`, `tv dirs`, `tv sesh` and `tv channels`.
+- Produces: `tv` on PATH and `tv list-channels` printing 29 names. Tasks 2-4 bind widgets calling `tv list-channels`, `tv <channel>`, `tv dirs` and `tv sesh`.
 
 - [ ] **Step 1: Pin the tool**
 
 In `dot_config/mise/config.toml`, inside `[tools]`, next to the other shell-integration tools (`fzf`, `zoxide`, `atuin`, `sesh`):
 
 ```toml
-# Channel-based fuzzy finder. Takes over the Ctrl-T, Alt-C and sesh pickers
-# from fzf, and adds one key (Ctrl-G) onto every vendored channel — git
-# branches, k8s pods, systemd units. fzf stays pinned below regardless:
-# fzf-tab, the zsh completion menu, needs the binary.
+# Channel-based fuzzy finder. Takes Ctrl-T, Alt-C and the sesh picker off fzf,
+# and puts every channel — git branches, k8s pods, systemd units — one
+# keystroke away. fzf stays pinned regardless: fzf-tab, the zsh completion
+# menu loaded from dot_zshrc, is built on it.
 television = "0.15.9"
 ```
 
@@ -66,75 +78,123 @@ television = "0.15.9"
 Run: `mise install && tv --version`
 Expected: `television 0.15.9`.
 
-- [ ] **Step 3: Vendor the channels**
+- [ ] **Step 3: Write the channel external**
 
-Fetch each channel from the pinned commit. Run from the repo root:
-
-```bash
-mkdir -p dot_config/television/cable
-REF=3e74ba4
-BASE="https://raw.githubusercontent.com/alexpasmantier/television/$REF/cable/unix"
-for c in files dirs zoxide sesh tmux-sessions tmux-windows channels \
-         git-branch git-log git-stash git-worktrees git-repos gh-prs gh-issues \
-         k8s-contexts k8s-pods k8s-services k8s-deployments \
-         pacman-packages systemd-units ports procs mounts \
-         man-pages tldr env path alias docker-containers docker-images; do
-	curl -fsSL "$BASE/$c.toml" -o "dot_config/television/cable/$c.toml" ||
-		echo "FAILED: $c" >&2
-done
-ls dot_config/television/cable | wc -l
-```
-
-Expected: `30`, and no `FAILED:` lines. If any file fails, stop and report — a silently missing channel is worse than a failed task.
-
-- [ ] **Step 4: Verify every file is a real channel, not an error page**
-
-Run: `head -2 dot_config/television/cable/*.toml | grep -c '\[metadata\]'`
-Expected: `30`.
-
-- [ ] **Step 5: Fix the alias channel's source command**
-
-Upstream's `alias.toml` sources from `$SHELL -ic 'alias'`, which starts a *full* interactive shell — mise, atuin, tv, zoxide, every plugin, and on this host bash's omarchy handoff exec'ing zsh — just to print a list of aliases.
-
-Replace the `[source]` and `[preview]` commands in `dot_config/television/cable/alias.toml` so they read the alias *definitions* out of the rc files directly, with no shell started at all. The aliases in this setup live in three places — `~/.zshrc`, `~/.bashrc`, and omarchy's `/usr/share/omarchy-zsh/shell/aliases` on the host:
+Create `.chezmoiexternals/tv-channels.toml`. The archive root is `television-0.15.9/`, the channels live at `cable/unix/*.toml`, and `include` patterns match the path **as it appears in the archive**, before `stripComponents` is applied — `stripComponents = 3` then lands the files flat in the target directory. Both were verified in a scratch HOME; keep them in step if you change either.
 
 ```toml
-# Deviates from upstream, which sources this from `$SHELL -ic 'alias'`. Here
-# that starts a *full* interactive shell — mise, atuin, tv, zoxide, every
-# plugin, and bash's omarchy handoff exec'ing zsh — just to print a list. The
-# definitions are in the rc files already, so read them.
+# Upstream's channel definitions, pinned rather than pulled at runtime by
+# `tv update-channels`, which would drop unversioned files into $HOME outside
+# chezmoi's control. The include list is the curated set: everything here has
+# a tool behind it on at least one machine (see README for which are
+# host-only). `channels` is deliberately absent — the Ctrl-T menu is built
+# from `tv list-channels` in the shell widgets, because a channel launched by
+# the meta-channel's execute action writes its selection to the terminal
+# instead of back to the caller.
+# renovate: datasource=github-tags depName=alexpasmantier/television
+{{ $televisionVersion := "0.15.9" }}
+[".config/television/cable"]
+type = "archive"
+url = "https://github.com/alexpasmantier/television/archive/refs/tags/{{ $televisionVersion }}.tar.gz"
+stripComponents = 3
+refreshPeriod = "168h"
+include = [
+	"*/cable/unix/files.toml",
+	"*/cable/unix/dirs.toml",
+	"*/cable/unix/zoxide.toml",
+	"*/cable/unix/sesh.toml",
+	"*/cable/unix/tmux-sessions.toml",
+	"*/cable/unix/tmux-windows.toml",
+	"*/cable/unix/git-branch.toml",
+	"*/cable/unix/git-log.toml",
+	"*/cable/unix/git-stash.toml",
+	"*/cable/unix/git-worktrees.toml",
+	"*/cable/unix/git-repos.toml",
+	"*/cable/unix/gh-prs.toml",
+	"*/cable/unix/gh-issues.toml",
+	"*/cable/unix/k8s-contexts.toml",
+	"*/cable/unix/k8s-pods.toml",
+	"*/cable/unix/k8s-services.toml",
+	"*/cable/unix/k8s-deployments.toml",
+	"*/cable/unix/pacman-packages.toml",
+	"*/cable/unix/systemd-units.toml",
+	"*/cable/unix/ports.toml",
+	"*/cable/unix/procs.toml",
+	"*/cable/unix/mounts.toml",
+	"*/cable/unix/man-pages.toml",
+	"*/cable/unix/tldr.toml",
+	"*/cable/unix/env.toml",
+	"*/cable/unix/path.toml",
+	"*/cable/unix/docker-containers.toml",
+	"*/cable/unix/docker-images.toml",
+]
+```
+
+That is 28 patterns. `alias.toml` is deliberately not among them — Step 4 ships a modified copy as a managed file, which brings the total to 29.
+
+- [ ] **Step 4: Write the modified alias channel**
+
+Upstream's `alias.toml` sources from `$SHELL -ic 'alias'`, which starts a *full* interactive shell — mise, atuin, tv, zoxide, every plugin, and on this host bash's omarchy handoff exec'ing zsh — just to print a list. The definitions are already sitting in the rc files.
+
+Create `dot_config/television/cable/alias.toml`:
+
+```toml
+# Local override of upstream's alias channel, which is why this file is
+# managed directly instead of coming from the external alongside the others:
+# upstream sources it from `$SHELL -ic 'alias'`, paying for a whole
+# interactive shell — mise, atuin, tv, zoxide, plugins, and bash's omarchy
+# handoff exec'ing zsh — every time the channel opens. The definitions are in
+# the rc files already, so read those. The 2>/dev/null matters: omarchy's
+# shared aliases file does not exist inside a devpod container, and the
+# channel must still list the other two there.
+[metadata]
+name = "alias"
+description = "A channel to select from shell aliases"
+
 [source]
 command = "grep -hE '^[[:space:]]*alias ' $HOME/.zshrc $HOME/.bashrc /usr/share/omarchy-zsh/shell/aliases 2>/dev/null | sed -E 's/^[[:space:]]*alias //' | sort -u"
 output = "{split:=:0}"
+
+[preview]
+command = "grep -hE \"^[[:space:]]*alias {}=\" $HOME/.zshrc $HOME/.bashrc /usr/share/omarchy-zsh/shell/aliases 2>/dev/null"
 ```
 
-Give `[preview]` the matching treatment — it has the same `$SHELL -ic 'alias'` problem. The `2>/dev/null` matters: the omarchy file does not exist inside a container, and the channel must still list the other two there.
+- [ ] **Step 5: Apply and confirm the set landed**
 
-Run: `tv alias --take-1 --input git`
-Expected: an alias line, printed immediately — no perceptible shell-startup delay.
+Run: `chezmoi apply && tv list-channels | wc -l && tv list-channels | grep -c alias`
+Expected: `29` and `1`.
 
-If this produces nothing, do not paper over it: report what the source command actually printed.
+If the count is short, the `include` patterns did not match — check them against the archive layout rather than guessing, and report what you found.
 
-- [ ] **Step 6: Write the config file**
+- [ ] **Step 6: Confirm the override survives an external refresh**
 
-Create `dot_config/television/config.toml` holding only what this setup deviates on, each line with a WHY comment. tv's shipped default (`~/.config/television/config.toml`, 7.3K) is almost entirely commented-out defaults — read it for key names, commit nothing that merely restates a default.
+Run: `chezmoi apply --refresh-externals && grep -c "Local override" ~/.config/television/cable/alias.toml`
+Expected: `1`. This is the property the whole design rests on; if it fails, stop and report rather than working around it.
 
-The cable directory needs no setting: tv already resolves `$XDG_CONFIG_HOME/television/cable`, which is exactly where chezmoi puts the vendored files (verified — there is no cable-dir key in the default config; `--cable-dir` is a CLI flag only).
+- [ ] **Step 7: Check the alias channel is actually fast and non-empty**
 
-If, after reading the default, this setup deviates on nothing, write no config file at all and say so in the report. An empty file committed for symmetry is worse than none: it implies settings live there that do not.
+Run: `time tv alias --take-1 --input git`
+Expected: an alias printed, in well under a second. If it prints nothing, report what the source command emits on its own — do not leave a silently empty channel.
 
-- [ ] **Step 7: Apply and confirm the channels are visible**
+- [ ] **Step 8: Decide on config.toml**
 
-Run: `chezmoi apply && tv list-channels | wc -l`
-Expected: `30`.
+Read tv's shipped default at `~/.config/television/config.toml` (7.3K, almost all commented-out defaults). Commit `dot_config/television/config.toml` holding **only** genuine deviations, each with a WHY comment.
 
-Note this directory is co-owned — `tv update-channels` writes into it. Confirm `chezmoi status` afterwards does not show the directory as perpetually modified; if it does, apply the co-ownership pattern from commit `339a033` and record what you did.
+The cable directory needs no setting — tv already resolves `$XDG_CONFIG_HOME/television/cable`, which is where the external puts the files (verified: there is no cable-dir key in the default config; `--cable-dir` is a CLI flag only).
 
-- [ ] **Step 8: Commit**
+If nothing genuinely deviates, write no file and say so in your report. An empty file committed for symmetry implies settings live there that do not.
+
+- [ ] **Step 9: Verify chezmoi is not fighting tv**
+
+Run: `chezmoi status | grep television` (expect no output) and confirm `chezmoi apply` twice in a row is quiet.
+
+That directory is co-owned — `tv update-channels` writes into it. If chezmoi reports it perpetually modified, apply the co-ownership pattern from commit `339a033` and record what you did.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add dot_config/mise/config.toml dot_config/television
-git commit -m "feat: pin television and vendor a curated channel set"
+git add dot_config/mise/config.toml .chezmoiexternals/tv-channels.toml dot_config/television
+git commit -m "feat: pin television and install a curated channel set"
 ```
 
 ---
@@ -142,15 +202,15 @@ git commit -m "feat: pin television and vendor a curated channel set"
 ### Task 2: zsh pickers
 
 **Files:**
-- Modify: `dot_zshrc` — remove the `fzf --zsh` block (currently lines 111-123); remove the sesh widget (currently lines 194-207); add the tv widgets.
+- Modify: `dot_zshrc` — remove the `fzf --zsh` block (currently lines 111-123) and the sesh widget (currently lines 186-214); add the tv widgets.
 
 **Interfaces:**
-- Consumes: `tv` and the vendored channels from Task 1.
-- Produces: `Ctrl-T`, `Alt-C`, `Ctrl-F`, `Ctrl-G` bound in zsh. Task 3 mirrors these in bash.
+- Consumes: `tv` and the channels from Task 1.
+- Produces: `Ctrl-T`, `Alt-C`, `Ctrl-F` bound in zsh. Task 3 mirrors them in bash.
 
-- [ ] **Step 1: Remove the fzf widget block**
+- [ ] **Step 1: Replace the fzf widget block**
 
-Delete this block from `dot_zshrc` entirely:
+Delete this block:
 
 ```zsh
 if command -v fzf > /dev/null ; then
@@ -168,13 +228,13 @@ if command -v fzf > /dev/null ; then
 fi
 ```
 
-and replace it with:
+and put this in its place:
 
 ```zsh
-# fzf's own widgets are gone: atuin owns Ctrl-R and tv owns Ctrl-T and Alt-C
-# (see the tv block further down), which left `source <(fzf --zsh)` binding
-# nothing. fzf itself stays installed — fzf-tab, the completion menu loaded at
-# the bottom of this file, is built on it and reads FZF_DEFAULT_COMMAND.
+# fzf's own widgets are gone: atuin owns Ctrl-R, tv owns Ctrl-T and Alt-C (see
+# the tv block further down), and `source <(fzf --zsh)` was left binding
+# nothing. fzf itself stays — fzf-tab, the completion menu loaded at the
+# bottom of this file, is built on it and reads FZF_DEFAULT_COMMAND.
 if command -v fzf > /dev/null && command -v fd > /dev/null ; then
   export FZF_DEFAULT_COMMAND="fd --type f --hidden --exclude .git"
 fi
@@ -182,29 +242,37 @@ fi
 
 - [ ] **Step 2: Replace the sesh widget with the tv widgets**
 
-Delete the whole `if command -v sesh > /dev/null && command -v fzf > /dev/null ; then ... fi` block (its comment block above it too) and put this in its place — same location, after `bindkey -v`:
+Delete the whole `if command -v sesh > /dev/null && command -v fzf > /dev/null ; then ... fi` block, its comment block above it, and put this in its place — same location, after `bindkey -v`:
 
 ```zsh
-# tv's pickers. All four are bound into every keymap that is actually live:
-# `bindkey -v` above means a binding on the emacs keymap alone would be dead
-# in insert mode, which is where these get used.
+# tv's pickers, bound into every keymap that is actually live: `bindkey -v`
+# above means an emacs-only binding would be dead in insert mode, which is
+# where these are used.
 #
 # `tv init zsh` is deliberately not sourced — in 0.15.9 it emits completions
-# only, no bindings, so the widgets below are the whole integration.
+# only, no bindings, so these widgets are the whole integration.
 if command -v tv > /dev/null ; then
-  # Ctrl-T inserts a path at the cursor. `${(q-)…}` quotes it the way zsh
-  # would have to for the path to survive a space in a directory name.
-  tv-files-widget() {
-    local selected
-    selected="$(tv files)" || return 0
-    [ -z "$selected" ] && return 0
-    LBUFFER="${LBUFFER}${(q-)selected} "
+  # Ctrl-T is the channel menu: pick a channel, then pick inside it, and the
+  # result lands on the command line. It is two `tv` calls rather than the
+  # `channels` meta-channel because that channel's enter action runs `tv {}`
+  # in execute mode, and the inner picker then writes its selection to the
+  # terminal instead of back here — the command line would stay empty.
+  #
+  # Channels whose enter action *does* something (sesh connects, git-branch
+  # checks out) print nothing, so nothing is inserted. That is correct: the
+  # action already happened.
+  tv-menu-widget() {
+    local channel selection
+    channel="$(tv list-channels | tv)" || return 0
+    [ -z "$channel" ] && return 0
+    selection="$(tv "$channel")" || return 0
+    [ -n "$selection" ] && LBUFFER="${LBUFFER}${(q-)selection} "
     zle reset-prompt
   }
 
   # Alt-C changes directory in *this* shell. The dirs channel ships an
   # `[actions.cd]` running `cd {} && $SHELL`, which would strand the user in a
-  # nested shell — so the widget takes the printed path and cds itself.
+  # nested shell — so take the printed path and cd here instead.
   tv-dirs-widget() {
     local dir
     dir="$(tv dirs)" || return 0
@@ -214,31 +282,23 @@ if command -v tv > /dev/null ; then
   }
 
   # Ctrl-F is the sesh picker. Unlike the fzf pipeline it replaces, the
-  # channel's own `enter` action runs `sesh connect`, so there is nothing to
-  # capture here. Ctrl-S cycles sources (all/tmux/configs/zoxide/dirs) and
-  # Ctrl-D kills the highlighted session and reloads — both from the channel.
+  # channel's own enter action runs `sesh connect`, so there is nothing to
+  # capture. Ctrl-S cycles sources (all/tmux/configs/zoxide/dirs) and Ctrl-D
+  # kills the highlighted session and reloads — both from the channel, which
+  # is why the hand-written Ctrl-X kill binding is gone.
   tv-sesh-widget() {
     tv sesh
     zle reset-prompt
   }
 
-  # Ctrl-G opens the channel menu: pick a channel, then pick inside it. Every
-  # channel vendored later is reachable through this without a new binding.
-  tv-channels-widget() {
-    tv channels
-    zle reset-prompt
-  }
-
-  zle -N tv-files-widget
+  zle -N tv-menu-widget
   zle -N tv-dirs-widget
   zle -N tv-sesh-widget
-  zle -N tv-channels-widget
 
   for keymap in emacs viins vicmd; do
-    bindkey -M "$keymap" '^T' tv-files-widget
+    bindkey -M "$keymap" '^T' tv-menu-widget
     bindkey -M "$keymap" '^[c' tv-dirs-widget
     bindkey -M "$keymap" '^F' tv-sesh-widget
-    bindkey -M "$keymap" '^G' tv-channels-widget
   done
   unset keymap
 fi
@@ -251,18 +311,18 @@ Expected: `ok    zsh`, `ok    bash`, exit 0.
 
 - [ ] **Step 4: Verify the bindings landed in every keymap**
 
-Run: `zsh -ic 'for k in emacs viins vicmd; do bindkey -M $k "^T"; bindkey -M $k "^[c"; bindkey -M $k "^F"; bindkey -M $k "^G"; done' </dev/null`
-Expected: twelve lines, each naming a `tv-*-widget`. No line may name `fzf-file-widget` or `fzf-cd-widget`.
+Run: `zsh -ic 'for k in emacs viins vicmd; do bindkey -M $k "^T"; bindkey -M $k "^[c"; bindkey -M $k "^F"; done' </dev/null`
+Expected: nine lines naming `tv-menu-widget`, `tv-dirs-widget`, `tv-sesh-widget`. No line may name `fzf-file-widget` or `fzf-cd-widget`.
 
-- [ ] **Step 5: Verify Ctrl-T actually inserts a path**
+- [ ] **Step 5: Verify Ctrl-T inserts a path**
 
-A binding that exists is not a binding that works. Drive a real keypress through a pty, the way PR #91's sesh binding was verified: create a scratch directory with a known file, run an interactive zsh in `script -qec`, send `Ctrl-T`, a query matching the file, `Enter`, then a newline, and confirm the resulting command line contained the path.
+A binding that exists is not a binding that works. Drive real keypresses through a pty: make a scratch directory holding a uniquely-named file, start an interactive zsh under `script -qec`, send `Ctrl-T`, then `files`, `Enter`, then the unique name, `Enter`, and confirm the command line ends up holding that path.
 
-Put the transcript in your report. If the keypress cannot be driven, say so explicitly rather than reporting the binding as verified.
+Allow ~1.5s between stages — each picker has to start. Put the transcript in your report; if the keypresses cannot be driven, say so plainly rather than reporting the binding as verified.
 
 - [ ] **Step 6: Verify Alt-C changes this shell's directory**
 
-Same method: send `Alt-C`, select a known subdirectory, then run `pwd` and confirm it changed *and* that the shell is the same one (no nested `$SHELL`). Check `$SHLVL` is unchanged.
+Same method: send `Alt-C`, select a known subdirectory, then run `pwd` and `echo $SHLVL`. Expected: the directory changed and `$SHLVL` is unchanged — a nested shell means the channel's own cd action ran instead of the widget.
 
 - [ ] **Step 7: Commit**
 
@@ -276,11 +336,11 @@ git commit -m "feat: move the zsh pickers from fzf to television"
 ### Task 3: bash pickers
 
 **Files:**
-- Modify: `dot_bashrc` — remove the `fzf --bash` block (currently lines 182-186); remove the sesh widget (currently lines 248-262); add the tv widgets.
+- Modify: `dot_bashrc` — remove the `fzf --bash` block (currently lines 182-186) and the sesh widget (currently lines 244-262); add the tv widgets.
 
 **Interfaces:**
-- Consumes: `tv` and the vendored channels from Task 1.
-- Produces: the same four bindings in bash, mirroring Task 2.
+- Consumes: `tv` and the channels from Task 1.
+- Produces: the same three bindings in bash, mirroring Task 2.
 
 - [ ] **Step 1: Remove the fzf widget block**
 
@@ -294,25 +354,28 @@ if command -v fzf > /dev/null ; then
 fi
 ```
 
-Nothing replaces it: fzf-tab is zsh-only, so after this change bash uses fzf for nothing at all. The binary stays pinned for zsh's sake.
+Nothing replaces it. fzf-tab is zsh-only, so after this change bash uses fzf for nothing; the binary stays pinned for zsh's sake. Say that in the commit body, not in a comment that would sit in the file explaining an absence.
 
 - [ ] **Step 2: Replace the sesh widget with the tv widgets**
 
 Delete the `if command -v sesh > /dev/null && command -v fzf > /dev/null ; then ... fi` block and its comment, and put this in its place:
 
 ```bash
-# tv's pickers, mirroring .zshrc — see the comments there. Bound into both
-# keymaps because `set -o vi` at the top of this section means an emacs-only
-# binding would never fire.
+# tv's pickers, mirroring .zshrc — see the comments there, including why the
+# Ctrl-T menu is two `tv` calls rather than the `channels` meta-channel. Bound
+# into both keymaps because `set -o vi` at the top of this section means an
+# emacs-only binding would never fire.
 if command -v tv > /dev/null ; then
-  # Ctrl-T splices the selection into the line at the cursor. bash has no zle,
-  # so readline's own READLINE_LINE/READLINE_POINT are the equivalent.
-  tv-files-widget() {
-    local selected
-    selected="$(tv files)" || return 0
-    [ -z "$selected" ] && return 0
-    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${selected}${READLINE_LINE:$READLINE_POINT}"
-    READLINE_POINT=$((READLINE_POINT + ${#selected}))
+  # bash has no zle, so readline's own READLINE_LINE/READLINE_POINT are how a
+  # widget edits the line being typed.
+  tv-menu-widget() {
+    local channel selection
+    channel="$(tv list-channels | tv)" || return 0
+    [ -z "$channel" ] && return 0
+    selection="$(tv "$channel")" || return 0
+    [ -z "$selection" ] && return 0
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${selection}${READLINE_LINE:$READLINE_POINT}"
+    READLINE_POINT=$((READLINE_POINT + ${#selection}))
   }
 
   # Alt-C cds in this shell rather than the nested one the dirs channel's own
@@ -325,13 +388,11 @@ if command -v tv > /dev/null ; then
   }
 
   tv-sesh-widget() { tv sesh; }
-  tv-channels-widget() { tv channels; }
 
   for keymap in emacs vi-insert; do
-    bind -m "$keymap" -x '"\C-t": tv-files-widget'
+    bind -m "$keymap" -x '"\C-t": tv-menu-widget'
     bind -m "$keymap" -x '"\ec": tv-dirs-widget'
     bind -m "$keymap" -x '"\C-f": tv-sesh-widget'
-    bind -m "$keymap" -x '"\C-g": tv-channels-widget'
   done
   unset keymap
 fi
@@ -344,12 +405,12 @@ Expected: `ok    zsh`, `ok    bash`, exit 0.
 
 - [ ] **Step 4: Verify the bindings exist**
 
-Run: `bash -ic 'bind -m emacs -X; bind -m vi-insert -X' </dev/null | grep -E "tv-(files|dirs|sesh|channels)-widget"`
-Expected: eight lines. Note `bind -p` will NOT show these — they are function bindings, visible only through `bind -X`.
+Run: `bash -ic 'bind -m emacs -X; bind -m vi-insert -X' </dev/null | grep -E "tv-(menu|dirs|sesh)-widget"`
+Expected: six lines. `bind -p` will NOT show these — they are function bindings, visible only through `bind -X`.
 
 - [ ] **Step 5: Verify Ctrl-T inserts and Alt-C cds**
 
-Same pty method as Task 2, Steps 5-6, but with `bash -i`. Confirm `$SHLVL` is unchanged after Alt-C. Transcripts in the report.
+Same pty method as Task 2 Steps 5-6, with `bash -i`. Confirm `$SHLVL` is unchanged after Alt-C. Transcripts in the report.
 
 - [ ] **Step 6: Commit**
 
@@ -371,19 +432,19 @@ git commit -m "feat: move the bash pickers from fzf to television"
 
 - [ ] **Step 1: Replace the binding**
 
-The current block guards on sesh and runs a long nested-quoted fzf pipeline. Replace the whole `if-shell` block with:
+Replace the whole existing `if-shell "command -v sesh ..." { ... }` block with:
 
 ```tmux
 # The sesh picker in a popup — the same channel Ctrl-F opens in the shell, so
 # Ctrl-S (cycle sources) and Ctrl-D (kill + reload) work here too. Guarded on
-# tv rather than sesh: without tv there is no picker to open, and `o` is left
-# at tmux's own default (select-pane -t :.+).
+# tv rather than sesh: without tv there is no picker to open, and `o` is then
+# left at tmux's own default (select-pane -t :.+).
 if-shell "command -v tv > /dev/null 2>&1" {
     bind o display-popup -E -w 60% -h 60% "tv sesh"
 }
 ```
 
-The nested quoting that made the old binding fragile is gone with the pipeline — there is nothing left to escape.
+The nested quoting that made the old binding fragile goes with the pipeline — there is nothing left to escape.
 
 - [ ] **Step 2: Verify tmux parses it**
 
@@ -392,7 +453,7 @@ Expected: one line binding `o` to `display-popup -E ... "tv sesh"`.
 
 - [ ] **Step 3: Verify the popup runs the picker**
 
-Create a throwaway detached session, invoke the popup's command directly against a real attached client (the technique used when the sesh popup was first added — `display-popup` with the same command string, driven under a `script`-allocated pty), and confirm `tv` starts with the sesh channel. Report what you ran.
+Create a throwaway detached session and invoke the popup's command against a real attached client under a `script`-allocated pty — the technique used when the sesh popup was first added. Confirm `tv` starts on the sesh channel. Report what you ran.
 
 - [ ] **Step 4: Commit**
 
@@ -414,11 +475,9 @@ git commit -m "feat: open the sesh channel from the tmux popup"
 
 - [ ] **Step 1: Update the keybindings table**
 
-In `README.md`'s "Shell keybindings" section, the table currently reads:
+In README's "Shell keybindings" section, these rows:
 
 ```markdown
-| `Ctrl-R` | atuin history search, all directories |
-| `Up` | atuin history search, this directory only |
 | `Ctrl-T` | fzf file picker |
 | `Alt-C` | fzf directory picker |
 | `Ctrl-F` | sesh picker: tmux sessions + zoxide directories |
@@ -426,68 +485,65 @@ In `README.md`'s "Shell keybindings" section, the table currently reads:
 | `Ctrl-X` | *inside* the picker: kill the highlighted session and redraw |
 ```
 
-Replace those rows with:
+become:
 
 ```markdown
-| `Ctrl-R` | atuin history search, all directories |
-| `Up` | atuin history search, this directory only |
-| `Ctrl-T` | tv file picker |
+| `Ctrl-T` | tv channel menu — pick a channel, then pick in it; the result lands on the command line |
 | `Alt-C` | tv directory picker, cds this shell |
 | `Ctrl-F` | tv sesh channel: tmux sessions + zoxide directories |
 | `prefix o` | the same sesh channel, in a tmux popup |
-| `Ctrl-G` | tv channel menu — every vendored channel, one keystroke |
 | `Ctrl-S` | *inside* the sesh channel: cycle source (all/tmux/configs/zoxide/dirs) |
 | `Ctrl-D` | *inside* the sesh channel: kill the highlighted session and reload |
 ```
 
-Then fix the paragraph below the table: it explains that `Ctrl-R` used to be fzf's and that init order decides the winner. That is still true of atuin, but the sentence sits next to rows that no longer mention fzf — reword it so it describes what ships now, and add that fzf remains installed solely for fzf-tab.
+Then fix the paragraph below the table. It explains that `Ctrl-R` used to be fzf's and that init order decides the winner — still true of atuin, but it now sits under rows that no longer mention fzf. Reword it to describe what ships, and add that fzf stays installed solely for fzf-tab.
 
 - [ ] **Step 2: Update the Layout table**
 
 Add a row after the `dot_config/atuin/` row:
 
 ```markdown
-| `dot_config/television/` | television: vendored channel definitions (`cable/`) and the settings that deviate from tv's defaults |
+| `dot_config/television/` | television: the one locally-modified channel (`cable/alias.toml`); the rest arrive from a pinned external |
 ```
 
-And update the `dot_zshrc`, `dot_bashrc` and `dot_tmux.conf` rows, which currently name the sesh picker and fzf keys, to name tv instead. Read each row and change only the picker wording — leave the rest.
+Then update the `dot_zshrc`, `dot_bashrc` and `dot_tmux.conf` rows, which name the sesh picker and fzf keys, to name tv instead. Change only the picker wording.
 
-- [ ] **Step 3: Document which channels are inert where**
+- [ ] **Step 3: Document where channels are inert**
 
-Add a short paragraph to the Packages section, after the coreutils sentence:
+Add to the Packages section, after the coreutils sentence:
 
 ```markdown
-tv's channels are vendored in `dot_config/television/cable/` rather than pulled
-by `tv update-channels`, so the host and a container see the same set. Several
-of them are host-only in practice: `pacman-packages`, `systemd-units`, the
-`docker-*` pair and `tldr` have nothing to list inside a devpod container, and
-the `k8s-*` channels need a `kubectl` on PATH, which comes from a project's own
-`mise.toml` rather than the global pin. An empty channel there is the tool
-missing, not the channel broken.
+tv's channels come from a pinned archive external rather than `tv
+update-channels`, so the host and a container see the same set, and Renovate
+bumps them with everything else. Several are host-only in practice:
+`pacman-packages`, `systemd-units`, the `docker-*` pair and `tldr` have nothing
+to list inside a devpod container, and the `k8s-*` channels need a `kubectl` on
+PATH, which comes from a project's own `mise.toml` rather than the global pin.
+An empty channel there is the tool missing, not the channel broken.
 ```
 
-- [ ] **Step 4: Check no stale Ctrl-X reference survives**
+- [ ] **Step 4: Check no stale reference survives**
 
-Run: `grep -rn "Ctrl-X\|ctrl-x" README.md dot_zshrc dot_bashrc dot_tmux.conf`
-Expected: no output. The binding was removed in Tasks 2-4; a surviving mention documents something that no longer exists.
+Run: `grep -rn "Ctrl-X\|ctrl-x\|fzf file picker\|fzf directory picker" README.md dot_zshrc dot_bashrc dot_tmux.conf`
+Expected: no output.
 
-(The `docs/superpowers/` spec and plan for the earlier work describe `Ctrl-X` as it was at the time. Those are historical records — leave them alone.)
+(The `docs/superpowers/` spec and plan for the earlier work describe `Ctrl-X` as it was then. Those are historical records — leave them.)
 
 - [ ] **Step 5: Run the full check**
 
 Run: `mise run check`
-Expected: exit 0. The clean-HOME bootstrap installs television from scratch, which is the real test that the pin resolves on a machine with nothing cached.
+Expected: exit 0. The clean-HOME bootstrap installs television and fetches the channel external from scratch, which is the real test that both resolve on a machine with nothing cached.
 
 - [ ] **Step 6: Confirm the diff's scope**
 
 Run: `git diff main --stat`
-Expected: only the files this plan names, plus the 30 vendored channel TOMLs. No `.age` blob.
+Expected: only the files this plan names. No `.age` blob.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add README.md
-git commit -m "docs: document the television pickers and vendored channels"
+git commit -m "docs: document the television pickers and channel set"
 ```
 
 Stop here. The push and the PR happen after a whole-branch review, not as part of this task.

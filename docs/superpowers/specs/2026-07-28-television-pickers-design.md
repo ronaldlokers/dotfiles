@@ -1,4 +1,4 @@
-# Television: pickers and vendored channels
+# Television: pickers and a pinned channel set
 
 Date: 2026-07-28
 
@@ -36,12 +36,22 @@ inherits it. Net effect: this change removes more shell wiring than it adds.
 `2026-07-28-daily-friction-tooling-design.md`. tv ships `zsh-history` and
 `bash-history` channels; both are deliberately not vendored.
 
-**Channels are vendored, not fetched.** `tv update-channels` pulls TOMLs from
-GitHub at runtime into `$HOME`. That is unpinned content arriving outside
-chezmoi, which contradicts how every other dependency here works. A curated set
-is committed to the repo instead: reviewable, identical on the host and inside a
-container, and needing no network at runtime. The cost is that refreshing a
-channel from upstream is a manual step — see Risks.
+**Channels arrive as a pinned archive external, not `tv update-channels`.** That
+subcommand pulls TOMLs from GitHub at runtime into `$HOME` — unpinned content
+arriving outside chezmoi, contradicting how every other dependency here works.
+
+The alternative first considered was committing a curated set of TOMLs into the
+repo. That is reproducible but invisible to Renovate, so the set would silently
+rot. Instead the channels come from a `.chezmoiexternals` archive pinned to
+upstream tag `0.15.9`, with an `include` list naming exactly the channels wanted
+— the same mechanism as the zsh plugins, tracked by the repo's existing custom
+regex manager, so Renovate bumps it like everything else.
+
+One channel needs local changes (see `alias` below). A chezmoi-managed file can
+live *inside* an external's target directory: verified against chezmoi 2.70.5 in
+a scratch HOME, where a managed `alias.toml` survived both the initial apply and
+a forced `--refresh-externals`. So the override ships as a normal managed file
+and is simply left out of the external's `include` list.
 
 **The hand-built `Ctrl-X` sesh kill is superseded.** Upstream's `sesh` channel
 already binds `Ctrl-D` to kill-and-reload, alongside source cycling (`Ctrl-S`
@@ -60,11 +70,10 @@ shell-integration tools. Registry-backed, so Renovate tracks it.
 
 | Key | Today | After |
 | --- | --- | --- |
-| `Ctrl-T` | fzf file widget | `tv files` |
+| `Ctrl-T` | fzf file widget | tv channel menu: pick a channel, then pick in it |
 | `Alt-C` | fzf directory widget | `tv dirs` |
 | `Ctrl-F` | `sesh list --icons \| fzf` | `tv sesh` |
 | `prefix o` | the same pipeline in a popup | `tv sesh` in a popup |
-| `Ctrl-G` | — | `tv channels` |
 | `Ctrl-R` | atuin | atuin, unchanged |
 
 Bindings stay where they are today: all three zsh keymaps (`emacs`, `viins`,
@@ -76,20 +85,36 @@ Bindings stay where they are today: all three zsh keymaps (`emacs`, `viins`,
 what the binding should do. The widget therefore takes tv's printed path and
 runs `cd` itself, ignoring that action.
 
-`Ctrl-G` opens the `channels` meta-channel: it lists the vendored channels,
-previews each one's TOML with `bat`, and its `enter` action runs `tv {}` to drop
-into the chosen channel. Every channel added later is reachable through it with
-no further binding.
+`Ctrl-T` becomes the channel menu rather than a file picker: pick a channel,
+then pick inside it, and the result lands on the command line. Files are one
+entry in that list, so the old `Ctrl-T` behaviour costs one extra keystroke and
+every other channel becomes reachable without its own binding. No new key is
+needed, which matters — `Ctrl-G` is not free (`send-break` in zsh's emacs
+keymap, `list-expand` in `viins` and `vicmd`) and `Ctrl-Space` is this machine's
+tmux prefix.
+
+**The menu is two `tv` calls, not the `channels` meta-channel.** Upstream ships
+a `channels` channel whose `enter` action runs `tv {}`. Bound to a key, it does
+not work for this purpose: the inner picker writes its selection to the
+terminal, so `sel="$(tv channels)"` returns empty — verified by pty transcript,
+where the chosen filename appeared on screen while the capture stayed `[]`. The
+widget therefore runs `tv list-channels | tv` to choose a channel and then
+`tv "$channel"` to choose within it, both in the calling process, both captured.
+That channel is consequently not installed.
+
+Channels whose `enter` action *does* something rather than printing — sesh
+connects, git-branch checks out — insert nothing, which is correct: the action
+already happened.
 
 ### Channel set
 
-Vendored under `dot_config/television/cable/`, copied from upstream's
-`cable/unix/` at commit `3e74ba4` (2026-07-25). Requirements are upstream's own
-`requirements` field.
+Extracted into `~/.config/television/cable/` by `.chezmoiexternals/tv-channels.toml`,
+from upstream's `cable/unix/` at tag `0.15.9`, selected by an `include` list.
+Requirements below are upstream's own `requirements` field.
 
 | Group | Channels | Needs |
 | --- | --- | --- |
-| Pickers and navigation | `files`, `dirs`, `zoxide`, `sesh`, `tmux-sessions`, `tmux-windows`, `channels` | fd, bat, zoxide, sesh, tmux, tv — all pinned |
+| Pickers and navigation | `files`, `dirs`, `zoxide`, `sesh`, `tmux-sessions`, `tmux-windows` | fd, bat, zoxide, sesh, tmux — all pinned |
 | Git and GitHub | `git-branch`, `git-log`, `git-stash`, `git-worktrees`, `git-repos`, `gh-prs`, `gh-issues` | git, fd, gh, jq — all pinned |
 | Kubernetes | `k8s-contexts`, `k8s-pods`, `k8s-services`, `k8s-deployments` | kubectl — **not pinned globally** |
 | Arch host and system | `pacman-packages`, `systemd-units`, `ports`, `procs`, `mounts` | pacman, systemctl, ss, ps, df, awk — **host only** |
@@ -114,23 +139,24 @@ smoke check that catches rc-file breakage.
 Per binding, driven through a real pty the way the sesh binding was verified in
 PR #91, because none of the above starts an interactive picker:
 
-- `Ctrl-T` inserts the selected path on the command line.
-- `Alt-C` changes the directory of the calling shell, not a nested one.
+- `Ctrl-T` lists the installed channels; picking `files` and then a file puts
+  that path on the command line.
+- `Alt-C` changes the directory of the calling shell, not a nested one — `$SHLVL`
+  is unchanged afterwards.
 - `Ctrl-F` and `prefix o` connect to a session; `Ctrl-D` inside kills one and
   the list reloads.
-- `Ctrl-G` lists the vendored channels, previews a TOML, and entering one opens
-  it.
 
 Plus one negative check that matters more than it looks: with `fzf --zsh` gone,
 `Ctrl-T` and `Alt-C` must be tv's and fzf-tab must still complete on `Tab`.
 
 ## Risks
 
-**Vendored channels are invisible to Renovate.** The regex managers cover
-`.chezmoiexternals` and mise pins; a TOML copied into `dot_config` matches
-neither. Upstream fixes will not arrive on their own. The commit the set was
-copied from gets recorded so a refresh is a diff rather than an archaeology
-exercise.
+**The one overridden channel does not follow upstream.** The external's tag moves
+with Renovate, but `alias.toml` is ours and will not — an upstream improvement to
+that channel arrives only if someone notices. That is the price of the override
+and it applies to exactly one file; if upstream ever fixes the interactive-shell
+source command, the override should be dropped and the channel returned to the
+`include` list.
 
 **Several channels are inert where their tool is absent.** `pacman-packages`,
 `systemd-units`, `docker-*`, `tldr` and the `k8s-*` set list nothing inside a
@@ -159,6 +185,7 @@ the shell.
 
 ## Documentation
 
-README: update the keybindings table (`Ctrl-T`, `Alt-C`, `Ctrl-F` now tv;
-`Ctrl-X` becomes `Ctrl-D`; `Ctrl-G` added), add `dot_config/television/` to the
-Layout table, and state plainly which channels are host-only.
+README: update the keybindings table (`Ctrl-T` is now the channel menu, `Alt-C`
+and `Ctrl-F` are tv, `Ctrl-X` becomes the channel's own `Ctrl-D`, `Ctrl-S`
+cycles sesh sources), add `dot_config/television/` to the Layout table, and state
+plainly which channels are host-only.
