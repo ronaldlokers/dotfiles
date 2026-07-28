@@ -250,7 +250,10 @@ fi
 if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
   sesh-connect() {
     local session
-    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    # Ctrl-X kills the highlighted session, same as in .zshrc — see the
+    # comment there for why `{2..}` is the session name.
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ' \
+      --bind='ctrl-x:execute-silent(tmux kill-session -t {2..})+reload(sesh list --icons)')"
     [ -z "$session" ] && return 0
     sesh connect "$session"
   }
