@@ -208,8 +208,8 @@ installer rewrites `HISTCONTROL` from `ignoreboth` to `ignoredups:` once, at the
 first prompt it draws — it reconstructs the previous command via `history 1`,
 which cannot express `ignorespace`. Left alone, a command typed with a leading
 space would start landing in `~/.bash_history`, where it did not before this
-branch. Fixed by re-asserting `HISTCONTROL=ignoreboth` from a precmd hook (run
-before every prompt, not just once) right after sourcing bash-preexec in
+branch. Fixed by re-asserting `HISTCONTROL` from a precmd hook (run before
+every prompt, not just once) right after sourcing bash-preexec in
 `dot_bashrc`. zsh's `setopt hist_ignore_space` is unaffected — the two rc files
 were verified to still agree on this point.
 
@@ -224,6 +224,23 @@ history number and skips a repeat firing against the same number, swapped into
 `__atuin_preexec` existing (`declare -F`), so a future atuin release that
 renames its hook degrades to the double-logging behavior rather than dropping
 every atuin entry or breaking shell startup.
+
+That guard has its own second-order effect, caught in re-review: the precmd
+hook was re-asserting `ignoreboth`, which is `ignorespace` *and* `ignoredups`
+together — and `ignoredups` keeps a genuinely repeated command out of the
+history list exactly as effectively as `ignorespace` keeps a leading-space one
+out. From the history-number guard's point of view the two cases are
+identical, so with `ignoreboth` in play the guard couldn't tell "the same
+command typed twice" from "a spaced command's phantom re-fire of the command
+before it" — every real repeat silently lost its atuin entry (timestamp,
+duration, exit code), which is an everyday pattern (rerun the build, arrow-up
++ Enter). Fixed by re-asserting `ignorespace` only, dropping `ignoredups`: a
+real repeat now advances the history number and the guard passes it through,
+while a leading-space command still doesn't and the guard still catches it.
+This is a deliberate divergence from zsh's `hist_ignore_dups` — bash's own
+history file can now carry adjacent duplicate lines zsh's never would —
+acceptable because atuin, not `~/.bash_history`, is what `Ctrl-R` searches;
+bash's history file is now only bash-preexec's own bookkeeping input.
 
 ## Documentation
 

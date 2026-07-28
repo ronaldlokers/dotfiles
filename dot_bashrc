@@ -276,28 +276,51 @@ fi
 if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
   . "$HOME/.bash/bash-preexec.sh"
 
-  # bash-preexec's own installer rewrites HISTCONTROL from "ignoreboth" to
-  # "ignoredups:" exactly once, at the very first prompt it draws (it
-  # reconstructs the previous command via `history 1`, which has no way to
-  # express "ignorespace"). That first prompt fires before any command of
-  # ours has been typed, so a plain one-shot re-export right here would
-  # already be too late — it would run *before* that rewrite, not after,
-  # and get clobbered the same way the original setting did. Re-asserting
-  # it from a precmd hook — run again before every prompt, not just once —
-  # is what actually restores the escape hatch: by the time the next
-  # command is typed, HISTCONTROL is back to ignoreboth, so a leading-space
-  # command still lands in neither ~/.bash_history nor atuin.
+  # bash-preexec rebuilds each command from `builtin history 1` rather than
+  # reading it directly (that's how it feeds preexec/precmd functions their
+  # argument), and that rebuild is exactly what HISTCONTROL's "ignorespace"
+  # rule breaks: a line kept out of the history list is a line `history 1`
+  # can't see. bash-preexec's own installer works around that the only way
+  # it can — by rewriting HISTCONTROL to drop "ignorespace" entirely — and
+  # it does so once, at the very first prompt it draws, before any command
+  # of ours has been typed. A plain one-shot re-export placed here would
+  # already be too late: it runs *before* that rewrite, not after, so it
+  # gets overwritten the same way the original setting did. Re-asserting it
+  # from a precmd hook — run again before every prompt, not just once — is
+  # what actually restores the escape hatch: by the time the next command
+  # is typed, "ignorespace" is back in effect.
   #
-  # This does not come for free: bash's DEBUG trap still fires for the
-  # excluded command (HISTCONTROL only kept it out of the history list, not
-  # off the trap), and bash-preexec rebuilds "the command" for that firing
-  # via `history 1` — which, since nothing new landed there, returns the
-  # command *before* it instead. Every registered preexec function would
-  # normally run again with that stale text. See the atuin preexec guard
-  # below the atuin init for how that gets caught before it reaches atuin's
-  # database.
-  __bp_restore_histcontrol() { export HISTCONTROL=ignoreboth; }
-  precmd_functions+=(__bp_restore_histcontrol)
+  # We restore *only* "ignorespace", not "ignoreboth" — deliberately
+  # dropping "ignoredups". A leading-space command is kept out of the
+  # history list, so a later `history 1` inside bash-preexec's DEBUG trap
+  # resolves to the command *before* it, and every registered preexec
+  # function (atuin's included) gets invoked a second time with that
+  # stale, already-seen text. The atuin preexec guard below the atuin init
+  # tells that stale replay apart from a real repeat by checking whether
+  # the history number advanced — but "ignoredups" also keeps a genuinely
+  # repeated command out of the history list, which advances the history
+  # number exactly as little as the stale replay does. With both rules
+  # active the guard cannot tell "the same command typed twice" from "a
+  # spaced command's phantom re-fire of the command before it" — they look
+  # identical from `history 1`'s point of view — and every real repeat
+  # would silently lose its atuin entry (timestamp, duration, exit code):
+  # rerunning a build, arrow-up + Enter. Dropping "ignoredups" removes that
+  # ambiguity at the source: a real repeat still advances the history
+  # number (it's added again, uniqued only by *not* being on the entry
+  # right before it, which "ignorespace" alone doesn't touch), so the guard
+  # passes it through, while a leading-space command still doesn't, so the
+  # guard still catches it.
+  #
+  # This is a deliberate divergence from zsh's `setopt hist_ignore_dups` —
+  # bash's own history list and ~/.bash_history end up with adjacent
+  # duplicate lines that zsh's never would. That's acceptable specifically
+  # because atuin owns Ctrl-R now: bash's history file is no longer what
+  # gets searched interactively, just what bash-preexec's DEBUG trap reads
+  # to identify "the command that just ran" — and atuin's own database,
+  # unaffected by HISTCONTROL, is where real de-duplication would belong
+  # if it mattered there.
+  __bp_reassert_ignorespace() { export HISTCONTROL=ignorespace; }
+  precmd_functions+=(__bp_reassert_ignorespace)
 fi
 
 # atuin owns Ctrl-R here too, same as in .zshrc — after the fzf block above,
@@ -320,7 +343,10 @@ if command -v atuin > /dev/null ; then
   # previous command's text, and atuin logs it twice. Guarding on the
   # history number actually advancing catches exactly that case: a repeat
   # firing for the same number is the stale-lookup replay, not a new
-  # command, so it's dropped before it reaches atuin.
+  # command, so it's dropped before it reaches atuin. This only works
+  # because the hook above restores "ignorespace" and nothing else — a
+  # genuinely repeated command still advances the history number, so this
+  # guard passes it through rather than mistaking it for a replay.
   #
   # Guarded on __atuin_preexec existing: if a future atuin release renames
   # or restructures its hook, this whole block quietly no-ops rather than
