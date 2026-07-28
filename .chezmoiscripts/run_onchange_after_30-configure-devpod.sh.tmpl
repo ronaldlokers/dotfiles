@@ -25,11 +25,17 @@ fi
 
 # Not `command -v`: $HOME/.local/bin is on PATH in an interactive shell but not
 # during a clean-HOME apply, where this script runs right after the external has
-# put the binary there.
+# put the binary there. Absence here is an error, not something to skip past —
+# the external guarantees the binary on a non-container host, so a missing
+# binary means that guarantee broke. Exiting non-zero is what matters: chezmoi
+# only records a run_onchange script as done on exit 0, and this script's
+# rendered content doesn't change on a stable host, so a silent `exit 0` here
+# would leave DevPod unconfigured forever with no later apply retrying it.
 devpod="$HOME/.local/bin/devpod"
 if [ ! -x "$devpod" ]; then
-    echo "No devpod binary at $devpod, skipping DevPod configuration." >&2
-    exit 0
+    echo "no devpod binary at $devpod — the external should have" >&2
+    echo "installed it; not recording this script as done." >&2
+    exit 1
 fi
 
 # `provider use` fails when the provider was never added, so it doubles as the
