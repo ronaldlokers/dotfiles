@@ -9,10 +9,16 @@ key.txt.age
 .config/gh/hosts.yml.age
 .config/sugarrush/config.toml.age
 /docs
+# Source artwork the screensaver branding is generated from, kept for
+# regeneration rather than for $HOME — see assets/README.md.
+/assets
 {{ if eq (includeTemplate "is-container" .) "true" -}}
 # Picks which terminal emulator Super+Return opens, which only means something
 # on a machine with a display. The container test lives in
 # .chezmoitemplates/is-container, shared with the host-packages script and the
 # devpod external, so the gates can't drift apart.
 .config/xdg-terminals.list
+# Omarchy's screensaver branding. A container has no omarchy, no display and
+# no screensaver to brand, so the file would just sit there unread.
+.config/omarchy/branding/screensaver.txt
 {{ end -}}
