@@ -8,6 +8,16 @@
 # DevPod writes that file itself — `initialized: true` and `creationTimestamp`
 # under the provider entry are its own bookkeeping — so a managed copy would be
 # reverted on every apply and show as permanent drift in `chezmoi status`.
+#
+# run_onchange, not plain run_after: a settled rerun still costs three
+# invocations of an 82 MB static binary (measured at 2.2s) on every single
+# apply, and run_onchange only pays that when the rendered script changes —
+# not because a rerun would be unsafe (the calls below are themselves
+# idempotent). The trade-off: unlike the plain-run_after host-packages
+# script, this one does not reconverge. `rm -rf ~/.devpod` followed by
+# `chezmoi apply` restores nothing, because the rendered script is
+# unchanged; recovery needs `chezmoi state delete-bucket` or a no-op edit to
+# this file.
 set -eu
 
 # Same container test as the DevPod external and the host-packages script, from
@@ -23,16 +33,37 @@ if [ "$is_container" = "true" ]; then
     exit 0
 fi
 
+# Same platform test as the DevPod external (.chezmoiexternals/devpod.toml),
+# from .chezmoitemplates/is-devpod-platform so the two can't drift apart.
+# The asset it downloads is linux-amd64 only, so on any other platform there
+# is deliberately no binary. Needed below to tell that apart from a binary
+# that should be there and isn't.
+# shellcheck disable=SC1083
+supported_platform={{ includeTemplate "is-devpod-platform" . }}
+
 # Not `command -v`: $HOME/.local/bin is on PATH in an interactive shell but not
 # during a clean-HOME apply, where this script runs right after the external has
-# put the binary there. Absence here is an error, not something to skip past —
-# the external guarantees the binary on a non-container host, so a missing
-# binary means that guarantee broke. Exiting non-zero is what matters: chezmoi
-# only records a run_onchange script as done on exit 0, and this script's
-# rendered content doesn't change on a stable host, so a silent `exit 0` here
-# would leave DevPod unconfigured forever with no later apply retrying it.
+# put the binary there.
+#
+# A missing binary means two different things depending on the platform:
+#   - unsupported platform ($supported_platform above is false): the external
+#     deliberately skipped it, so there was never going to be a binary here.
+#     That's not an error — exit 0 so chezmoi records this script as done
+#     instead of retrying forever on a machine that can never satisfy it.
+#   - supported platform: the external guarantees the binary here, so its
+#     absence means that guarantee broke. Exiting non-zero is what matters:
+#     chezmoi only records a run_onchange script as done on exit 0, and this
+#     script's rendered content doesn't change on a stable host, so a silent
+#     `exit 0` here would leave DevPod unconfigured forever with no later
+#     apply retrying it.
 devpod="$HOME/.local/bin/devpod"
 if [ ! -x "$devpod" ]; then
+    # shellcheck disable=SC2154
+    if [ "$supported_platform" != "true" ]; then
+        echo "no devpod binary for this platform (.chezmoi.os/.chezmoi.arch) —" >&2
+        echo "the external skipped it on purpose; nothing to configure here." >&2
+        exit 0
+    fi
     echo "no devpod binary at $devpod — the external should have" >&2
     echo "installed it; not recording this script as done." >&2
     exit 1

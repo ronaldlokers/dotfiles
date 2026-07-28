@@ -73,8 +73,13 @@ Gating and ordering:
   container the binary is not installed at all.
 - Numbered `30`, so it runs after `run_after_20-install-host-packages`. `run_after_`
   scripts run once externals have been applied, so the `devpod` binary exists by then.
-- `run_onchange_` rather than plain `run_after_`: it reruns only when the rendered
-  script changes, and the operations are idempotent so a rerun is harmless.
+- `run_onchange_` rather than plain `run_after_`: a settled rerun costs three
+  invocations of an 82 MB static binary — measured at 2.2s — on every single
+  apply, and `run_onchange` only pays that cost when the rendered script
+  changes. The trade-off: unlike the plain-`run_after` host-packages script,
+  this one does not reconverge. `rm -rf ~/.devpod` followed by `chezmoi apply`
+  restores nothing, because the rendered script is unchanged; recovery needs
+  `chezmoi state delete-bucket` or a no-op edit to the script.
 
 The script runs during CI's clean-HOME bootstrap. The runner is not a container, so
 the `is-container` gate is false there and the script executes for real against the

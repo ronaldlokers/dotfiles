@@ -15,12 +15,21 @@ shopt -u patsub_replacement 2>/dev/null || true
 # .devcontainer/ out of whichever project last had one and deleting its
 # project-specific parts by hand — which is how the template drifts.
 
-template="${XDG_DATA_HOME:-$HOME/.local/share}/devcontainer-template"
+# Hard-coded, not ${XDG_DATA_HOME:-$HOME/.local/share}: chezmoi maps
+# dot_local/share/... to $HOME/.local/share/... unconditionally, ignoring
+# XDG_DATA_HOME. Deferring to XDG_DATA_HOME here would only diverge from
+# where chezmoi actually writes — and if it ever did, the "run 'chezmoi
+# apply' first" advice below could never fix it, since apply keeps writing
+# to the other path.
+template="$HOME/.local/share/devcontainer-template"
 target=".devcontainer"
 force=false
 
+# Writes to stdout: requested help (-h/--help) is not an error and belongs
+# there. The unknown-argument path below is the error case, and redirects
+# this call to stderr itself instead.
 usage() {
-	cat >&2 <<'EOF'
+	cat <<'EOF'
 usage: devcontainer-init [--force]
 
 Writes .devcontainer/{devcontainer.json,post-create.sh} into the current
@@ -39,7 +48,7 @@ while [ $# -gt 0 ]; do
 		;;
 	*)
 		echo "unknown argument: $1" >&2
-		usage
+		usage >&2
 		exit 2
 		;;
 	esac
@@ -51,10 +60,12 @@ if [ ! -d "$template" ]; then
 	exit 1
 fi
 
-# Both files are required before anything is written. A half-built template
-# (or one caught mid `chezmoi apply`) fails loudly here instead of leaving a
-# half-written .devcontainer/ behind for the next run to trip over.
-if [ ! -f "$template/devcontainer.json" ] || [ ! -f "$template/post-create.sh" ]; then
+# Both files must exist and be non-empty before anything is written. This
+# catches a missing or zero-length file — the template outright absent, or
+# caught mid `chezmoi apply` before any content landed — but not a file
+# truncated partway through with some bytes already written; that case is
+# rarer and not worth a content-aware check here.
+if [ ! -s "$template/devcontainer.json" ] || [ ! -s "$template/post-create.sh" ]; then
 	echo "incomplete template at $template — expected devcontainer.json and post-create.sh" >&2
 	exit 1
 fi
@@ -85,12 +96,19 @@ if [ -e "$target" ] && [ "$force" = false ]; then
 	exit 1
 fi
 
-# Build the new .devcontainer in a scratch directory first, and only move it
-# into place once both files have been written successfully — so a failure
-# partway through (a full disk, an interrupted run) never leaves a
-# half-written target for the next invocation to mistake for a real one.
-staging="$(mktemp -d "${TMPDIR:-/tmp}/devcontainer-init.XXXXXX")"
+# Build the new .devcontainer in a scratch directory first, on the same
+# filesystem as the project — not $TMPDIR, which is typically a different
+# filesystem and would make the move into place below degrade to
+# copy-plus-unlink. Moving the whole scratch directory into place as one
+# rename means a failure partway through (a full disk, an interrupted run)
+# never leaves a half-written target for the next invocation to mistake for
+# a real one.
+staging="$(mktemp -d "./.devcontainer-init.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
+# mktemp -d always creates at 0700, ignoring umask — fine for a scratch dir,
+# but this one gets renamed into place as $target below, so it needs the
+# permissions a plain `mkdir -p "$target"` would have given it instead.
+chmod "$(printf '%04o' "$(( 0777 & ~$(umask) ))")" "$staging"
 
 # Bash pattern substitution, not sed: the replacement is used literally, so
 # a name containing a sed-special character like & or \ can't corrupt the
@@ -112,9 +130,10 @@ if [ -e "$target" ]; then
 	fi
 fi
 
-mkdir -p "$target"
-mv "$staging/devcontainer.json" "$target/devcontainer.json"
-mv "$staging/post-create.sh" "$target/post-create.sh"
+# One rename for the whole directory, not one per file: a single same-
+# filesystem rename is atomic, so there's no window where $target holds one
+# file but not the other.
+mv "$staging" "$target"
 
 echo "wrote $target/devcontainer.json"
 echo "wrote $target/post-create.sh"

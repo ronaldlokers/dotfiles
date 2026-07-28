@@ -238,6 +238,31 @@ jobs:
             exit 1
           fi
           echo "host-packages script correctly skipped, silently"
+      - name: configure-devpod script detects the container and skips
+        run: |
+          chezmoi execute-template --source "$PWD" \
+            < .chezmoiscripts/run_onchange_after_30-configure-devpod.sh.tmpl > /tmp/devpod-configure.sh
+          # The shared .chezmoitemplates/is-container must have resolved true.
+          grep -qx 'is_container=true' /tmp/devpod-configure.sh \
+            || { echo "::error::is-container template did not detect the container"; exit 1; }
+          # Unlike the host-packages skip, this script's container branch
+          # writes a message to stderr before exiting 0 — assert that message,
+          # not silence.
+          out="$(bash /tmp/devpod-configure.sh </dev/null 2>&1)"; rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::script exited $rc inside a container, expected 0"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          case "$out" in
+          *"skipping DevPod configuration"*) ;;
+          *)
+            echo "::error::script did not print the expected container-skip message:"
+            printf '%s\n' "$out"
+            exit 1
+            ;;
+          esac
+          echo "configure-devpod script correctly skipped, with a message"
 
   secrets-machinery:
     # The bootstrap job has no age identity, so run_before_00-unlock-secrets only

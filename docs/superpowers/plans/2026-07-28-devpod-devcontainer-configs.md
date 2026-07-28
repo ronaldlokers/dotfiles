@@ -130,6 +130,17 @@ fi
     -o GIT_SSH_SIGNATURE_FORWARDING=false
 ```
 
+> **Superseded during implementation.** The missing-binary guard above
+> (`if [ ! -x "$devpod" ]; then ... exit 0; fi`, around line 106-109) shipped
+> as `exit 1`, not `exit 0` — commit `581d493`. On a supported platform, a
+> missing binary means the external's guarantee broke, and a silent `exit 0`
+> would leave DevPod unconfigured forever with no later apply retrying it: a
+> `run_onchange` script's hash is recorded as soon as it exits 0, and this
+> script's rendered content doesn't change on a stable host. The shipped
+> script,
+> `.chezmoiscripts/run_onchange_after_30-configure-devpod.sh.tmpl`, is the
+> authority for this task; don't reintroduce the `exit 0` shown above.
+
 - [ ] **Step 3: Lint it**
 
 Run: `mise run lint`
@@ -229,6 +240,17 @@ Create `dot_local/share/devcontainer-template/devcontainer.json`:
   "postCreateCommand": "bash .devcontainer/post-create.sh"
 }
 ```
+
+> **Superseded during implementation.** This body carries the literal string
+> `__PROJECT_NAME__` twice — once in the header comment ("replaces
+> __PROJECT_NAME__ with the directory name") and once as the `"name"`
+> value — which contradicts this task's own Interfaces note above (the
+> placeholder appears "exactly once ... as the value of the `name` key") and
+> its own Step 6 verification below ("Expected: one matching line"). The
+> shipped file only carries the placeholder in the `"name"` field; the
+> header comment describes the substitution without repeating the token
+> itself. `dot_local/share/devcontainer-template/devcontainer.json` is the
+> authority.
 
 Note the dotfiles are deliberately absent here: DevPod clones and applies them
 itself via the `DOTFILES_URL` context option set in Task 1.
@@ -380,6 +402,17 @@ cp "$template/post-create.sh" "$target/post-create.sh"
 echo "wrote $target/devcontainer.json"
 echo "wrote $target/post-create.sh"
 ```
+
+> **Superseded during implementation.** This body's
+> `sed "s/__PROJECT_NAME__/$name/"` corrupts the output if `$name` contains a
+> sed replacement special character (`&`, `\`, or the delimiter `/`).
+> Commit `57effa8` replaced it with literal bash pattern substitution
+> (`${template_json//__PROJECT_NAME__/$name}`, with `patsub_replacement`
+> turned off so `&` can't be reinterpreted) and added hardening this body
+> doesn't have at all: refusing names that can't go into JSON safely,
+> refusing to write through a symlinked `.devcontainer`, and staging the
+> write so a failure partway through can't leave a half-written target.
+> `dot_local/bin/executable_devcontainer-init` is the authority.
 
 - [ ] **Step 3: Add it to the lint list**
 
