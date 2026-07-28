@@ -543,9 +543,16 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 | `dot_config/television/` | television: the local channels (`cable/alias.toml`, `cable/atuin.toml`); the rest arrive from a pinned external |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` — the merged baseline for `~/.claude/settings.json` (see [Co-owned configuration files](#co-owned-configuration-files)) |
+| `dot_config/omarchy/branding/` | Omarchy screensaver branding: braille art generated from `assets/lokilabslogo.png`. Host-only — a container has no screensaver to brand |
+| `assets/` | Source artwork generated files are derived from, never copied into `$HOME`. See `assets/README.md` for the regeneration command |
 
 Project-specific tooling (kubectl, flux, krew, ...) is intentionally *not*
 here — it lives in each project's own `mise.toml`.
 
-Repo-only files (`setup`, `README.md`, `CLAUDE.md`) are listed in
+Repo-only files (`setup`, `README.md`, `CLAUDE.md`, `assets/`) are listed in
 `.chezmoiignore` so chezmoi doesn't copy them into `$HOME`.
+
+The screensaver branding is co-owned in the same sense as the files below:
+`omarchy branding screensaver <image|text|reset>` writes to that exact path, so
+anything it does is undone by the next `chezmoi apply`. Change the source art in
+`assets/` and regenerate instead — the command is in `assets/README.md`.
