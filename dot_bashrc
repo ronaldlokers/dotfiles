@@ -179,6 +179,29 @@ elif command -v mise > /dev/null ; then
   eval "$(mise activate bash)"
 fi
 
+# fzf's `**<TAB>` fuzzy path completion, and *only* that. Nothing else here
+# provides it — fzf-tab is zsh-only and tv has no completion integration.
+#
+# `fzf --bash` emits two halves: key bindings, then completion. Sourcing the
+# whole thing would bind Ctrl-T, Alt-C and Ctrl-R across all three keymaps.
+# Most of those get overridden later by tv and atuin, but not all: atuin binds
+# Ctrl-R in emacs and vi-insert only, so fzf's vi-command binding would
+# survive and Esc-then-Ctrl-R would open fzf's history search instead of
+# atuin's. Hence the sed: take the completion half alone, bind nothing.
+#
+# The one thing the completion half needs from the other is `__fzf_awk`, a
+# variable naming the awk to use — set it here rather than pulling in the
+# bindings for it. mawk when present, as fzf itself prefers, since it is
+# markedly faster than the GNU one on the line-splitting it does.
+if command -v fzf > /dev/null ; then
+  if command -v mawk > /dev/null ; then
+    __fzf_awk=mawk
+  else
+    __fzf_awk=awk
+  fi
+  eval "$(fzf --bash | sed -n '/^### completion.bash ###$/,$p')"
+fi
+
 # Syntax-highlighted, paged man pages, same as in .zshrc. `col -bx` strips
 # the backspace-overstrike sequences groff emits for bold and underline,
 # which bat would otherwise print literally; MANROFFOPT=-c stops newer
