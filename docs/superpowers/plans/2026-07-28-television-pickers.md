@@ -59,7 +59,9 @@ These were verified against the real binary and chezmoi 2.70.5 while writing thi
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `tv` on PATH and `tv list-channels` printing 29 names. Tasks 2-4 bind widgets calling `tv list-channels`, `tv <channel>`, `tv dirs` and `tv sesh`.
+- Produces: `tv` on PATH, 29 files in `~/.config/television/cable/`, and `tv list-channels` printing **32** names. Tasks 2-4 bind widgets calling `tv list-channels`, `tv <channel>`, `tv dirs` and `tv sesh`.
+
+  The 32 is not a miscount. tv compiles 10 default channels into the binary and merges them with the cable directory, a same-named file overriding a default. The curated set shadows 7 of those 10; `bash-history`, `git-diff` and `text` have no counterpart in the include list and therefore always appear. Only a same-named cable file can shadow a built-in — there is no suppression mechanism — so the Ctrl-T menu will list all three. `git-diff` and `text` are useful and cost nothing; `bash-history` is redundant beside atuin but harmless, and reads `~/.bash_history`, which is a partial record under this setup's `HISTCONTROL`. Accepted and documented in Task 5, not filtered.
 
 - [ ] **Step 1: Pin the tool**
 
@@ -161,10 +163,10 @@ command = "grep -hE \"^[[:space:]]*alias {}=\" $HOME/.zshrc $HOME/.bashrc /usr/s
 
 - [ ] **Step 5: Apply and confirm the set landed**
 
-Run: `chezmoi apply && tv list-channels | wc -l && tv list-channels | grep -c alias`
-Expected: `29` and `1`.
+Run: `chezmoi apply && ls ~/.config/television/cable | wc -l && tv list-channels | wc -l && tv list-channels | grep -c alias`
+Expected: `29`, `32`, `1`. The cable directory holds 29 files; `tv list-channels` reports 32 because three of tv's compiled-in defaults (`bash-history`, `git-diff`, `text`) are not shadowed by the curated set — see this task's Interfaces note.
 
-If the count is short, the `include` patterns did not match — check them against the archive layout rather than guessing, and report what you found.
+If the file count is short, the `include` patterns did not match — check them against the archive layout rather than guessing, and report what you found.
 
 - [ ] **Step 6: Confirm the override survives an external refresh**
 
@@ -520,6 +522,12 @@ bumps them with everything else. Several are host-only in practice:
 to list inside a devpod container, and the `k8s-*` channels need a `kubectl` on
 PATH, which comes from a project's own `mise.toml` rather than the global pin.
 An empty channel there is the tool missing, not the channel broken.
+
+Three channels in the `Ctrl-T` list — `bash-history`, `git-diff` and `text` —
+come from tv itself rather than that set: tv compiles ten defaults into the
+binary, and only a same-named channel file can override one. `bash-history`
+overlaps atuin and reads `~/.bash_history`, which is a partial record here
+(see the keybindings section); atuin's `Ctrl-R` remains the full history.
 ```
 
 - [ ] **Step 4: Check no stale reference survives**
