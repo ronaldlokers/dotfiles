@@ -172,6 +172,63 @@ the starter at `dot_local/share/devcontainer-template/`.
 Nothing installs the dotfiles from inside the container: DevPod clones and
 applies them itself, via the `DOTFILES_URL` option above.
 
+## Co-owned configuration files
+
+Some files under `$HOME` are written by both this repo and by the program
+that reads them: DevPod appends a `# DevPod Start <workspace>` … `# DevPod
+End` block to `~/.ssh/config` per workspace, and Claude Code writes runtime
+keys like `agentPushNotifEnabled` into `~/.claude/settings.json` that this
+repo has never heard of. Managing either file the ordinary way — as a
+static, fully chezmoi-owned target — means every `chezmoi apply` overwrites
+whatever the other writer just wrote, silently reverting it. This repo
+settles on one of two answers depending on what the other writer's file
+supports, plus a third for the case where the file shouldn't be managed at
+all.
+
+When the file supports an include mechanism, own a fragment beside it
+instead of the file itself. `~/.ssh/config` is deliberately unmanaged;
+chezmoi owns `~/.ssh/config.d/10-dotfiles.conf`
+(`private_dot_ssh/private_config.d/`), and `run_after_12-ensure-ssh-include.sh`
+only asserts that the real config has an `Include config.d/*.conf` line
+pointing at it — DevPod's blocks live below, untouched. That script runs on
+every apply rather than only on `run_onchange`, because it's re-asserting an
+invariant about a file chezmoi can't diff: if something later removed the
+Include line, a `run_onchange` script would only ever check once and never
+notice it happening again.
+
+When there's no include mechanism and the two sets of keys have to share one
+document, merge instead. `~/.claude/settings.json` has no notion of
+fragments, so `dot_claude/modify_settings.json` is a `modify_` script:
+chezmoi feeds it the file's current on-disk contents on stdin, and whatever
+it prints on stdout becomes the new file. The merge is shallow and
+managed-wins — `jq -s '.[0] + .[1]'` with the on-disk contents first — so
+`enabledPlugins` and `extraKnownMarketplaces` are replaced wholesale (this
+repo stays the sole authority over which plugins are enabled) while an
+unrecognized top-level key like `agentPushNotifEnabled`, absent from the
+repo's baseline, passes through untouched.
+
+The third case is not managing the file at all. `~/.devpod/config.yaml` is
+entirely DevPod's own bookkeeping — the provider's `initialized` flag and
+creation timestamp included — so chezmoi doesn't touch it directly;
+`run_onchange_after_30-configure-devpod.sh.tmpl` drives the `devpod` CLI
+instead, and whatever the CLI then writes to the file is none of chezmoi's
+business.
+
+`modify_` scripts carry a constraint neither of the other two answers do:
+they run on *every* apply, not just when their rendered content changes, and
+CI asserts that a second `chezmoi apply` produces no managed-file drift. A
+`modify_` script's output therefore has to be a fixed point — feeding its own
+output back in as stdin must reproduce it byte-for-byte — or the second
+apply changes the file again and CI fails. That's what made
+`modify_settings.json` fiddly: the merge has to stay stable under jq's own
+pretty-printing, and it has to behave the same on the clean-HOME apply where
+the settings file doesn't exist yet as on the apply right after, where jq
+itself isn't installed. The fragment approach sidesteps this entirely — the
+include check either finds its line already there and does nothing, or adds
+it once and is done — because a plain `run_after` script re-running is fine
+as long as it's idempotent, but it never has to reproduce a whole file's
+bytes.
+
 ## Working on this repo
 
 `mise.toml` pins the tooling and defines the checks, so local runs and CI use
