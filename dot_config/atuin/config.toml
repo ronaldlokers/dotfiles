@@ -1,0 +1,29 @@
+# atuin runs local-only. No account, no sync key in this repo, no network call
+# when a shell starts — which also means a devpod container keeps its own
+# database and loses it when the container goes. That trade is deliberate: what
+# is being bought here is search quality and directory awareness, not history
+# that follows the machine.
+auto_sync = false
+
+# mise owns the version (dot_config/mise/config.toml) and Renovate bumps it. A
+# self-update prompt from atuin itself would be fighting that.
+update_check = false
+
+# Up searches only this directory's history; Ctrl-R searches everything. The
+# split is the whole reason for the Up binding — reaching for the last command
+# run *here* is a different question from searching all history.
+filter_mode_shell_up_key_binding = "directory"
+
+# Enter puts the selected command on the command line instead of running it,
+# matching what fzf's Ctrl-R widget did before atuin took the binding. A picker
+# that executes on Enter turns a misfire into a run command.
+enter_accept = false
+
+# `style` is pinned rather than left implicit: it's already atuin 18.17.1's
+# default (inline, not fullscreen), but spelling it out here means a future
+# atuin release changing that default can't silently wipe the scrollback that
+# prompted the search in the first place. `inline_height` IS an override —
+# atuin defaults to 40 lines; 20 leaves more of the scrollback visible above
+# the picker.
+style = "compact"
+inline_height = 20

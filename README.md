@@ -41,6 +41,10 @@ AUR package, but all three are TUIs, wanted inside a container as much as on the
 host. mise pins versions and Renovate bumps them; the host list is unpinned and
 tracks whatever the distro ships.
 
+The coreutils replacements (`dust`, `duf`, `btop`, `sd`, `jless`) are in mise for
+the same reason — a container has no pacman, and reaching for `du` inside one
+should not be a worse experience than on the host.
+
 Ghostty is the entry that only looks like it breaks that rule: it runs in a
 terminal because it *is* the terminal, and it needs a display, so it's a desktop
 app. Which terminal `Super + Return` opens is a separate question, answered by
@@ -84,16 +88,38 @@ A few packages need a group membership they can't grant themselves (chirp needs
 `uucp` to open `/dev/ttyUSB*`). Those are listed in `PACKAGE_GROUPS`, applied
 only when the package is actually installed, and take effect on the next login.
 
+### Shell keybindings
+
+Both shells get the same set, so a machine where zsh isn't the login shell yet
+behaves the same:
+
+| Key | Does |
+| --- | --- |
+| `Ctrl-R` | atuin history search, all directories |
+| `Up` | atuin history search, this directory only |
+| `Ctrl-T` | fzf file picker |
+| `Alt-C` | fzf directory picker |
+| `Ctrl-F` | sesh picker: tmux sessions + zoxide directories |
+| `prefix o` | the same sesh picker, in a tmux popup |
+
+`Ctrl-R` used to be fzf's. Both tools bind it explicitly, so the one initialised
+last in the rc file wins — atuin's block sits below fzf's in both files, and
+moving it breaks the binding silently.
+
+atuin history is **local to each machine and each container**: sync is off, so a
+rebuilt devpod container starts with an empty database.
+
 ## Updates
 
 Tool versions in `dot_config/mise/config.toml` are pinned and bumped by a
 self-hosted [Renovate](https://docs.renovatebot.com) run
 (`.github/workflows/renovate.yaml`, weekly or via manual dispatch). It
 authenticates with the `RENOVATE_TOKEN` repo secret — a PAT with `repo` and
-`workflow` scope. Externals (mise binary, zsh plugins) refresh weekly on
-`chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans history with
-gitleaks, and test-bootstraps the repo into a clean HOME on every push, PR, and
-a weekly canary run. Two jobs cover paths the clean-HOME bootstrap can't reach:
+`workflow` scope. Externals (mise binary, zsh plugins, bash-preexec) refresh
+weekly on `chezmoi apply`. CI (`.github/workflows/ci.yaml`) lints, scans
+history with gitleaks, and test-bootstraps the repo into a clean HOME on
+every push, PR, and a weekly canary run. Two jobs cover paths the clean-HOME
+bootstrap can't reach:
 `host-ssh-agent` brings up a real systemd user session, and `container-gates`
 runs inside an Arch container to prove the host-only gates actually skip there.
 Renovate automerges patch/minor bumps once CI is green; majors wait for review.
@@ -124,6 +150,11 @@ Personal repos live under `$XDG_PROJECTS_DIR` (`~/Projects`, declared in
 The host level is more than six GitHub repos need, but it's what stops a
 third-party clone of the same name — or a second forge — from colliding later.
 Depth costs nothing to navigate with zoxide.
+
+A successful clone is also added to zoxide's database. That is what puts a
+brand-new checkout in the `sesh` picker (`Ctrl-F`, or `prefix o` in tmux)
+before anyone has ever `cd`'d into it — zoxide is the only source of
+directories sesh has.
 
 ```sh
 repos-sync    # clone whatever isn't checked out yet
@@ -465,12 +496,13 @@ for a password. What it gives you is `sudo -v` (a touch) followed by a
 
 | Path | Contents |
 | --- | --- |
-| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, cached completions, autosuggestions + syntax highlighting, aliases |
+| `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history (`Ctrl-R`), sesh picker (`Ctrl-F`), cached completions, autosuggestions + syntax highlighting, aliases |
 | `dot_config/git/` | git defaults, delta pager, global ignores (machine-local bits stay in unmanaged `~/.gitconfig`) |
 | `dot_config/lazygit/` | lazygit config: delta as diff pager |
-| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
-| `dot_tmux.conf` | tmux config |
+| `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's fzf keys, zoxide-backed `cd`, atuin history, sesh picker, `MANPAGER` and aliases — no prompt or plugins. Kept in step with `dot_zshrc` by hand |
+| `dot_tmux.conf` | tmux config; `prefix o` opens the sesh session picker |
 | `dot_config/mise/config.toml` | globally installed CLI tools |
+| `dot_config/atuin/` | atuin: SQLite shell history, sync deliberately off — container history is local and dies with the container |
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` — the merged baseline for `~/.claude/settings.json` (see [Co-owned configuration files](#co-owned-configuration-files)) |
 

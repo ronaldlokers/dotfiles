@@ -151,6 +151,21 @@ setopt share_history      # share history between all shells (tmux panes)
 setopt hist_ignore_dups   # don't record consecutive duplicates
 setopt hist_ignore_space  # don't record commands starting with a space
 
+# atuin owns Ctrl-R from here on. Initialisation has to come *after* the fzf
+# block above: both bind Ctrl-R explicitly, and whichever runs last wins. fzf
+# keeps Ctrl-T (files) and Alt-C (cd). Up is atuin's directory-filtered search,
+# configured in ~/.config/atuin/config.toml.
+#
+# The zsh options above still apply: atuin records into its own database, but
+# ~/.zsh_history stays the fallback for any shell where atuin isn't installed.
+#
+# --disable-ai: atuin's default init also binds `?` to its account-gated AI
+# TUI. This setup deliberately has no atuin account (see the local-only
+# decision above), so that binding can only ever open a dead end.
+if command -v atuin > /dev/null ; then
+  eval "$(atuin init zsh --disable-ai)"
+fi
+
 
 # ~~~~~~~~~~~~~~~ Prompt ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -166,6 +181,30 @@ prompt pure
 # bindings live in the emacs keymap and stay dormant under vi-mode)
 bindkey -v
 export KEYTIMEOUT=1 # make switching between modes faster
+
+# Ctrl-F opens the sesh picker: live tmux sessions and zoxide's directory list
+# in one fzf prompt, attaching or creating as needed. Bound here, after
+# `bindkey -v` above, and into all three keymaps — vi mode means a binding on
+# the emacs keymap alone would be dead.
+#
+# The stdin/stdout redirection is a defensive habit borrowed from sesh's own
+# documented zsh widget, not something this widget has been observed to need
+# under normal use — it guards against stdin ever not being the tty. `zle
+# reset-prompt` afterwards is what actually restores the prompt.
+if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
+  sesh-connect() {
+    { exec < /dev/tty; exec <&1; }
+    local session
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    zle reset-prompt > /dev/null 2>&1 || true
+    [ -z "$session" ] && return 0
+    sesh connect "$session"
+  }
+  zle -N sesh-connect
+  bindkey -M emacs '^F' sesh-connect
+  bindkey -M viins '^F' sesh-connect
+  bindkey -M vicmd '^F' sesh-connect
+fi
 
 
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,0 +1,10 @@
+# atuin's bash integration is built on preexec/precmd hooks, which bash has no
+# native equivalent of — this shim provides them. It is a single file rather
+# than a repo, so `type = "file"` against the tagged raw URL; everything else
+# matches the zsh plugin externals next to it.
+# renovate: datasource=github-tags depName=rcaloras/bash-preexec
+{{ $bashPreexecVersion := "0.6.0" }}
+[".bash/bash-preexec.sh"]
+type = "file"
+url = "https://raw.githubusercontent.com/rcaloras/bash-preexec/{{ $bashPreexecVersion }}/bash-preexec.sh"
+refreshPeriod = "168h"

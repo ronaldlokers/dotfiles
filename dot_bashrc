@@ -149,22 +149,24 @@ export PROMPT_DIRTRIM=4
 
 # Check if the terminal is xterm
 if [[ "$TERM" == "xterm" ]]; then
-    # Function to set the terminal title to the current command
-    preexec() {
-        local cmd="${BASH_COMMAND}"
+    # These were plain `preexec`/`precmd` functions driving their own DEBUG
+    # trap. bash-preexec (sourced at the end of this file, for atuin) installs
+    # *its* DEBUG trap and calls anything named `preexec`, so the old shape
+    # would either lose the trap or fire the title twice. Registering renamed
+    # functions on bash-preexec's arrays is the supported way to do this, and
+    # the arrays are plain variables — appending here, before the shim loads,
+    # is fine.
+    __title_preexec() {
+        local cmd="$1"
         echo -ne "\033]0;${USER}@${HOSTNAME}: ${cmd}\007"
     }
 
-    # Function to reset the terminal title to the shell type after the command is executed
-    precmd() {
+    __title_precmd() {
         echo -ne "\033]0;${USER}@${HOSTNAME}: ${SHELL}\007"
     }
 
-    # Trap DEBUG signal to call preexec before each command
-    trap 'preexec' DEBUG
-
-    # Append to PROMPT_COMMAND to call precmd before displaying the prompt
-    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }precmd"
+    preexec_functions+=(__title_preexec)
+    precmd_functions+=(__title_precmd)
 fi
 
 # Ronald's Custom Additions
@@ -242,6 +244,20 @@ if command -v lsd > /dev/null ; then
   alias tree='ls --tree'
 fi
 
+# Ctrl-F opens the sesh picker, same as in .zshrc. Bound into both keymaps:
+# `set -o vi` at the top of the custom section means an emacs-only binding
+# would never fire.
+if command -v sesh > /dev/null && command -v fzf > /dev/null ; then
+  sesh-connect() {
+    local session
+    session="$(sesh list --icons | fzf --ansi --no-sort --prompt='sesh> ')"
+    [ -z "$session" ] && return 0
+    sesh connect "$session"
+  }
+  bind -m emacs -x '"\C-f": sesh-connect'
+  bind -m vi-insert -x '"\C-f": sesh-connect'
+fi
+
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
@@ -250,3 +266,101 @@ fi
 # environment. Shared logic, also sourced by dot_zshrc.
 # See ~/.config/shell/github-token.sh.
 [ -r "$HOME/.config/shell/github-token.sh" ] && . "$HOME/.config/shell/github-token.sh"
+
+# bash-preexec gives bash the preexec/precmd hooks atuin needs; it is a chezmoi
+# external (.chezmoiexternals/bash-preexec.toml). Guarded on the file so a shell
+# still starts on a machine that hasn't applied since this change, or in a
+# container where the external hasn't been fetched. Sourced this late on
+# purpose: it adopts whatever PROMPT_COMMAND already holds, which by now
+# includes zoxide's hook.
+if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
+  . "$HOME/.bash/bash-preexec.sh"
+
+  # bash-preexec rebuilds each command from `builtin history 1` rather than
+  # reading it directly (that's how it feeds preexec/precmd functions their
+  # argument), and that rebuild is exactly what HISTCONTROL's "ignorespace"
+  # rule breaks: a line kept out of the history list is a line `history 1`
+  # can't see. bash-preexec's own installer works around that the only way
+  # it can — by rewriting HISTCONTROL to drop "ignorespace" entirely — and
+  # it does so once, at the very first prompt it draws, before any command
+  # of ours has been typed. A plain one-shot re-export placed here would
+  # already be too late: it runs *before* that rewrite, not after, so it
+  # gets overwritten the same way the original setting did. Re-asserting it
+  # from a precmd hook — run again before every prompt, not just once — is
+  # what actually restores the escape hatch: by the time the next command
+  # is typed, "ignorespace" is back in effect.
+  #
+  # We restore *only* "ignorespace", not "ignoreboth" — deliberately
+  # dropping "ignoredups". A leading-space command is kept out of the
+  # history list, so a later `history 1` inside bash-preexec's DEBUG trap
+  # resolves to the command *before* it, and every registered preexec
+  # function (atuin's included) gets invoked a second time with that
+  # stale, already-seen text. The atuin preexec guard below the atuin init
+  # tells that stale replay apart from a real repeat by checking whether
+  # the history number advanced — but "ignoredups" also keeps a genuinely
+  # repeated command out of the history list, which advances the history
+  # number exactly as little as the stale replay does. With both rules
+  # active the guard cannot tell "the same command typed twice" from "a
+  # spaced command's phantom re-fire of the command before it" — they look
+  # identical from `history 1`'s point of view — and every real repeat
+  # would silently lose its atuin entry (timestamp, duration, exit code):
+  # rerunning a build, arrow-up + Enter. Dropping "ignoredups" removes that
+  # ambiguity at the source: a real repeat still advances the history
+  # number (it's added again, uniqued only by *not* being on the entry
+  # right before it, which "ignorespace" alone doesn't touch), so the guard
+  # passes it through, while a leading-space command still doesn't, so the
+  # guard still catches it.
+  #
+  # This is a deliberate divergence from zsh's `setopt hist_ignore_dups` —
+  # bash's own history list and ~/.bash_history end up with adjacent
+  # duplicate lines that zsh's never would. That's acceptable specifically
+  # because atuin owns Ctrl-R now: bash's history file is no longer what
+  # gets searched interactively, just what bash-preexec's DEBUG trap reads
+  # to identify "the command that just ran" — and atuin's own database,
+  # unaffected by HISTCONTROL, is where real de-duplication would belong
+  # if it mattered there.
+  __bp_reassert_ignorespace() { export HISTCONTROL=ignorespace; }
+  precmd_functions+=(__bp_reassert_ignorespace)
+fi
+
+# atuin owns Ctrl-R here too, same as in .zshrc — after the fzf block above,
+# since whichever binds last wins. Settings are shared: ~/.config/atuin/config.toml.
+#
+# --disable-ai: atuin's default init also binds `?` to its account-gated AI
+# TUI. In bash this lands in vi-insert (set -o vi runs earlier in this file),
+# so pressing `?` at an empty prompt would launch it. This setup deliberately
+# has no atuin account (see dot_config/atuin/config.toml), so that binding
+# can only ever open a dead end.
+if command -v atuin > /dev/null ; then
+  eval "$(atuin init bash --disable-ai)"
+
+  # atuin registers __atuin_preexec in preexec_functions (just above). The
+  # HISTCONTROL precmd hook further up restores the leading-space escape
+  # hatch, but bash-preexec's own trap still fires for the excluded line and
+  # rebuilds "the command" with `history 1` — which, since the excluded line
+  # never became a history entry, resolves to the *previous* command again.
+  # Left alone, that means __atuin_preexec runs a second time with the
+  # previous command's text, and atuin logs it twice. Guarding on the
+  # history number actually advancing catches exactly that case: a repeat
+  # firing for the same number is the stale-lookup replay, not a new
+  # command, so it's dropped before it reaches atuin. This only works
+  # because the hook above restores "ignorespace" and nothing else — a
+  # genuinely repeated command still advances the history number, so this
+  # guard passes it through rather than mistaking it for a replay.
+  #
+  # Guarded on __atuin_preexec existing: if a future atuin release renames
+  # or restructures its hook, this whole block quietly no-ops rather than
+  # erroring at shell start or, worse, swapping in a guard function that
+  # calls nothing — the swap below never happens, and atuin falls back to
+  # today's already-working (if occasionally double-logging) behaviour.
+  if declare -F __atuin_preexec > /dev/null; then
+    __atuin_preexec_guarded() {
+      local histnum rest
+      read -r histnum rest <<< "$(LC_ALL=C HISTTIMEFORMAT='' builtin history 1)"
+      [ "$histnum" = "${__atuin_last_histnum:-}" ] && return 0
+      __atuin_last_histnum=$histnum
+      __atuin_preexec "$@"
+    }
+    preexec_functions=("${preexec_functions[@]/__atuin_preexec/__atuin_preexec_guarded}")
+  fi
+fi
