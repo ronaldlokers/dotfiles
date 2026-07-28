@@ -492,9 +492,14 @@ set -euo pipefail
 # The database check, not chezmoi's run_onchange hash, is what makes this safe
 # to re-run: an import over a populated database would duplicate every entry.
 
-# Same PATH fix as the package script: ~/.local/bin isn't on PATH yet during a
-# fresh bootstrap, and mise shims live under it.
-export PATH="$HOME/.local/bin:$PATH"
+# atuin comes from mise (pinned in Task 3), so its binary is a mise shim
+# under ~/.local/share/mise/shims — not ~/.local/bin, which only holds the
+# mise launcher itself (see install_packages.sh.tmpl's comment). On a
+# genuine unattended apply the shell hasn't run `mise activate` yet, so
+# without the shims dir specifically, `command -v atuin` fails, this script
+# takes the "not on PATH" branch, and — being run_onchange — chezmoi records
+# it as done and never gets a second chance to import.
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 
 if ! command -v atuin > /dev/null 2>&1; then
 	echo "atuin-import: atuin not on PATH, skipping" >&2
@@ -531,18 +536,45 @@ Expected: exit 0. The lint task's `shellcheck .chezmoiscripts/*.sh.tmpl` glob al
 Run: `chezmoi apply && atuin stats`
 Expected: `chezmoi apply` prints the `atuin-import: importing ...` lines, and `atuin stats` reports a non-zero total.
 
-If `atuin stats` reports zero and the apply printed `already exists`, the database was created by a shell start before this script ever ran. That is expected on this machine — atuin has been in use since Task 3. In that case delete it and re-run the script directly to prove the path works:
+If `atuin stats` reports zero and the apply printed `already exists`, the database was created by a shell start before this script ever ran. That is expected on this machine — atuin has been in use since Task 3.
+
+**`chezmoi apply --force` will *not* get you a re-run here** — `--force` only
+skips confirmation prompts. Whether a `run_onchange_` script executes at all
+is gated separately, by a hash of the script's own rendered content that
+chezmoi caches in its persistent state (`entryState` and `scriptState`
+buckets); unchanged content means chezmoi skips invoking the script outright,
+`--force` or not. To prove the import path works, delete the database *and*
+clear that cached record so chezmoi is forced to invoke the script again:
 
 ```bash
-rm -f ~/.local/share/atuin/history.db
-chezmoi apply --force
+rm -f ~/.local/share/atuin/history.db ~/.local/share/atuin/history.db-shm ~/.local/share/atuin/history.db-wal
+HASH=$(sha256sum .chezmoiscripts/run_onchange_after_zz-atuin-import.sh.tmpl | awk '{print $1}')
+chezmoi state delete --bucket=entryState --key=/home/ronald/.chezmoiscripts/zz-atuin-import.sh
+chezmoi state delete --bucket=scriptState --key="$HASH"
+chezmoi apply
 atuin stats
 ```
 
 - [ ] **Step 4: Verify re-running is a no-op**
 
-Run: `chezmoi apply --force 2>&1 | grep atuin-import`
-Expected: `atuin-import: ... already exists, skipping`.
+A plain second `chezmoi apply` (or `--force`) won't even invoke the script —
+chezmoi's cache (see Step 3) skips it once it has recorded a successful run
+at the current content hash. That's a real no-op, but it doesn't exercise the
+script's own `[ -e "$db" ]` guard — the guard is what protects against the
+scenario where the script's content *does* change later (a comment fix, a
+refactor) and chezmoi genuinely re-invokes it against an already-populated
+database. To prove that guard specifically, clear the cached record again
+(simulating "chezmoi decided to re-invoke this script") while leaving the
+now-populated database in place:
+
+```bash
+HASH=$(sha256sum .chezmoiscripts/run_onchange_after_zz-atuin-import.sh.tmpl | awk '{print $1}')
+chezmoi state delete --bucket=entryState --key=/home/ronald/.chezmoiscripts/zz-atuin-import.sh
+chezmoi state delete --bucket=scriptState --key="$HASH"
+chezmoi apply --force 2>&1 | grep atuin-import
+```
+Expected: `atuin-import: ... already exists, skipping`, and `atuin stats`'s
+total is unchanged from Step 3 (no duplicated entries).
 
 - [ ] **Step 5: Commit**
 
