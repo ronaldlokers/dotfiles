@@ -19,8 +19,58 @@ gitleaks = "8.30.1"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl dot_claude/executable_statusline.sh dot_config/shell/ssh-agent.sh dot_local/share/devcontainer-template/post-create.sh dot_local/bin/executable_devcontainer-init",
-	"jq empty dot_claude/settings.json",
+	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl .chezmoiscripts/run_after_12-ensure-ssh-include.sh dot_claude/executable_statusline.sh dot_claude/modify_settings.json dot_config/shell/ssh-agent.sh dot_local/share/devcontainer-template/post-create.sh dot_local/bin/executable_devcontainer-init",
+	# dot_claude/settings.json no longer exists (it's now a modify_ script's
+	# baseline, merged at apply time) so there is nothing static left to
+	# `jq empty`. What matters now is that the script itself still emits
+	# valid JSON. Feed it representative input with a key the repo doesn't
+	# manage, so this exercises the real jq merge path — not just the
+	# empty-stdin baseline shortcut.
+	#
+	# A plain pipeline can't be trusted to report the middle command's
+	# failure here: `jq empty` exits 0 on *empty* stdin, so if
+	# modify_settings.json died and printed nothing, `... | jq empty` would
+	# still exit 0. `pipefail` would fix that, but it isn't portable to the
+	# shell mise actually runs this in -- mise's default task shell is
+	# plain `sh -c -o errexit` (`mise settings get
+	# unix_default_inline_shell_args`), and on Debian/Ubuntu (this repo's
+	# CI runner included) `/bin/sh` is dash, which has no `-o pipefail` and
+	# aborts the whole task on the attempt. Capture the script's output in
+	# a command substitution instead: `out="$(...)"` takes on the
+	# substituted command's own exit status, and mise's `errexit` aborts
+	# this task line right there if it's non-zero -- no shell-specific
+	# option required, and no pipe to swallow anything.
+	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
+	# The no-jq fallback path (see modify_settings.json's comments) is only
+	# ever exercised by hand-testing today -- `jq` is a system package on
+	# this host *and* on GitHub's ubuntu-latest runners (normally sitting
+	# right next to `cat` in /usr/bin), so a bare `mise run lint`/`verify`
+	# never actually runs the script without jq on PATH; excluding jq's
+	# mise install alone wouldn't be enough. Build a scratch PATH holding
+	# only a symlink to `cat` -- the one external command the script's
+	# no-jq path needs (`command -v jq` and `printf` are bash builtins, so
+	# nothing else has to resolve) -- so jq is genuinely unreachable, and
+	# confirm the fallback still emits valid JSON rather than failing the
+	# apply. `jq empty` itself runs with the real PATH restored, so
+	# validation doesn't depend on the thing being excluded.
+	#
+	# Stdin here has to be non-empty, unlike the check above feeding this
+	# same script: an *empty* stdin hits modify_settings.json's very first
+	# branch (no on-disk file yet) and returns before the script ever gets
+	# to `command -v jq` at all, regardless of what's on PATH. `< /dev/null`
+	# here would build the whole scratch-PATH apparatus and then exercise
+	# nothing with it -- the empty-stdin branch, not the no-jq fallback,
+	# would be what actually ran. Piping in the same representative JSON as
+	# the check above is what forces execution to reach, and exercise, the
+	# `printf '%s\n' "$current"` fallback line.
+	#
+	# Same command-substitution shape as the check above, for the same
+	# dash-portability reason -- see its comment for why a bare pipeline
+	# can't be trusted here either. The scratch dir is cleaned up via
+	# `trap ... EXIT` (mirroring [tasks.verify] below) rather than a
+	# manual `rm` at the end, so it's removed even if errexit aborts this
+	# line early on a failure.
+	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
