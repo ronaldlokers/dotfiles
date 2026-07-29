@@ -10,7 +10,7 @@
 - Commit subjects use conventional-commit style: `fix: ...`, `feat: ...` — lowercase, imperative.
 
 ## Secrets
-- Secrets age-encrypted (`chezmoi encrypt --output <path>.age` with dotfiles keypair, or sops). Never `chezmoi add --encrypt` — makes `encrypted_` source file chezmoi decrypt at apply time, breaks non-interactive apply. Never write secrets plaintext to repo; flag if found.
+- Secrets live in Proton Pass (Dotfiles vault), fetched by `pass-cli` during `chezmoi apply`; SSH keys go straight into the ssh-agent and never hit disk. Nothing secret belongs in the dotfiles repo — no `.age` blobs, no `encrypted_` files. Never write a secret plaintext to a repo; flag if found.
 
 ## Model routing
 <!-- MODEL-POLICY:START -->

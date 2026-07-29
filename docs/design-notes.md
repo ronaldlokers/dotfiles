@@ -20,11 +20,11 @@ guarding against it — a file outside `home/` cannot be applied, whatever
 `.chezmoiignore` says. What is left in `.chezmoiignore` is only what it is
 actually for: paths chezmoi *should* see but must not copy.
 
-Two files stayed inside the source tree deliberately. `key.txt.age` and
-`ghostty.terminfo` are read through `{{ .chezmoi.sourceDir }}` and `include`,
-both of which resolve relative to the source directory, so moving them along
-with the tree kept those call sites correct with no edit. Neither is applied:
-both are still listed in `.chezmoiignore`.
+One file stayed inside the source tree deliberately: `ghostty.terminfo` is read
+through `include`, which resolves relative to the source directory, so moving it
+along with the tree kept that call site correct with no edit. It is not applied —
+it is listed in `.chezmoiignore`. (`key.txt.age` was the other such file, until
+secrets moved to Proton Pass and it stopped existing.)
 
 `--source "$PWD"` is unaffected — chezmoi reads `.chezmoiroot` from the
 directory it is pointed at and descends — so `mise run verify`, CI's clean-HOME
@@ -195,24 +195,47 @@ reaching history without leaving the picker that is already open.
 
 ## Secrets
 
-`[age]` points at `~/.config/chezmoi/identities.txt`, which
-`run_before_00-unlock-secrets.sh.tmpl` assembles from whichever identities the
-machine has, YubiKey first. It has to be one generated file rather than a list of
-paths: **age treats a listed-but-missing identity as fatal**, so naming both
-directly breaks any machine with only one — a container has no YubiKey, and a
-fresh machine has no `key.txt` until the passphrase step creates it mid-apply.
+Everything secret lives in the **Dotfiles vault in Proton Pass**. The repo holds
+no ciphertext, no age identity and no `encrypted_` files.
 
-A missing *plugin* is fine by contrast: age falls through to the next identity,
-so containers decrypt via `key.txt` with no YubiKey and no plugin installed.
+It did not start there. Secrets were `.age` blobs decrypted at apply time by a
+`run_before` script, with a YubiKey PIV identity as the primary recipient and a
+passphrase-protected file identity as backup. That design had one property this
+one does not — it needed no account, no network and no session — and one flaw
+that eventually decided it: **unlocking the identity required a controlling
+TTY**. Every non-interactive apply, meaning every timer, script and agent-driven
+run, skipped every secret and printed "run this again from an interactive
+shell". A machine could sit for weeks with stale secrets and a green apply.
 
-That script is a plain `run_before` — it re-runs every apply and is a fast no-op
-once settled, so a later interactive apply finishes what a non-interactive one
-skipped. It skips rather than fails when `age` is absent, because mise installs
-`age` only *after* this script runs on a fresh machine.
+A scoped access token has no TTY requirement, so unattended applies now derive
+exactly what interactive ones do. `run_after_14-restore-secrets.sh.tmpl` fetches
+each item on every apply and rewrites the target only when it differs, which
+also means rotating a secret in the vault propagates without touching this repo.
 
-chezmoi has a built-in age, but built-in age can't load plugins — so driving a
-YubiKey-backed identity means pointing `age.command` at a real binary, which is
-why `age` is pinned in mise on every machine that decrypts anything.
+**What the change costs, stated plainly:** the token is cached at
+`~/.config/pass-cli-bootstrap-pat`, mode 0600. Disk access alone is now enough to
+read the vault, where before it took the YubiKey or the passphrase. That is not
+a side effect to be papered over — it is the mechanism that makes non-interactive
+work, and accepting it was the decision. The mitigations are that the token is
+scoped `viewer` on one vault, is revocable, and expires; the age identity was
+none of those things.
+
+The second cost is concentration. Proton now holds the SSH keys, the file
+secrets and the recovery path, so a lockout — forgotten password, lost 2FA
+device, account issue — takes all of it at once. An offline copy of anything
+that cannot be re-issued is the only thing that closes that, and nothing in this
+repo can do it for you.
+
+Failure handling is deliberately conservative: a fetch that errors or returns
+empty leaves the existing file untouched. A stale secret is recoverable; a
+truncated one silently breaks whatever reads it. `mise run secrets-check` exists
+because nothing else exercises the restore path — a renamed item or a lapsed
+grant is invisible until the day a machine is rebuilt — and it reports byte
+counts rather than contents.
+
+Containers are outside all of this. They have no `pass-cli` and no session by
+design: git uses the forwarded ssh-agent, and the DevPod token arrives as an env
+file passed by the wrapper on the host.
 
 ### Proton Pass is pinned, but not wired into apply
 
@@ -220,8 +243,9 @@ why `age` is pinned in mise on every machine that decrypts anything.
 a secret source for chezmoi, even though it offers the same `inject`/`run` model
 a 1Password-backed setup would use, because a Proton session cannot exist inside
 a devpod container or in CI — the same failure mode `chezmoi add --encrypt` is
-banned for. The `.age` blobs work offline with no account, and the YubiKey path
-needs no session at all.
+banned for. This was written when secrets were `.age` blobs, which worked
+offline with no account; they have since moved to Proton Pass too, and the
+trade that involved is covered under Secrets above.
 
 It is an external rather than a mise pin because Proton publishes it from
 `proton.me`, not GitHub, and it isn't in the mise registry — so it follows
@@ -281,7 +305,7 @@ through `PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
 it unlocks (`bootstrap PAT`), which is circular only in appearance: a fresh
 machine reads it from the Proton Pass app, not from the CLI being bootstrapped.
 
-What this trades away is the property the `.age` blobs have: they need no
+What this trades away is the property the `.age` blobs had: they needed no
 account, no network and no session. These keys need all three, and the Proton
 account now holds both the age passphrase backup and the SSH keys — so a Proton
 lockout costs both the break-glass path and day-to-day git. An offline copy is
@@ -324,7 +348,7 @@ shape below tolerates.
 a *template file* is quietly destructive: gate false renders an empty file, and
 chezmoi responds by **removing the target**. Applying once with a session and
 again without it deletes the secret from `$HOME` — an expired session or an
-offline laptop is enough. The `.age` blobs never behave that way.
+offline laptop is enough. The `.age` blobs never behaved that way.
 
 So a Proton-sourced secret has to take the same shape the blobs do: a guarded
 block in a `run_before` script that writes the file when the session is there and

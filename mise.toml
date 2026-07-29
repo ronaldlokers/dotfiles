@@ -218,38 +218,33 @@ done
 exit "$rc"
 '''
 
-[tasks.secrets-restore]
-description = "check every .age blob still decrypts with the configured identity"
-# The recovery path in README.md is the only thing standing between a dead
-# machine and every secret in here, and nothing exercises it — a blob encrypted
-# to the wrong recipient, or corrupted by a bad merge, stays silent until the
-# day it's needed. CI can't cover this (it has no identity), so it's a local
-# task. Deliberately not part of `check`: it needs an unlocked key.txt.
+[tasks.secrets-check]
+description = "check every secret in Proton Pass is still readable"
+# The restore path is the only thing standing between a dead machine and every
+# secret in here, and nothing else exercises it: a renamed vault item or a
+# lapsed grant stays silent until the day it is needed. Deliberately not part of
+# `check` — it needs a Proton session, which CI does not have.
+#
+# Only ever reports lengths. Printing a secret to prove it decrypts would defeat
+# the exercise.
 run = '''
 set -eu
-key="${HOME}/.config/chezmoi/key.txt"
-if [ ! -f "$key" ]; then
-	echo "no age identity at $key — run an interactive 'chezmoi apply' first"
-	exit 0
-fi
 rc=0
-# key.txt.age is excluded on purpose: it's passphrase-protected rather than
-# identity-encrypted, so it can't be checked without a TTY — and it is the very
-# thing every other blob is checked with.
-for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
-	# `| wc -c` rather than reading the plaintext into a variable: this only
-	# needs to know the blob produced bytes, and counting them keeps the
-	# secret out of the shell's memory and any `set -x` output. (An earlier
-	# `head -c1 | read` was wrong here — read reports failure at EOF when
-	# there's no trailing newline, so every blob looked broken.)
-	if size="$(chezmoi decrypt "$blob" 2>/dev/null | wc -c)" && [ "$size" -gt 0 ]; then
-		echo "ok    $blob"
+for title in "ssh auth key" "git signing key" "aur ssh key" \
+             "sops age keys" "gh hosts.yml" "sugarrush config" "devpod dotfiles-env"; do
+	case "$title" in
+	*"ssh"*key | *"signing key") field=private_key ;;
+	*) field=note ;;
+	esac
+	n="$(pass-cli item view --vault-name Dotfiles --item-title "$title" --field "$field" 2>/dev/null | wc -c)"
+	if [ "$n" -gt 0 ]; then
+		printf 'ok    %-20s %s bytes\n' "$title" "$n"
 	else
-		echo "FAIL  $blob (does not decrypt, or decrypts empty)"
+		printf 'FAIL  %-20s unreadable\n' "$title" >&2
 		rc=1
 	fi
 done
-[ "$rc" -eq 0 ] && echo "all blobs decrypt with the current identity"
+[ "$rc" -eq 0 ] && echo "every secret in the Dotfiles vault is readable"
 exit "$rc"
 '''
 

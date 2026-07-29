@@ -3,40 +3,39 @@
 Personal dotfiles managed with [chezmoi](https://chezmoi.io). See `README.md` for
 full layout. This file cover one thing easy get wrong: secrets.
 
-## Secrets and encryption
+## Secrets
 
-Secrets age-encrypted with dedicated dotfiles keypair. Recipient in
-`.chezmoi.toml.tmpl`; identity lives at `~/.config/chezmoi/key.txt`, itself
-passphrase-protected (committed as `key.txt.age`, backup in Proton Pass).
+Secrets live in the **Dotfiles vault in Proton Pass**, not in this repo. There
+are no `.age` blobs, no age identity, no `encrypted_` files. Two scripts derive
+everything:
 
-**Don't use `chezmoi add --encrypt`.** Creates `encrypted_` source file chezmoi
-decrypts *at apply time* — needs age identity. Non-interactive `chezmoi apply` —
-`devpod up`, CI's clean-HOME bootstrap — runs no passphrase, no TTY, identity
-never unlocked, apply fails on missing key.
+- `run_after_13`-era `~/.local/bin/proton-ssh-load` — loads the three SSH keys
+  into the ssh-agent. They never touch disk.
+- `.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl` — writes the file-shaped
+  secrets (`sops age keys`, `gh hosts.yml`, `sugarrush config`,
+  `devpod dotfiles-env`) to their targets at `0600`, fetching every apply and
+  rewriting only on change so a rotation in the vault propagates.
 
-**Instead, follow existing pattern** (used by SSH signing key, sops age keys,
-`gh` token):
+**Adding a secret:** create a note item in the Dotfiles vault whose body is the
+file content, then add one `restore "<item title>" "<target>" 600` line to
+`run_after_14`. Nothing goes in `.chezmoiignore` — there is no ciphertext in the
+tree to hide.
 
-1. Store secret as plain `<name>.age` blob in source tree, encrypted to repo's
-   age recipient (e.g. `chezmoi encrypt --output <path>.age <file>`, or reuse
-   existing blob's format). Use `private_` prefix so decrypted target ends up
-   `0600`.
-2. Add blob's **literal target path** (with `.age` suffix) to
-   `.chezmoiignore`, so chezmoi skip copying raw ciphertext into `$HOME`.
-3. Decrypt in `.chezmoiscripts/run_before_00-unlock-secrets.sh.tmpl`, inside
-   `if [ -f "$key" ]` guard, mirroring existing blocks. Write to real target,
-   `chmod 600`.
+**Auth is a scoped token.** `PROTON_PASS_PERSONAL_ACCESS_TOKEN` (viewer on the
+Dotfiles vault only) reaches the scripts through the environment and is cached at
+`~/.config/pass-cli-bootstrap-pat`, `0600`. Pass it through the environment,
+never as `--personal-access-token` — a flag value shows up in `ps`. This is what
+makes non-interactive apply work, and it is also why disk access alone now reads
+the vault: state it plainly, do not paper over it.
 
-Keeps non-interactive apply working: no key → guard false → whole secret step
-skipped. Later interactive `chezmoi apply` unlocks key, finishes job.
-Intentional — fresh container has no secrets until `chezmoi apply` run from
-real shell once.
+Containers get nothing from Proton by design — no `pass-cli`, no session. Git
+there uses the forwarded ssh-agent; the DevPod token arrives as an env file.
 
 ## Rules
 
-- Never commit plaintext secret. CI runs gitleaks on history; verify any new
-  `.age` blob is ciphertext (`-----BEGIN AGE ENCRYPTED FILE-----`) before
-  committing.
+- Never commit a plaintext secret. CI runs gitleaks on history. Nothing secret
+  belongs in the tree at all now — if a secret needs to exist, it goes in the
+  vault.
 - Never edit chezmoi-managed file in `$HOME` direct — edit source
   (`chezmoi source-path <file>`), run `chezmoi apply`. Source tree sit under
   `home/` (`.chezmoiroot`), so `source-path` return path below `home/`.

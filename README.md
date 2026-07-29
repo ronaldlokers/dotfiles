@@ -37,78 +37,52 @@ working.
 
 ## Recovery
 
-Everything hinges on the age identity. On a machine that already has the source
-(after `chezmoi init`/`apply` fetched it), an **interactive** `chezmoi apply`
-prompts for the passphrase, rebuilds `key.txt`, and re-derives every secret.
-
-To rebuild just the identity by hand:
+Everything hinges on Proton Pass. A fresh machine needs one token, and the rest
+follows:
 
 ```sh
-chezmoi age decrypt --passphrase \
-  --output ~/.config/chezmoi/key.txt \
-  "$(chezmoi source-path)/key.txt.age"
-chmod 600 ~/.config/chezmoi/key.txt
-chezmoi apply        # re-derives the SSH/sops/gh secrets from the identity
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
+PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply
 ```
 
-The YubiKey is the other way in and needs no passphrase — drop its identity in
-and apply:
+The token is in the Dotfiles vault as `bootstrap PAT`, readable from the Proton
+Pass app or web on any device. The first apply installs `pass-cli` as an
+external; the second derives every secret. An interactive `pass-cli login`
+replaces the token entirely if you would rather type a password.
 
-```sh
-install -m600 /path/to/yubikey-identity.txt ~/.config/chezmoi/yubikey-identity.txt
-chezmoi init && chezmoi apply
-```
+`mise run secrets-check` asserts every item is still readable — a renamed item
+or a lapsed grant otherwise stays silent until the day you rebuild a machine.
 
 > [!WARNING]
-> The two recipients are only independent if their backups are. Losing the
-> passphrase *and* its Proton Pass copy leaves the YubiKey as the sole way in,
-> and vice versa. Re-verify the restore path after any key rotation.
+> Proton is the only copy. No account, no secrets — there is no offline or
+> account-free path back, and the same account holds the SSH keys. Keep an
+> offline copy of anything you cannot re-issue.
 
 ## Secrets
 
-Stored as plain `<name>.age` blobs — **not** with `chezmoi add --encrypt`, which
-breaks the non-interactive bootstrap (see [Gotchas](#gotchas)). Each blob's
-target path is listed in `.chezmoiignore` so the ciphertext isn't copied into
-`$HOME`. `run_before_00-unlock-secrets.sh.tmpl` decrypts them on every apply,
-and skips cleanly when no identity is available.
+Stored as items in the **Dotfiles vault**, fetched during `chezmoi apply` by
+`.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl`. Nothing secret is in this
+repo — no ciphertext, no `encrypted_` files.
 
-| Secret | Target | Source blob (under `home/`) |
+| Secret | Target | Vault item |
 | --- | --- | --- |
-| sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
-| `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
-| sugarrush config | `~/.config/sugarrush/config.toml` | `dot_config/private_sugarrush/private_config.toml.age` |
-| DevPod container token | `~/.config/devpod/dotfiles-env` | `dot_config/private_devpod/private_dotfiles-env.age` |
+| sops age keys | `~/.config/sops/age/keys.txt` | `sops age keys` |
+| `gh` token | `~/.config/gh/hosts.yml` | `gh hosts.yml` |
+| sugarrush config | `~/.config/sugarrush/config.toml` | `sugarrush config` |
+| DevPod container token | `~/.config/devpod/dotfiles-env` | `devpod dotfiles-env` |
 
-Every blob is encrypted to **two recipients**, so either key opens any secret:
-the YubiKey (PIV slot 82, on the key itself) and a file identity at
-`~/.config/chezmoi/key.txt`, committed as `key.txt.age` under a passphrase
-(backup: Proton Pass).
+Each is fetched on every apply and rewritten only when it differs, so rotating a
+secret in the vault propagates on the next apply. A fetch that fails or comes
+back empty leaves the existing file alone — a stale secret beats a truncated one.
 
-**Adding a secret:** encrypt it to the repo recipients as a `<name>.age` blob
-(`chezmoi encrypt --output <path>.age <file>`, `private_` prefix for `0600`
-targets), add the target path to `.chezmoiignore`, and add a decrypt block to
-the `run_before` script.
+**Adding a secret:** create a note item whose body is the file content, then add
+one `restore "<item title>" "<target>" 600` line to the script.
 
-**Adding a recipient** does *not* rewrite existing blobs, so a new key silently
-can't open old secrets. After changing `recipients` in `.chezmoi.toml.tmpl`, run
-`chezmoi init` to regenerate the live config, then rewrite every blob:
-
-```sh
-for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
-  chezmoi decrypt "$blob" | chezmoi encrypt --output "$blob.new" && mv "$blob.new" "$blob"
-done
-mise run secrets-restore   # every blob still opens with the current identity
-```
-
-Then confirm the *new* key works, which `secrets-restore` cannot tell you — it
-only ever tries the configured identity:
-
-```sh
-age -d -i /path/to/new-identity.txt <some-blob> >/dev/null && echo ok
-```
-
-`key.txt.age` is excluded throughout: it's passphrase-encrypted rather than
-encrypted to a recipient, and it's where the file identity comes from.
+Unlike the previous age-encrypted blobs, this works **non-interactively**: the
+cached token needs no TTY, so timer- and script-driven applies derive secrets
+just like an interactive one. The cost is that `~/.config/pass-cli-bootstrap-pat`
+now unlocks the vault, so disk access alone is enough — where before it took the
+YubiKey or a passphrase.
 
 ## SSH keys
 
@@ -161,48 +135,18 @@ a no-op. `pass-cli ssh-agent debug` explains why an item is or isn't usable.
 
 ## YubiKey
 
-A YubiKey 5Ci holds the primary age identity (PIV slot 82, generated on-device,
-PIN policy `once`, touch policy `cached` — one touch covers a whole apply).
-Tooling comes from the host package list: `pcsclite`, `yubikey-manager`,
-`yubikey-personalization`, `age-plugin-yubikey`, `pam-u2f`.
+The YubiKey 5Ci no longer holds anything this repo depends on. It used to carry
+the primary age identity in PIV slot 82, back when secrets were `.age` blobs;
+that identity is unused now that Proton Pass holds them, and the PIV slot can be
+left alone or reset at your leisure. `age-plugin-yubikey` and `age` stay in the
+host package list only because other tools may want them.
 
-The key carries **three unrelated PINs** — PIV (secrets), FIDO2 (sudo, passkeys)
-and OpenPGP (unused here). Mixing them up costs retry attempts. **FIDO2 has no
-PUK:** exhausting it forces a reset that destroys every passkey on the key. PIV
-is more forgiving, having one.
+What the key is still used for is **touch-to-sudo** via FIDO2, below.
 
-### Enrolling the age identity
-
-Needed on a replacement key, or after a PIV reset. PIV is disabled from the
-factory on some models, so enable it first — non-destructive, and it leaves
-OATH, FIDO2 and OpenPGP alone:
-
-```sh
-ykman config usb --enable PIV
-( umask 077 && age-plugin-yubikey --generate \
-    --name "dotfiles age identity" --pin-policy once --touch-policy cached \
-    > ~/.config/chezmoi/yubikey-identity.txt )
-```
-
-**Scope the `umask` to a subshell** as above. Left set in an interactive shell it
-silently follows every later command — a `chezmoi apply` in the same terminal
-then writes every managed file at `0600` instead of `0644`.
-
-Then change the factory credentials, or the hardware backing is decorative —
-anyone holding the key can use it:
-
-```sh
-ykman piv access change-pin                              # default 123456
-ykman piv access change-puk                              # default 12345678
-ykman piv access change-management-key --generate --protect
-```
-
-`--protect` stores the management key on the card behind the PIN, so there's no
-hex string to keep anywhere.
-
-Finally add the new recipient (`age-plugin-yubikey --list`) to
-`.chezmoi.toml.tmpl` and re-encrypt every blob — see [Secrets](#secrets). A new
-key cannot read existing blobs otherwise.
+The key carries **three unrelated PINs** — PIV, FIDO2 (sudo, passkeys) and
+OpenPGP (unused here). Mixing them up costs retry attempts. **FIDO2 has no PUK:**
+exhausting it forces a reset that destroys every passkey on the key. PIV is more
+forgiving, having one.
 
 ### Touch-to-sudo
 
@@ -397,14 +341,15 @@ weekly canary, and adds two jobs the clean-HOME bootstrap can't reach:
 `host-ssh-agent` brings up a real systemd user session, and `container-gates`
 runs inside an Arch container to prove the host-only gates actually skip there.
 
-Separately, and needing an unlocked identity:
+Separately, and needing a Proton session:
 
 ```sh
-mise run secrets-restore   # assert every .age blob still decrypts
+mise run secrets-check     # assert every secret in the vault is readable
 ```
 
-Nothing else exercises the recovery path in [Recovery](#recovery) — a blob
-encrypted to the wrong recipient stays silent until the day you need it.
+Nothing else exercises the recovery path in [Recovery](#recovery) — a renamed
+vault item or a lapsed grant stays silent until the day you need it. It reports
+byte counts only; printing a secret to prove it decrypts would defeat the point.
 
 Also manual, and for the same reason — it needs a human to decide:
 
@@ -418,10 +363,12 @@ project's `mise.toml`, and pruning there just forces a re-download.
 
 ## Gotchas
 
-- **Never `chezmoi add --encrypt`.** It creates an `encrypted_` source file that
-  chezmoi decrypts *at apply time*, which needs the age identity — so every
-  non-interactive apply (`devpod up`, CI) fails. Use the `.age` blob pattern in
-  [Secrets](#secrets) instead.
+- **Nothing secret goes in the repo.** No `.age` blobs, no `chezmoi add
+  --encrypt`, no `encrypted_` files. Secrets live in the Dotfiles vault and are
+  fetched at apply time — see [Secrets](#secrets).
+- **The bootstrap token expires.** `bootstrap PAT` is good until 2027-07-29;
+  after that `proton-ssh-load` and the secrets script quietly report no session
+  until you run `pass-cli pat renew` or log in interactively.
 - **New repo-only files go outside `home/`.** Anything inside it is source
   state and will be applied into `$HOME` unless `.chezmoiignore` says
   otherwise. Docs, CI config and repo tooling belong at the repo root.
