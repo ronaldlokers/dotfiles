@@ -325,7 +325,8 @@ jobs:
             got="$(cat "$target")"
             [ "$got" = "$want" ] || { echo "::error::$1 content mismatch"; fail=1; }
           }
-          check .ssh/id_ed25519_signing        private_id_ed25519_signing.age
+          # The git signing key is no longer an .age blob — it comes from
+          # Proton Pass, which CI has no session for by design.
           check .config/sops/age/keys.txt      private_keys.txt.age
           check .config/gh/hosts.yml           private_hosts.yml.age
           check .config/sugarrush/config.toml  private_config.toml.age

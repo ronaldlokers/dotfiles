@@ -32,7 +32,19 @@
 [user]
 	name = Ronald Lokers
 	email = {{ .email }}
-	signingkey = ~/.ssh/id_ed25519_signing.pub
+{{- $signingKey := includeTemplate "signing-pubkey" . }}
+{{- if $signingKey }}
+	# The key itself rather than a path to a .pub file: the private half lives
+	# in Proton Pass and is only ever loaded into the ssh-agent, so there is no
+	# key file in ~/.ssh to point at. git signs through the agent, which needs
+	# only to be told *which* key. Resolved by .chezmoitemplates/signing-pubkey.
+	signingkey = key::{{ $signingKey }}
+{{- else }}
+	# Neither Proton Pass nor the ssh-agent could supply the signing key, so
+	# user.signingkey is deliberately absent: commit.gpgsign is still on, so the
+	# next commit fails loudly instead of quietly going unsigned. Fix with
+	# `proton-ssh-load`, then re-apply.
+{{- end }}
 [gpg]
 	format = ssh
 [gpg "ssh"]

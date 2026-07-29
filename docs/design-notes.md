@@ -232,6 +232,61 @@ apply. The version and hash come from
 `https://proton.me/download/pass-cli/versions.json`, which has to be read as a
 pair.
 
+### SSH keys live in Proton Pass, and only in the agent
+
+The three private keys are stored as Proton Pass `ssh-key` items in a dedicated
+**Dotfiles vault**, and `~/.local/bin/proton-ssh-load` loads them into the
+running ssh-agent with `pass-cli ssh-agent load`. They are never written to
+`~/.ssh`.
+
+Two of them — the auth key and the AUR key — were previously backed up
+**nowhere**, existing only on this laptop while being load-bearing for container
+git and for `devpod up` (whose `DOTFILES_URL` is SSH). The signing key was an
+`.age` blob. All three now live together, and no private key sits in git
+history, where it would stay for good even after a rotation.
+
+Keeping them out of `~/.ssh` is what makes this simpler than a restore-to-disk
+script rather than more complicated. Nothing needs syncing, nothing can drift,
+and a stolen disk yields no keys. It works because everything this machine does
+with them goes through the agent anyway:
+
+- **git over SSH** — the agent answers.
+- **commit signing** — git signs with an agent-held key, and it is told *which*
+  key by a literal `key::ssh-ed25519 …` value rather than a path, so no `.pub`
+  file is needed. Both `user.signingkey` and `allowed_signers` take it from
+  `.chezmoitemplates/signing-pubkey`, which reads the public field of the same
+  Proton item and falls back to `ssh-add -L`. The gate matters: chezmoi's
+  `protonPass` aborts the *entire* template when pass-cli fails, so an unguarded
+  call would break every apply in a container and in CI. When neither source
+  answers, the key is omitted and `commit.gpgsign` is left on, so the failure is
+  a refused commit rather than a silently unsigned one. Verified end to end: a
+  signed commit reporting `G`, with zero key files on disk.
+- **containers** — DevPod forwards the agent, so they inherit the keys and hold
+  no secret of their own.
+
+Loading is lazy. `dot_config/shell/ssh-agent.sh` already hunts for a live agent
+on every shell start; it now also asks `ssh-add -l` whether that agent is empty
+and, if so, runs the loader. `ssh-add -l` exits 1 for "no identities" and 2 for
+"no agent", which is what distinguishes the two cases. Once loaded, every later
+shell sees a populated agent and does nothing.
+
+A **personal access token** scoped `viewer` on the Dotfiles vault handles
+authentication, so a fresh machine needs no browser. Vault scope rather than
+item scope is deliberate: a token granted only individual items cannot resolve
+`--vault-name` or `--item-title` at all — it sees no vault listing — which would
+force opaque share and item IDs into the repo. The token reaches the loader
+through `PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
+`~/.config/pass-cli-bootstrap-pat` (0600) once proven, never passed as
+`--personal-access-token` whose value `ps` would expose. It lives in the vault
+it unlocks (`bootstrap PAT`), which is circular only in appearance: a fresh
+machine reads it from the Proton Pass app, not from the CLI being bootstrapped.
+
+What this trades away is the property the `.age` blobs have: they need no
+account, no network and no session. These keys need all three, and the Proton
+account now holds both the age passphrase backup and the SSH keys — so a Proton
+lockout costs both the break-glass path and day-to-day git. An offline copy is
+what closes that, and nothing in this repo can do it for you.
+
 ### If a host-only secret ever does come from Proton Pass
 
 chezmoi ships the integration already — 2.70.5 has `protonPass` and

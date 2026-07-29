@@ -36,4 +36,16 @@ if [ "${SSH_AUTH_SOCK:-}" != "$_agent_link" ] && _agent_live "${SSH_AUTH_SOCK:-}
   export SSH_AUTH_SOCK="$_agent_link"
 fi
 unset _agent_link
+
+# An agent with no identities means the keys have not been loaded yet — a fresh
+# login, or a reboot. They live in Proton Pass rather than on disk, so fetch
+# them once and leave the agent to hold them. `ssh-add -l` exits 1 for "no
+# identities" (2 is "no agent", already handled above), so this fires only when
+# there is a live but empty agent, and never inside a container where the
+# forwarded agent arrives pre-loaded.
+if _agent_live "${SSH_AUTH_SOCK:-}" &&
+  ! SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -l > /dev/null 2>&1 &&
+  command -v proton-ssh-load > /dev/null 2>&1; then
+  proton-ssh-load --quiet
+fi
 unset -f _agent_live

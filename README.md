@@ -74,7 +74,6 @@ and skips cleanly when no identity is available.
 
 | Secret | Target | Source blob (under `home/`) |
 | --- | --- | --- |
-| SSH signing key | `~/.ssh/id_ed25519_signing` | `private_dot_ssh/private_id_ed25519_signing.age` |
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
 | `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
 | sugarrush config | `~/.config/sugarrush/config.toml` | `dot_config/private_sugarrush/private_config.toml.age` |
@@ -110,6 +109,55 @@ age -d -i /path/to/new-identity.txt <some-blob> >/dev/null && echo ok
 
 `key.txt.age` is excluded throughout: it's passphrase-encrypted rather than
 encrypted to a recipient, and it's where the file identity comes from.
+
+## SSH keys
+
+The three private keys — auth (`id_ed25519`), git signing
+(`id_ed25519_signing`) and AUR (`aur`) — live in the **Dotfiles vault in Proton
+Pass**. They are never written to disk: `proton-ssh-load` hands them straight to
+the ssh-agent, and `dot_config/shell/ssh-agent.sh` runs it automatically the
+first time a shell finds a live but empty agent.
+
+That covers everything this machine does with them. Git over SSH uses the agent,
+and so does commit signing: `user.signingkey` is the *literal* public key rather
+than a path, so there is no `.pub` file either — `~/.ssh` holds no key material
+at all. The public half comes from the same Proton item as the private one, via
+`.chezmoitemplates/signing-pubkey`, falling back to `ssh-add -L` where Proton
+isn't reachable. DevPod forwards the agent into containers, so they get the keys
+without holding a secret either.
+
+If neither source can supply it, `user.signingkey` is left out while
+`commit.gpgsign` stays on — the next commit fails loudly instead of quietly
+going unsigned. `proton-ssh-load` then re-apply fixes it.
+
+On a fresh machine, hand it the bootstrap token once — it is in that same vault
+under `bootstrap PAT`, readable from the Proton Pass app or web:
+
+```sh
+PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' proton-ssh-load
+```
+
+The token is scoped **viewer on the Dotfiles vault and nothing else**, and it is
+cached at `~/.config/pass-cli-bootstrap-pat` (mode 600) once it works, so later
+logins need no interaction. Pass it through the environment, never as a command
+argument — a flag value is visible in `ps`. An interactive `pass-cli login` does
+the same job without a token.
+
+Run `proton-ssh-load` by hand at any time; loading keys already in the agent is
+a no-op. `pass-cli ssh-agent debug` explains why an item is or isn't usable.
+
+| Key | Proton Pass item |
+| --- | --- |
+| auth | `ssh auth key` |
+| git signing | `git signing key` |
+| AUR | `aur ssh key` |
+| bootstrap token | `bootstrap PAT` |
+
+> [!WARNING]
+> The agent is the only place these keys exist on a running machine, and Proton
+> is the only place they exist at rest. No Proton account, no keys — and unlike
+> the `.age` blobs, no offline or account-free path back. Keep a copy somewhere
+> you trust.
 
 ## YubiKey
 
