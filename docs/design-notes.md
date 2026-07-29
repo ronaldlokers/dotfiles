@@ -348,6 +348,50 @@ that file to `devpod up --dotfiles-script-env-file`. The token carries no
 permissions beyond public-repository read, because mise needs it only for the
 rate limit — a container that leaks it leaks public-read quota and nothing else.
 
+### Git in a container uses SSH, not a token
+
+The PAT above is scoped to nothing on purpose, which also means it cannot push.
+The obvious next step — hand the container the real `gh` token — was built and
+then thrown away, because DevPod materialises workspace env as
+`/etc/envfile.json` **mode 0644 inside the container**: every process and every
+user there could read a token that can push to every repo the account can. A
+dependency's postinstall script is enough.
+
+Forwarded SSH avoids the exchange entirely. DevPod turns on
+`SSH_AGENT_FORWARDING` by default, and a spike confirmed that a container with
+**no token at all** can clone private repos, push (verified with
+`git push --dry-run`, which GitHub accepts or rejects on real authorisation),
+and sign commits with the host's signing key — the agent socket is all it gets,
+so nothing is stored and nothing survives the session.
+
+The one thing missing is that agent forwarding only helps *SSH* remotes, and
+project remotes are HTTPS. Inside a container that fails with `could not read
+Username for 'https://github.com'`, because the `gh` credential helper has no
+authenticated `gh` to ask. `dot_config/git/config.tmpl` therefore rewrites
+github HTTPS URLs to SSH **inside containers only** — on the host, HTTPS plus
+the helper already works and is what `gh repo clone` produces.
+
+What forwarding does *not* cover is the GitHub API: SSH cannot authenticate it,
+so `gh pr create`, `gh api` and the MCP server still need a token. That is what
+`~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600, absent
+by default, and consulted by the wrapper for the workspace being started. Each
+entry should be a fine-grained PAT limited to that one repository. The 0644
+exposure still applies to whatever is passed, which is exactly why it is one
+repo's worth rather than the whole account's.
+
+Keying is on the **push** remote, not the directory name: a Home Assistant
+checkout pushes to your fork, and the fork is what you can mint a token for
+without anyone's approval. Org-owned repos are the awkward case — fine-grained
+PATs there need the org to permit them and usually an admin to approve each one;
+where that is refused, a per-repo deploy key in the host agent gets pushes
+working with no token at all.
+
+Two things the forwarding does cost. Every key in the agent is usable from
+inside the container while it is connected — the GitHub key, the AUR key and the
+signing key — so a container can sign commits as you, though it cannot steal the
+keys. And `devpod ssh --command` runs a non-login shell without mise activated,
+so `gh` is not on `PATH` there; that is a PATH artefact, not an auth failure.
+
 ### Why the wrapper is an executable and not a shell function
 
 It was a `devpod` function in both rc files first, and that version only ever

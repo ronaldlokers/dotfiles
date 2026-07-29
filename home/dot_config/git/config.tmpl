@@ -2,9 +2,27 @@
 # host-specific credential helpers) belong in ~/.gitconfig, which git reads
 # after this file and which chezmoi leaves alone. The gh credential helper
 # below is portable — gh is installed on every machine via mise — so it lives
-# here: it lets HTTPS pushes to github.com authenticate with the gh token
-# (e.g. inside devcontainers where the SSH agent isn't forwarded). SSH
-# remotes ignore it, so it doesn't affect the normal ssh git_protocol flow.
+# here: it lets HTTPS pushes to github.com authenticate with the gh token.
+# SSH remotes ignore it, so it doesn't affect the normal ssh git_protocol flow.
+{{ if eq (includeTemplate "is-container" .) "true" -}}
+# Containers only: rewrite github HTTPS remotes to SSH.
+#
+# DevPod forwards the host's ssh-agent (SSH_AGENT_FORWARDING, on by default), so
+# a container can clone, fetch and push — including private repos — and sign
+# commits, with *nothing secret stored inside it*. The alternative is handing the
+# container a token, which DevPod materialises as /etc/envfile.json mode 0644,
+# readable by everything running there for the container's lifetime.
+#
+# The rewrite is needed because the forwarding only helps SSH remotes, and
+# project remotes are HTTPS. Without it a push inside a container fails with
+# "could not read Username for 'https://github.com'" and the credential helper
+# above has no token to offer, since `gh` is not authenticated in there.
+#
+# Container-only: on the host, HTTPS plus the gh helper already works and is the
+# transport `gh repo clone` produces, so rewriting there would be churn.
+[url "git@github.com:"]
+	insteadOf = https://github.com/
+{{ end -}}
 [credential "https://github.com"]
 	helper =
 	helper = !gh auth git-credential

@@ -289,9 +289,34 @@ the starter at `dot_local/share/devcontainer-template/`.
 DevPod clones and applies these dotfiles inside the container itself; nothing in
 the image does it. The host side (provider, IDE, `DOTFILES_URL`) is configured by
 `run_onchange_after_30-configure-devpod.sh.tmpl`, and `~/.local/bin/devpod` is a
-managed wrapper that passes a GitHub token and quiet-mode env into every
+managed wrapper that passes a no-scope GitHub token and quiet-mode env into every
 `devpod up`. The pinned binary itself lives off PATH at `~/.local/libexec/devpod`;
 `~/.local/libexec/devpod` runs it unwrapped.
+
+**Git inside a container needs no token.** DevPod forwards the ssh-agent, and the
+managed git config rewrites github HTTPS remotes to SSH *inside containers*, so
+clone, fetch, push and commit signing all work with nothing secret stored there.
+The container can *use* every key in your agent while it runs, though it cannot
+copy them out.
+
+The GitHub **API** is the exception — SSH can't authenticate it, so `gh pr create`
+and friends need a token. Opt in per project:
+
+```sh
+install -m600 /dev/null ~/.config/devpod/project-tokens
+printf 'owner/repo=github_pat_...\n' >> ~/.config/devpod/project-tokens
+```
+
+Mint each one fine-grained and limited to that single repository. The wrapper
+keys on the project's **push** remote — so a fork resolves to *your* fork, not
+upstream — and passes it as `GH_TOKEN` for that workspace only. With no entry, no
+token is passed.
+
+> [!WARNING]
+> A token passed this way lands in `/etc/envfile.json` inside the container, mode
+> `0644` — readable by everything running there. That is exactly why entries
+> should be scoped to one repo: it bounds what a malicious postinstall script can
+> reach.
 
 **Updates** arrive two ways. Tool pins are bumped by a self-hosted
 [Renovate](https://docs.renovatebot.com) run (`.github/workflows/renovate.yaml`,
