@@ -227,6 +227,24 @@ done
 exit "$rc"
 '''
 
+[tasks.prune]
+description = "remove mise tool installs no longer referenced by any tracked config"
+# Deliberately never run from a chezmoi apply. `mise prune` removes tools no
+# tracked config asks for, and a machine that hasn't opened a project recently
+# has not tracked that project's mise.toml -- pruning there throws away tools it
+# will re-download on the next visit. Manual invocation only, and it shows the
+# dry run before touching anything.
+run = '''
+set -eu
+mise prune --dry-run
+printf 'Continue? [y/N] '
+read -r reply
+case "$reply" in
+y|Y) mise prune ;;
+*) echo "nothing removed" ;;
+esac
+'''
+
 [tasks.check]
 description = "everything CI runs, in one command"
 # `shells` is not part of CI — CI has no applied $HOME to start a shell in — but
