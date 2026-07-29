@@ -6,6 +6,9 @@ plus [DevPod](https://devpod.sh) containers, one source tree for both.
 This file is the operational half: how to install, restore, and use the setup.
 Why it is built the way it is lives in [`docs/design-notes.md`](docs/design-notes.md).
 
+Everything chezmoi manages lives under `home/` (`.chezmoiroot`). Source paths in
+this file are written relative to it — `dot_zshrc` is `home/dot_zshrc` on disk.
+
 ## Fresh machine
 
 ```sh
@@ -69,7 +72,7 @@ target path is listed in `.chezmoiignore` so the ciphertext isn't copied into
 `$HOME`. `run_before_00-unlock-secrets.sh.tmpl` decrypts them on every apply,
 and skips cleanly when no identity is available.
 
-| Secret | Target | Source blob |
+| Secret | Target | Source blob (under `home/`) |
 | --- | --- | --- |
 | SSH signing key | `~/.ssh/id_ed25519_signing` | `private_dot_ssh/private_id_ed25519_signing.age` |
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
@@ -92,7 +95,7 @@ can't open old secrets. After changing `recipients` in `.chezmoi.toml.tmpl`, run
 `chezmoi init` to regenerate the live config, then rewrite every blob:
 
 ```sh
-for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
   chezmoi decrypt "$blob" | chezmoi encrypt --output "$blob.new" && mv "$blob.new" "$blob"
 done
 mise run secrets-restore   # every blob still opens with the current identity
@@ -201,6 +204,9 @@ the credential cache window.
 
 ## Layout
 
+Everything chezmoi manages lives under `home/` (`.chezmoiroot`); paths in the
+table are relative to it.
+
 | Path | Contents |
 | --- | --- |
 | `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide-backed `cd`, atuin history, tv pickers, fzf-tab completions, autosuggestions + syntax highlighting, aliases |
@@ -215,14 +221,15 @@ the credential cache window.
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` |
 | `dot_config/omarchy/branding/` | Omarchy screensaver branding, generated from `assets/`. Host-only |
 | `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check` |
-| `assets/` | source artwork generated files derive from, never copied into `$HOME` |
+| `assets/` (repo root, outside `home/`) | source artwork generated files derive from, never copied into `$HOME` |
 
 Adding a tool: anything that runs in a terminal goes in
 `dot_config/mise/config.toml`, pinned, so containers get it too; a desktop app
 goes in the host package script. Project-specific tooling (kubectl, flux, krew,
 ...) is intentionally *not* here — it lives in each project's own `mise.toml`.
-Repo-only files (`setup`, `README.md`, `CLAUDE.md`, `docs/`, `assets/`) are
-listed in `.chezmoiignore`.
+Repo-only files — `README.md`, `CLAUDE.md`, `docs/`, `assets/`, `setup`,
+`mise.toml` — sit outside `home/`, so chezmoi never sees them and they need no
+`.chezmoiignore` entry.
 
 ## Keybindings
 
@@ -329,6 +336,9 @@ encrypted to the wrong recipient stays silent until the day you need it.
   chezmoi decrypts *at apply time*, which needs the age identity — so every
   non-interactive apply (`devpod up`, CI) fails. Use the `.age` blob pattern in
   [Secrets](#secrets) instead.
+- **New repo-only files go outside `home/`.** Anything inside it is source
+  state and will be applied into `$HOME` unless `.chezmoiignore` says
+  otherwise. Docs, CI config and repo tooling belong at the repo root.
 - **Never edit a managed file in `$HOME`.** Edit the source
   (`chezmoi source-path <file>`) and apply. The next apply reverts anything else.
 - **Some commands write to files this repo owns**, and their effect is reverted

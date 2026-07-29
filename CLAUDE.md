@@ -38,8 +38,10 @@ real shell once.
   `.age` blob is ciphertext (`-----BEGIN AGE ENCRYPTED FILE-----`) before
   committing.
 - Never edit chezmoi-managed file in `$HOME` direct — edit source
-  (`chezmoi source-path <file>`), run `chezmoi apply`.
-- Repo-only files (docs, `setup`, this file) must list in `.chezmoiignore` so
-  they skip apply into `$HOME`.
+  (`chezmoi source-path <file>`), run `chezmoi apply`. Source tree sit under
+  `home/` (`.chezmoiroot`), so `source-path` return path below `home/`.
+- Repo-only files (docs, `setup`, `mise.toml`, this file) live *outside*
+  `home/`. Anything inside `home/` is source state and get applied into `$HOME`
+  unless `.chezmoiignore` say otherwise.
 - Verify changes against clean HOME way CI does before pushing:
   `HOME="$(mktemp -d)" chezmoi apply --source "$PWD" </dev/null`.
