@@ -19,7 +19,7 @@ gitleaks = "8.30.1"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init",
 	# dot_claude/settings.json no longer exists (it's now a modify_ script's
 	# baseline, merged at apply time) so there is nothing static left to
 	# `jq empty`. What matters now is that the script itself still emits
@@ -73,6 +73,12 @@ run = [
 	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
+	# Two files now carry a chezmoi version: the .chezmoiversion floor and the
+	# mise pin every machine actually installs. Renovate bumps the pin; this is
+	# what says "bump the floor too". A multi-line literal ('''), because the
+	# sed script needs single quotes and a double-quoted TOML string would need
+	# every " and \ escaped.
+	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; [ "$v" = "$p" ] || { echo ".chezmoiversion ($v) and the mise chezmoi pin ($p) disagree" >&2; exit 1; }''',
 ]
 
 [tasks.secrets]
@@ -219,6 +225,24 @@ for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
 done
 [ "$rc" -eq 0 ] && echo "all blobs decrypt with the current identity"
 exit "$rc"
+'''
+
+[tasks.prune]
+description = "remove mise tool installs no longer referenced by any tracked config"
+# Deliberately never run from a chezmoi apply. `mise prune` removes tools no
+# tracked config asks for, and a machine that hasn't opened a project recently
+# has not tracked that project's mise.toml -- pruning there throws away tools it
+# will re-download on the next visit. Manual invocation only, and it shows the
+# dry run before touching anything.
+run = '''
+set -eu
+mise prune --dry-run
+printf 'Continue? [y/N] '
+read -r reply
+case "$reply" in
+y|Y) mise prune ;;
+*) echo "nothing removed" ;;
+esac
 '''
 
 [tasks.check]

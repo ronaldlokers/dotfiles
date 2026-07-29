@@ -1,0 +1,23 @@
+{{- /* Proton Pass CLI. Host-only, for the same reason the dotfiles do not
+       fetch secrets from it: a Proton session cannot exist inside a devpod
+       container or in CI, so a container would download 39MB it can never
+       log in to. The container test is shared with the host-packages script
+       via .chezmoitemplates/is-container.
+
+       Proton publishes this from proton.me, not GitHub, and it is not in the
+       mise registry — so it is an external rather than a mise pin, following
+       .chezmoiexternals/k9s.toml. Bump by hand: read the version and the
+       linux/x86_64 hash out of
+       https://proton.me/download/pass-cli/versions.json and update both
+       below. Renovate is deliberately not wired up here, because bumping the
+       version without the matching hash yields an external that fails its own
+       checksum on every apply. */ -}}
+{{- if and (eq (includeTemplate "is-container" .) "false") (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
+{{ $passCliVersion := "2.2.3" }}
+[".local/bin/pass-cli"]
+type = "file"
+executable = true
+url = "https://proton.me/download/pass-cli/{{ $passCliVersion }}/pass-cli-linux-x86_64"
+checksum.sha256 = "7188f02a7c1e79a860f7166ad2c34f7a2e6c961265b70677e2704f216dd176d9"
+refreshPeriod = "168h"
+{{- end -}}

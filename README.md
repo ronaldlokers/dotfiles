@@ -221,6 +221,7 @@ table are relative to it.
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` |
 | `dot_config/omarchy/branding/` | Omarchy screensaver branding, generated from `assets/`. Host-only |
 | `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check` |
+| `.chezmoiexternals/` | downloads pinned to a version and, where upstream publishes one, a checksum: the mise binary, pure, zsh/tmux plugins, television channels, k9s, and `pass-cli` (host-only, pinned by version + sha256 because Proton ships it from `proton.me` rather than GitHub) |
 | `assets/` (repo root, outside `home/`) | source artwork generated files derive from, never copied into `$HOME` |
 
 Adding a tool: anything that runs in a terminal goes in
@@ -329,6 +330,16 @@ mise run secrets-restore   # assert every .age blob still decrypts
 
 Nothing else exercises the recovery path in [Recovery](#recovery) — a blob
 encrypted to the wrong recipient stays silent until the day you need it.
+
+Also manual, and for the same reason — it needs a human to decide:
+
+```sh
+mise run prune             # drop mise tool installs no config asks for
+```
+
+It shows a dry run and asks before removing anything. Deliberately not part of
+`check`: a machine that hasn't opened a project recently hasn't tracked that
+project's `mise.toml`, and pruning there just forces a re-download.
 
 ## Gotchas
 
