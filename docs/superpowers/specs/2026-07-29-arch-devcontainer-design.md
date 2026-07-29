@@ -104,10 +104,28 @@ Renovate bumps in one place and silently drift.
 the locale makes every shell print `Cannot set LC_CTYPE to default locale`.
 Debian's `common-utils` was generating this silently; on Arch it becomes ours.
 
-**`base-devel` is not installed.** The prototype included it, but nothing in the
-verified path needs a compiler: mise installs prebuilt binaries. Projects that
-need to build add it in their own copy of the Dockerfile — the template is a
-starting point, not a shared base image.
+**`base-devel` and `python` are installed.** The prototype omitted them on the
+theory that mise installs prebuilt binaries, but that theory does not survive
+contact with this repo's own tool list: `gemini-cli` pulls in `node-pty`,
+which ships no prebuilt binary and compiles through node-gyp at install time.
+Without a compiler, `mise install` fails on `gemini-cli` exactly as it failed
+on Debian — same script, same exit status — which means the container was
+still not fixing the bug it exists to fix. `python` is listed explicitly
+rather than left for mise to install alongside `gemini-cli`: node-gyp needs a
+python at build time, and relying on mise's own `python` package landing
+before `gemini-cli` in the same install batch is an ordering race, not a
+guarantee. Verified: `sudo pacman -S base-devel` (with `python` present) in an
+otherwise-failing container makes `mise install` exit 0 and `gemini --version`
+print `0.49.0`.
+
+**`openssh` is installed.** Arch's `git` package only optdepends on it, so a
+bare `git zsh sudo curl ca-certificates which less mise` list leaves `ssh`
+missing. That breaks more than DevPod's SSH clone of the dotfiles (which is
+how the dotfiles reach the container at all): `dot_config/git/config.tmpl`
+sets `gpg.format = ssh` and `commit.gpgsign = true`, so every `git commit`
+shells out to `ssh-keygen -Y sign`, and `dot_config/shell/ssh-agent.sh`'s
+liveness probe reads a missing binary's exit code (127) as "agent live"
+instead of "agent absent" (2).
 
 ## Design
 
@@ -126,6 +144,7 @@ FROM archlinux:base
 
 RUN pacman -Syu --noconfirm --needed \
       git zsh sudo curl ca-certificates which less mise \
+      openssh base-devel python \
  && pacman -Scc --noconfirm
 
 # dot_zshrc exports LANG=en_US.UTF-8; Arch ships only C/POSIX, so without this
@@ -142,6 +161,12 @@ RUN groupadd --gid "$USER_GID" "$USERNAME" \
  && chmod 0440 /etc/sudoers.d/"$USERNAME"
 
 USER $USERNAME
+
+# common-utils used to put ~/.local/bin on PATH via /etc/*/bashrc and
+# /etc/zsh/zshrc; nothing here replaces that otherwise, and on the host it
+# comes from omarchy-zsh's shared shell config instead, which a container
+# does not have.
+ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 ```
 
 ## Verified before writing this

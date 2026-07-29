@@ -246,9 +246,15 @@ dependent, and failed the whole `chezmoi apply` behind it.
 
 The cost is that the image is built from a `Dockerfile` rather than pulled: the
 `common-utils` and `git` devcontainer features accept debian, rhel and alpine
-only, and exit with `Linux distro arch not supported`. What they used to do —
-the `dev` user, the sudoers entry, zsh, and generating the `en_US.UTF-8` locale
-that `dot_zshrc` expects — the Dockerfile now does.
+only, and exit with `Linux distro arch not supported`. The Dockerfile covers
+what those features are actually relied on for — the `dev` user, the sudoers
+entry, zsh, generating the `en_US.UTF-8` locale that `dot_zshrc` expects, an
+`openssh` client so DevPod's SSH clone and git's commit signing work, and a
+compiler toolchain (`base-devel`, `python`) so `gemini-cli`'s `node-pty`
+dependency can build. The rest of what `common-utils` used to bundle —
+`bash-completion`, `wget`, `rsync`, an editor, `man-db`, `tree`, and more — is
+not reproduced; this repo's own mise tool list covers what this setup
+actually uses.
 
 mise is installed from Arch's repos rather than as a feature. `postCreateCommand`
 runs before DevPod clones the dotfiles — as do `postStartCommand` and
