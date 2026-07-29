@@ -1,9 +1,4 @@
 ghostty.terminfo
-key.txt.age
-.config/sops/age/keys.txt.age
-.config/gh/hosts.yml.age
-.config/devpod/dotfiles-env.age
-.config/sugarrush/config.toml.age
 {{ if eq (includeTemplate "is-container" .) "true" -}}
 # Picks which terminal emulator Super+Return opens, which only means something
 # on a machine with a display. The container test lives in

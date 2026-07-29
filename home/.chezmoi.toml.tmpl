@@ -5,42 +5,5 @@
 {{-   $email = promptStringOnce . "email" "Git email address" $email -}}
 {{- end -}}
 
-encryption = "age"
-
-[age]
-    # An explicit command, not chezmoi's built-in age: built-in age cannot load
-    # plugins, and the YubiKey identity below is a plugin identity. The cost is
-    # that decrypting now needs an `age` binary on PATH — mise installs one, but
-    # not until after run_before_00-unlock-secrets has already run on a fresh
-    # machine, which is why that script skips instead of failing when it's absent.
-    command = "age"
-
-    # One file, assembled by run_before_00-unlock-secrets from whichever
-    # identities the machine actually has: the YubiKey first so routine
-    # decryption goes through hardware, then the file identity as fallback.
-    #
-    # It has to be a single generated file rather than a list of paths, because
-    # age treats a listed-but-missing identity as a fatal error rather than
-    # skipping it. Listing both directly breaks every machine that has only one
-    # — a container has no yubikey-identity.txt, and a fresh machine has no
-    # key.txt until the passphrase step creates it mid-apply.
-    #
-    # A missing plugin is fine, by contrast: age falls through to the next
-    # identity in the file, so containers decrypt via key.txt with no YubiKey
-    # and no plugin installed.
-    identity = "~/.config/chezmoi/identities.txt"
-
-    # Both keys are recipients of every blob, so either opens any secret.
-    # Changing this list does NOT rewrite existing blobs — see "Rotating the
-    # recipient set" in README.md, or the new key silently can't read old ones.
-    recipients = [
-        # YubiKey 5Ci serial 15092063, PIV slot 82. Private key generated
-        # on-device and not extractable.
-        "age1yubikey1qvx4q749ymqzfhxfpwhgcmflyvae0daf84n67rpn2lwh9a4xuuk3j74tvpm",
-        # File identity, itself committed as key.txt.age under a passphrase
-        # (backup: Proton Pass). The independent path in if the YubiKey is lost.
-        "age1a4y6es4auewr4wup9tvww8hdhf2amdv384kj209qmf9udl2j5y9syl2nzy",
-    ]
-
 [data]
     email = {{ $email | quote }}
