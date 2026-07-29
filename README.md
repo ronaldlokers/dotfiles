@@ -214,9 +214,16 @@ Project work happens in [DevPod](https://devpod.sh) containers, driven by the
 docker provider. The host side of that is configured by
 `run_onchange_after_30-configure-devpod.sh.tmpl`: it adds and selects the docker
 provider, sets the default IDE to `none` (the workflow is a terminal, not an
-editor launch), and sets two context options every workspace inherits —
-`DOTFILES_URL`, which is what makes a fresh container apply this repo, and
-`GIT_SSH_SIGNATURE_FORWARDING=false`.
+editor launch), and sets three context options every workspace inherits —
+`DOTFILES_URL`, which is what makes a fresh container apply this repo,
+`DOTFILES_SCRIPT=setup`, and `GIT_SSH_SIGNATURE_FORWARDING=false`.
+
+`DOTFILES_SCRIPT` names the installer outright. Left empty DevPod guesses,
+probing `install.sh`, `install`, `bootstrap.sh`, `bootstrap`,
+`script/bootstrap` and `setup.sh` before it reaches `setup` — logging a
+`Failed to make install script … not found` line for each miss. Those are all
+scripts this repo has deliberately never had, so the six failures reported
+nothing and only buried the lines that mattered.
 
 The script drives the `devpod` CLI instead of managing `~/.devpod/config.yaml`
 directly, because DevPod writes that file itself — the provider's `initialized`

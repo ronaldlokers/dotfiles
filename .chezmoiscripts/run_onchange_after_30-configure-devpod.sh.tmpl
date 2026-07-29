@@ -86,6 +86,12 @@ fi
 #   rather than HTTPS because the container has the agent forwarded in.
 # - GIT_SSH_SIGNATURE_FORWARDING off: the forwarded agent holds the auth key, and
 #   asking it to sign commits inside the container fails rather than falling back.
+# - DOTFILES_SCRIPT names this repo's installer outright. Left empty, DevPod
+#   guesses: it probes install.sh, install, bootstrap.sh, bootstrap,
+#   script/bootstrap and setup.sh before reaching setup, logging a "Failed to
+#   make install script ... not found" line for each miss. Every one of those is
+#   a script this repo has deliberately never had, so the noise reports nothing.
 "$devpod" context set-options \
     -o DOTFILES_URL=git@github.com:ronaldlokers/dotfiles.git \
+    -o DOTFILES_SCRIPT=setup \
     -o GIT_SSH_SIGNATURE_FORWARDING=false
