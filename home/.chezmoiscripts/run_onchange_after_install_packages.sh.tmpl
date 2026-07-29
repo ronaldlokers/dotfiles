@@ -8,5 +8,15 @@ set -euo pipefail
 # and ~/.local/bin isn't on PATH yet on a fresh machine.
 export PATH="$HOME/.local/bin:$PATH"
 
+# Run from a directory with no ancestors: mise merges a config from every parent
+# of the cwd, and `<parent>/.config/mise/config.toml` counts — so an apply run
+# from anywhere inside a real user's home silently merges *that* user's live
+# tool list on top of this one. Harmless when the two agree, fatal when they
+# don't: the merged file's trust record lives in the real user's state dir, so a
+# HOME-redirected apply (`mise run verify`, CI, `devpod up`) dies with "Config
+# files in /home/<user>/.config/mise/config.toml are not trusted". From / the
+# only config left is $HOME's own, which is the one this script means to install.
+cd /
+
 mise trust "$HOME/.config/mise/config.toml"
 mise install
