@@ -259,9 +259,17 @@ fi
 # unseen — devpod's flag set is small and has been stable, so that's an
 # accepted gap rather than reason to build something heavier.
 #
-# Guarded on both the subcommand and the file: `up` because no other
-# subcommand accepts the flag, and readability because a machine whose age
-# identity has not been unlocked has no such file and must still run devpod.
+# Guarded on the subcommand because no other one accepts these flags, and the
+# token additionally on the file being readable — a machine whose age identity
+# has not been unlocked has no such file and must still run devpod.
+#
+# MISE_QUIET rides along on every `up`, secret or not. A cold bootstrap prints
+# roughly forty lines of mise install progress through DevPod's logger;
+# MISE_QUIET drops that chatter and keeps the errors — a failing install still
+# prints `mise ERROR …` and exits non-zero. Deliberately not devpod's own
+# `--silent`, which suppresses everything short of a panic, including the
+# `Execution of ./setup was unsuccessful` line that is how a broken bootstrap
+# announces itself.
 if command -v devpod > /dev/null ; then
   devpod() {
     local arg sub skip=0
@@ -282,11 +290,13 @@ if command -v devpod > /dev/null ; then
           ;;
       esac
     done
-    if [ "$sub" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
-      command devpod "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
-    else
-      command devpod "$@"
+    if [ "$sub" = "up" ]; then
+      set -- "$@" --dotfiles-script-env MISE_QUIET=1
+      if [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
+        set -- "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
+      fi
     fi
+    command devpod "$@"
   }
 fi
 
