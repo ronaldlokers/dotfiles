@@ -113,15 +113,25 @@ encrypted to a recipient, and it's where the file identity comes from.
 ## SSH keys
 
 The three private keys — auth (`id_ed25519`), git signing
-(`id_ed25519_signing`) and AUR (`aur`) — live in **Proton Pass**, not in this
-repo. `run_after_13-restore-ssh-keys.sh.tmpl` restores whichever are missing:
+(`id_ed25519_signing`) and AUR (`aur`) — live in the **Dotfiles vault in Proton
+Pass**, not in this repo. `run_after_13-restore-ssh-keys.sh.tmpl` restores
+whichever are missing.
+
+On a fresh machine, hand it the bootstrap token — it is in that same vault under
+`dotfiles: bootstrap PAT`, readable from the Proton Pass app or web:
 
 ```sh
-pass-cli login          # once per machine, and after a pass-cli major bump
-chezmoi apply           # restores any missing key into ~/.ssh, mode 600
+PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply
 ```
 
-It only ever *creates* what is absent, so an established machine is a silent
+The token is scoped **viewer on the Dotfiles vault and nothing else**, and it is
+cached at `~/.config/pass-cli-bootstrap-pat` (mode 600) on first use, so later
+applies re-authenticate on their own when the session lapses. Pass it through
+the environment, never as a command argument — a flag value is visible in `ps`.
+
+An interactive `pass-cli login` works just as well and needs no token.
+
+The script only ever *creates* what is absent, so an established machine is a silent
 no-op that never touches the network. That means an expired session, an offline
 laptop or a Proton outage cannot break a machine that already works — the cost
 falls entirely on a fresh one.
@@ -129,13 +139,14 @@ falls entirely on a fresh one.
 On a fresh machine the first apply has no `pass-cli` yet (it arrives as an
 external), so the script says what to do and the second apply finishes the job.
 
-Vault item titles, which the script matches on:
+Vault item titles, which the script matches on (all in the `Dotfiles` vault):
 
 | Key | Proton Pass item |
 | --- | --- |
 | `~/.ssh/id_ed25519` | `dotfiles: ssh auth key` |
 | `~/.ssh/id_ed25519_signing` | `dotfiles: git signing key` |
 | `~/.ssh/aur` | `dotfiles: aur ssh key` |
+| bootstrap token | `dotfiles: bootstrap PAT` |
 
 > [!WARNING]
 > These keys are reachable only through your Proton account. Unlike the `.age`

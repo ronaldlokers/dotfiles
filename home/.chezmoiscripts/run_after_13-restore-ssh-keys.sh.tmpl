@@ -29,7 +29,7 @@ set -eu
 is_container={{ includeTemplate "is-container" . }}
 # shellcheck disable=SC1083
 has_proton={{ includeTemplate "has-proton-session" . }}
-vault="Personal"
+vault="Dotfiles"
 
 # Containers have no pass-cli and no Proton session by design. Git inside a
 # container uses the forwarded ssh-agent instead — see the design notes.
@@ -38,15 +38,55 @@ if [ "$is_container" = "true" ]; then
 	exit 0
 fi
 
+pat_file="$HOME/.config/pass-cli-bootstrap-pat"
+
+# Log in with a personal access token when there is no interactive session.
+#
+# The token comes from the environment on a fresh machine
+# (PROTON_PASS_PERSONAL_ACCESS_TOKEN=… chezmoi apply) and is cached at
+# $pat_file afterwards, so later applies re-authenticate on their own when the
+# session lapses. It is scoped viewer on the Dotfiles vault and nothing else,
+# and it expires — `pass-cli pat renew` when it does.
+#
+# Passed through the environment, never as `--personal-access-token`: a flag
+# value is visible in `ps` to every user on the machine.
+pat_login() {
+	command -v pass-cli >/dev/null 2>&1 || return 1
+
+	pat="${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}"
+	from_env=1
+	if [ -z "$pat" ] && [ -r "$pat_file" ]; then
+		pat="$(cat "$pat_file")"
+		from_env=0
+	fi
+	[ -n "$pat" ] || return 1
+
+	PROTON_PASS_PERSONAL_ACCESS_TOKEN="$pat" pass-cli login >/dev/null 2>&1 || return 1
+
+	# Only worth caching once it is known to work.
+	if [ "$from_env" = 1 ]; then
+		mkdir -p "$(dirname "$pat_file")"
+		(
+			umask 077
+			printf '%s\n' "$pat" >"$pat_file"
+		)
+		echo "[ssh-keys] cached the Proton Pass token at ${pat_file#"$HOME"/}"
+	fi
+	unset pat
+	return 0
+}
+
 # shellcheck disable=SC2154
-if [ "$has_proton" != "true" ]; then
-	# No pass-cli, or no session. Only say so when a key is actually missing:
-	# on an already-provisioned machine this script has nothing to do and the
-	# message would be noise on every apply.
+if [ "$has_proton" != "true" ] && ! pat_login; then
+	# No pass-cli, no session and no usable token. Only say so when a key is
+	# actually missing: on an already-provisioned machine this script has
+	# nothing to do and the message would be noise on every apply.
 	for key in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_ed25519_signing" "$HOME/.ssh/aur"; do
 		if [ ! -f "$key" ]; then
 			echo "[ssh-keys] $(basename "$key") is missing and Proton Pass is unavailable."
-			echo "[ssh-keys] Authenticate pass-cli, then 'chezmoi apply' again."
+			echo "[ssh-keys] Either run 'pass-cli login', or re-apply with"
+			echo "[ssh-keys] PROTON_PASS_PERSONAL_ACCESS_TOKEN set (token: Dotfiles vault,"
+			echo "[ssh-keys] item 'dotfiles: bootstrap PAT')."
 			break
 		fi
 	done

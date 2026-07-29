@@ -246,6 +246,26 @@ uses. An `.age` blob needs no account, no network and no session; a Proton item
 needs all three. What it buys is that no private key sits in git history, where
 it stays for good even after a rotation.
 
+They live in a dedicated **Dotfiles vault**, which is what makes unattended
+restore workable. A personal access token can be granted `viewer` on that vault
+and nothing else, so the credential that bootstraps a machine cannot read the
+rest of the password manager. Item-level grants were tried first and are worse
+in practice: a token scoped to individual items cannot resolve `--vault-name` or
+`--item-title` at all — it sees no vault listing — so retrieval would have to
+hardcode opaque share and item IDs, and `--field` silently returns nothing,
+forcing a `jq` dependency the first apply does not have. Vault scope makes
+`--vault-name Dotfiles --item-title '…' --field private_key` work directly.
+
+The token itself lives in that same vault (`dotfiles: bootstrap PAT`), which is
+circular only in appearance: a fresh machine reads it from the Proton Pass app
+or web, not through the CLI it is bootstrapping. It reaches the script through
+`PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
+`~/.config/pass-cli-bootstrap-pat` (0600) once it has been proven to work, so
+later applies re-authenticate on their own when the session lapses. It is never
+passed as `--personal-access-token`: a flag value is readable in `ps` by any
+user on the machine. Caching it locally costs nothing that isn't already
+conceded — the keys it unlocks are sitting in `~/.ssh` on the same disk.
+
 The shape follows the guarded-script rule below rather than a template file:
 the script **only creates what is missing**, so the steady state is a no-op that
 never contacts the vault. An expired session, an offline laptop or a Proton
