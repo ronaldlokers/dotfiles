@@ -32,8 +32,8 @@ usage() {
 	cat <<'EOF'
 usage: devcontainer-init [--force]
 
-Writes .devcontainer/{devcontainer.json,post-create.sh} into the current
-directory, naming the container after the directory.
+Writes .devcontainer/{devcontainer.json,Dockerfile,post-create.sh} into the
+current directory, naming the container after the directory.
 
   --force   overwrite an existing .devcontainer/
 EOF
@@ -65,8 +65,9 @@ fi
 # caught mid `chezmoi apply` before any content landed — but not a file
 # truncated partway through with some bytes already written; that case is
 # rarer and not worth a content-aware check here.
-if [ ! -s "$template/devcontainer.json" ] || [ ! -s "$template/post-create.sh" ]; then
-	echo "incomplete template at $template — expected devcontainer.json and post-create.sh" >&2
+if [ ! -s "$template/devcontainer.json" ] || [ ! -s "$template/post-create.sh" ] ||
+	[ ! -s "$template/Dockerfile" ]; then
+	echo "incomplete template at $template — expected devcontainer.json, post-create.sh and Dockerfile" >&2
 	exit 1
 fi
 
@@ -117,6 +118,10 @@ template_json="$(cat "$template/devcontainer.json")"
 printf '%s\n' "${template_json//__PROJECT_NAME__/$name}" >"$staging/devcontainer.json"
 # post-create.sh is copied as-is; nothing is rewritten there.
 cp "$template/post-create.sh" "$staging/post-create.sh"
+# The Dockerfile likewise: the image is built per project from this copy, so
+# a project that needs an extra package edits its own rather than the
+# template.
+cp "$template/Dockerfile" "$staging/Dockerfile"
 
 # Only reachable with an existing $target when --force was passed — the
 # non-force case already exited above, and the symlink case already exited
@@ -137,3 +142,4 @@ mv "$staging" "$target"
 
 echo "wrote $target/devcontainer.json"
 echo "wrote $target/post-create.sh"
+echo "wrote $target/Dockerfile"
