@@ -5,7 +5,7 @@
 #
 # Vendored from rtk-ai/rtk hooks/claude/rtk-rewrite.sh at tag v0.43.0
 # (commit 5a7880d404db8364d602f2ecdc41dd790f64013f). Keep in sync with the
-# pinned binary installed by .chezmoiscripts/run_onchange_after_install-rtk.sh.tmpl.
+# `rtk` pin in dot_config/mise/config.toml.
 #
 # This is a thin delegating hook: all rewrite logic lives in `rtk rewrite`,
 # which is the single source of truth (src/discover/registry.rs).

@@ -53,10 +53,19 @@ jless = "0.9.0"
 hyperfine = "1.20.0"
 gping = "1.20.4"
 # github, not cargo: the cargo backend compiles from source and so needs a Rust
-# toolchain the way rtk does, while this pulls the cargo-dist binary straight
-# from the release and verifies its SLSA provenance. (Not `ubi:` — mise
-# deprecated that backend in favour of `github:`, removal in 2027.1.0.)
+# toolchain, while this pulls the cargo-dist binary straight from the release
+# and verifies its SLSA provenance. (Not `ubi:` — mise deprecated that backend
+# in favour of `github:`, removal in 2027.1.0.)
 "github:ronaldlokers/sugarrush" = "2026.7.3"
+# rtk-ai/rtk, the CLI proxy the Claude Code PreToolUse hook routes commands
+# through (dot_claude/hooks/rtk-rewrite.sh). Previously built from source by a
+# run_onchange script pinned to a commit SHA, which meant no Rust toolchain, no
+# rtk — so every devpod container skipped it and said so on each bootstrap.
+# Upstream publishes prebuilt binaries and the registry entry resolves to
+# rtk-ai/rtk, so a plain pin works everywhere and Renovate bumps it. Watch the
+# name collision noted in dot_claude/CLAUDE.md: reachingforthejack/rtk is a
+# different tool ("Rust Type Kit"). `rtk gain` working is the cheap check.
+rtk = "0.43.0"
 # chezmoi decrypts with a built-in age normally, but built-in age can't load
 # plugins — so driving a YubiKey-backed identity means pointing age.command at
 # a real binary, and every machine that decrypts a secret then needs one.
