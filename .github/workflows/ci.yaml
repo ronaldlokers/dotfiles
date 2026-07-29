@@ -360,7 +360,7 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           recipient="$(sed -n 's/^# public key: //p' "$TESTHOME/.config/chezmoi/key.txt")"
           printf 'rotated-content\n' | age -a -r "$recipient" \
-            > dot_config/private_gh/private_hosts.yml.age
+            > home/dot_config/private_gh/private_hosts.yml.age
           HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
           got="$(cat "$TESTHOME/.config/gh/hosts.yml")"
           [ "$got" = "rotated-content" ] \
