@@ -118,10 +118,36 @@ $clean_env HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 # The same assertion CI's bootstrap job makes. It lives here too because the
 # first version of this task didn't have it, and CI caught a failure that a
 # green local run had just missed — which is the exact gap this file exists to
-# close. Run from $testhome: mise merges configs up the cwd hierarchy, so
-# standing in the repo would pull in this very file and report the repo's lint
-# tooling as missing dotfiles tools.
-missing="$(cd "$testhome" && HOME="$testhome" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>/dev/null || true)"
+# close.
+#
+# Run from /, not from the repo and not from $testhome: mise merges a config
+# from every ancestor of the cwd, and `<ancestor>/.config/mise/config.toml`
+# counts. Standing in the repo pulls in this very file and reports the repo's
+# lint tooling as missing dotfiles tools; standing anywhere under a real home
+# (which $testhome is, whenever TMPDIR points there) pulls in that user's live
+# config. From / only $HOME's own config is left.
+#
+# mise's own failures are errors, not an empty tool list. An earlier version
+# piped stderr to /dev/null and swallowed the exit status, so a mise that could
+# not read its config at all reported "all configured tools present".
+#
+# $clean_env matters here for the same reason it does on the apply above: with
+# this desktop's XDG_DATA_HOME and XDG_STATE_HOME still set, mise reads the live
+# machine's installs instead of $testhome's, and every tool looks present no
+# matter what the throwaway HOME actually got.
+#
+# MISE_GLOBAL_CONFIG_FILE for the same reason the install script sets it: mise's
+# global config dir does not always follow $HOME (on GitHub's runners it comes
+# from the passwd entry), so from / there would be no config at all and an empty
+# "missing" list would pass without checking anything.
+errlog="$(mktemp)"
+if ! missing="$(cd / && $clean_env HOME="$testhome" MISE_GLOBAL_CONFIG_FILE="$testhome/.config/mise/config.toml" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>"$errlog")"; then
+	echo "mise could not list tools in the throwaway HOME:" >&2
+	cat "$errlog" >&2
+	rm -f "$errlog"
+	exit 1
+fi
+rm -f "$errlog"
 if [ -n "$missing" ]; then
 	echo "configured mise tools are not installed:" >&2
 	printf '%s\n' "$missing" >&2
