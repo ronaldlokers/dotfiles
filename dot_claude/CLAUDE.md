@@ -58,5 +58,5 @@ rtk proxy <cmd>       # run raw command, unfiltered (debugging)
 ```
 
 Name collision: if `rtk gain` fails, wrong binary installed
-(reachingforthejack/rtk = Rust Type Kit). Correct one is `rtk-ai/rtk`, pinned in
-`.chezmoiscripts/run_onchange_after_install-rtk.sh.tmpl`.
+(reachingforthejack/rtk = Rust Type Kit). Correct one is `rtk-ai/rtk`, pinned as
+`rtk` in `dot_config/mise/config.toml`.
