@@ -119,10 +119,16 @@ the ssh-agent, and `dot_config/shell/ssh-agent.sh` runs it automatically the
 first time a shell finds a live but empty agent.
 
 That covers everything this machine does with them. Git over SSH uses the agent,
-commit signing goes through it too (git signs with an agent-held key as long as
-`user.signingkey` names a *public* key file, which it does), and DevPod forwards
-the same agent into containers — so containers get the keys without holding a
-secret either.
+and so does commit signing: `user.signingkey` is the *literal* public key rather
+than a path, so there is no `.pub` file either — `~/.ssh` holds no key material
+at all. The public half comes from the same Proton item as the private one, via
+`.chezmoitemplates/signing-pubkey`, falling back to `ssh-add -L` where Proton
+isn't reachable. DevPod forwards the agent into containers, so they get the keys
+without holding a secret either.
+
+If neither source can supply it, `user.signingkey` is left out while
+`commit.gpgsign` stays on — the next commit fails loudly instead of quietly
+going unsigned. `proton-ssh-load` then re-apply fixes it.
 
 On a fresh machine, hand it the bootstrap token once — it is in that same vault
 under `bootstrap PAT`, readable from the Proton Pass app or web:

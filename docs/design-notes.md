@@ -251,9 +251,16 @@ and a stolen disk yields no keys. It works because everything this machine does
 with them goes through the agent anyway:
 
 - **git over SSH** — the agent answers.
-- **commit signing** — git signs with an agent-held key as long as
-  `user.signingkey` names a *public* key file, which `dot_config/git/config.tmpl`
-  does. Verified: signing succeeds with only `id_ed25519_signing.pub` present.
+- **commit signing** — git signs with an agent-held key, and it is told *which*
+  key by a literal `key::ssh-ed25519 …` value rather than a path, so no `.pub`
+  file is needed. Both `user.signingkey` and `allowed_signers` take it from
+  `.chezmoitemplates/signing-pubkey`, which reads the public field of the same
+  Proton item and falls back to `ssh-add -L`. The gate matters: chezmoi's
+  `protonPass` aborts the *entire* template when pass-cli fails, so an unguarded
+  call would break every apply in a container and in CI. When neither source
+  answers, the key is omitted and `commit.gpgsign` is left on, so the failure is
+  a refused commit rather than a silently unsigned one. Verified end to end: a
+  signed commit reporting `G`, with zero key files on disk.
 - **containers** — DevPod forwards the agent, so they inherit the keys and hold
   no secret of their own.
 

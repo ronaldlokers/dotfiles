@@ -1,0 +1,14 @@
+{{- /* Single source of truth for "can we read from Proton Pass right now?".
+       Renders the literal string "true" or "false", same convention as
+       is-container and is-devpod-platform.
+
+       lookPath returns "" rather than failing when the binary is absent, which
+       is the container case: .chezmoiexternals/pass-cli.toml is host-only.
+
+       `pass-cli info` is the session test, wrapped in `sh -c … && echo true ||
+       echo false` because chezmoi's `output` aborts the whole template on a
+       non-zero exit — the very failure this gate exists to prevent. Wrapped, sh
+       always exits 0 and the template gets a string. */ -}}
+{{- if lookPath "pass-cli" -}}
+{{- output "sh" "-c" "pass-cli info >/dev/null 2>&1 && echo true || echo false" | trim -}}
+{{- else -}}false{{- end -}}
