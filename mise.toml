@@ -135,8 +135,13 @@ $clean_env HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 # this desktop's XDG_DATA_HOME and XDG_STATE_HOME still set, mise reads the live
 # machine's installs instead of $testhome's, and every tool looks present no
 # matter what the throwaway HOME actually got.
+#
+# MISE_GLOBAL_CONFIG_FILE for the same reason the install script sets it: mise's
+# global config dir does not always follow $HOME (on GitHub's runners it comes
+# from the passwd entry), so from / there would be no config at all and an empty
+# "missing" list would pass without checking anything.
 errlog="$(mktemp)"
-if ! missing="$(cd / && $clean_env HOME="$testhome" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>"$errlog")"; then
+if ! missing="$(cd / && $clean_env HOME="$testhome" MISE_GLOBAL_CONFIG_FILE="$testhome/.config/mise/config.toml" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>"$errlog")"; then
 	echo "mise could not list tools in the throwaway HOME:" >&2
 	cat "$errlog" >&2
 	rm -f "$errlog"
