@@ -311,6 +311,25 @@ if command -v tv > /dev/null ; then
   unset keymap
 fi
 
+# yazi with cd-on-exit, same as in .zshrc — see the comment there for why it
+# goes through zoxide's `cd` rather than `builtin cd`, and why `command cat`.
+if command -v yazi > /dev/null ; then
+  y() {
+    local tmp cwd
+    tmp="$(mktemp -t yazi-cwd.XXXXXX)" || return 1
+    yazi "$@" --cwd-file="$tmp"
+    if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+      cd -- "$cwd" || true
+    fi
+    rm -f -- "$tmp"
+  }
+
+  for keymap in emacs vi-insert vi-command; do
+    bind -m "$keymap" -x '"\ey": y'
+  done
+  unset keymap
+fi
+
 # DevPod containers have no gh session, so mise hits GitHub's anonymous rate
 # limit during a cold bootstrap. Same wrapper as in .zshrc — see the comment
 # there for why this wraps the binary, why the guards are what they are, why

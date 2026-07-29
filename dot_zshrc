@@ -236,6 +236,39 @@ if command -v tv > /dev/null ; then
   unset keymap
 fi
 
+# yazi, for the orient-and-peek loop rather than for navigation. A history
+# audit found 145 of 177 `cd` calls were name jumps (`cd zenith`), which
+# zoxide already answers in one word — but also 89 bare `ls` and 48 `cat`,
+# the arrive-look-peek cycle a file manager with previews collapses into one
+# interface. That is the gap this fills; it takes nothing from `cd`.
+#
+# `cd` rather than upstream's `builtin cd`: cd here IS zoxide (--cmd cd), so
+# going through it records the directory and every later `cd`, tv dirs pick
+# and sesh entry gets better for it. With `builtin` the two tools would stay
+# strangers. `command cat` because cat is aliased to bat further down.
+#
+# Alt-Y is free in viins and vicmd, the keymaps vi-mode actually uses; it is
+# `yank-pop` in emacs, which is dormant here, and binding all three keeps this
+# consistent with the tv widgets above.
+if command -v yazi > /dev/null ; then
+  y() {
+    local tmp cwd
+    tmp="$(mktemp -t yazi-cwd.XXXXXX)" || return 1
+    yazi "$@" --cwd-file="$tmp"
+    if cwd="$(command cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+      cd -- "$cwd" || true
+    fi
+    rm -f -- "$tmp"
+  }
+
+  y-widget() { y; zle reset-prompt; }
+  zle -N y-widget
+  for keymap in emacs viins vicmd; do
+    bindkey -M "$keymap" '^[y' y-widget
+  done
+  unset keymap
+fi
+
 # DevPod containers have no gh session — hosts.yml only decrypts with a TTY —
 # so mise resolves every github:/vfox:/pipx: tool against GitHub's 60/hour
 # anonymous limit and a cold bootstrap runs out partway through. This hands

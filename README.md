@@ -133,9 +133,21 @@ behaves the same:
 | `Ctrl-T` | tv channel menu — pick a channel, then pick in it; the result lands on the command line |
 | `Alt-C` | tv directory picker, cds this shell |
 | `Ctrl-F` | tv sesh channel: tmux sessions + zoxide directories |
+| `Alt-Y` | yazi; quitting it cds this shell to wherever you ended up (`y` does the same by name) |
 | `prefix o` | the same sesh channel, in a tmux popup |
 | `Ctrl-S` | *inside* the sesh channel: cycle source (all/tmux/configs/zoxide/dirs) |
 | `Ctrl-D` | *inside* the sesh channel: kill the highlighted session and reload |
+
+Those five reach different things, which is why they coexist: `cd` (zoxide)
+jumps to a directory you already know by name, `Alt-C` descends into one you
+have never visited, `Ctrl-T` puts a path on the command line rather than
+changing directory, `Ctrl-F` switches tmux sessions rather than directories,
+and `Alt-Y` is for looking around. That last one earns its place from the
+arrive-look-peek loop — an atuin audit counted 89 bare `ls` and 48 `cat`
+against 145 name jumps, and a file manager with previews collapses the first
+two without touching the third. Note `y` goes through zoxide's `cd` rather
+than `builtin cd`, so directories reached by browsing feed the frecency that
+`cd`, `Alt-C` and `Ctrl-F` all read from.
 
 `Ctrl-R` used to be fzf's; atuin owns it and `Up` exclusively now — nothing
 else in either rc file binds either key. fzf itself stays installed
