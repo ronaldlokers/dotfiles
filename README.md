@@ -248,17 +248,19 @@ packages differ per project and belong in the copy. Edit the starter at
 Arch rather than Debian for two reasons. It matches the host, so package
 commands and versions are the same either side of the container boundary. And
 `debian:trixie` ships no `libatomic.so.1`, which mise's prebuilt node links
-against — on Debian `mise install` failed on node, skipped `gemini-cli` as a
-dependent, and failed the whole `chezmoi apply` behind it.
+against — on Debian `mise install` failed on node and failed the whole
+`chezmoi apply` behind it.
 
 The cost is that the image is built from a `Dockerfile` rather than pulled: the
 `common-utils` and `git` devcontainer features accept debian, rhel and alpine
 only, and exit with `Linux distro arch not supported`. The Dockerfile covers
 what those features are actually relied on for — the `dev` user, the sudoers
-entry, zsh, generating the `en_US.UTF-8` locale that `dot_zshrc` expects, an
-`openssh` client so DevPod's SSH clone and git's commit signing work, and a
-compiler toolchain (`base-devel`, `python`) so `gemini-cli`'s `node-pty`
-dependency can build. The rest of what `common-utils` used to bundle —
+entry, zsh, generating the `en_US.UTF-8` locale that `dot_zshrc` expects, and
+an `openssh` client so DevPod's SSH clone and git's commit signing work. There
+is deliberately no compiler: `base-devel` and `python` were once needed because
+`gemini-cli` pulled `node-pty`, whose install script is an unconditional
+`node-gyp rebuild`, and dropping that tool removed the only thing on the list
+that built from source. The rest of what `common-utils` used to bundle —
 `bash-completion`, `wget`, `rsync`, an editor, `man-db`, `tree`, and more — is
 not reproduced; this repo's own mise tool list covers what this setup
 actually uses.
@@ -305,12 +307,12 @@ devpod's own `--silent`, which suppresses everything short of a panic,
 including the `Execution of ./setup was unsuccessful` line that is how a
 broken bootstrap announces itself.
 
-`CXXFLAGS=-w` goes along for the same reason, one layer down. `gemini-cli`
-depends on `node-pty`, which ships no prebuilt binary for the pinned node, so
-every container compiles it with node-gyp — and gcc then reports warnings in
-`nan` and in node's own headers, upstream code nothing here can act on. `-w`
-drops warnings only: a real compile error still prints and still fails the
-build.
+`CXXFLAGS=-w` goes along with it. Nothing on the tool list builds from source
+today — `gemini-cli`, which pulled a `node-pty` that always ran `node-gyp`, is
+gone — so this currently silences nothing. It stays because the next tool that
+does compile will otherwise dump upstream gcc warnings into every bootstrap,
+and `-w` drops warnings only: a real compile error still prints and still fails
+the build.
 
 That token's expiry is not checked by anything local: `mise run
 secrets-restore` only proves the age blob still decrypts, not that the
