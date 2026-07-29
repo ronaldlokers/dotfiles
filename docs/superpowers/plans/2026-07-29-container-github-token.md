@@ -166,6 +166,12 @@ if command -v devpod > /dev/null ; then
 fi
 ```
 
+> Superseded: this `[ "$1" = up ]` check misreads global flags before the
+> subcommand (`devpod --debug up .`) as the subcommand and silently skips the
+> token file. The shipped `dot_zshrc` walks past those flags instead — see
+> `c9d5933`. This plan is a historical execution record; treat `dot_zshrc` as
+> current.
+
 - [ ] **Step 2: Add the same function to `dot_bashrc`**
 
 Identical body — the function is POSIX-shell shaped and needs no per-shell variation. Use a shorter comment that points at the zsh one, matching how the other mirrored blocks in this file read:
@@ -184,6 +190,11 @@ if command -v devpod > /dev/null ; then
   }
 fi
 ```
+
+> Superseded: same as the `dot_zshrc` block above — the shipped `dot_bashrc`
+> walks past leading global flags instead of checking `$1` directly. See
+> `c9d5933`. This plan is a historical execution record; treat `dot_bashrc`
+> as current.
 
 - [ ] **Step 3: Apply and check both shells still start clean**
 

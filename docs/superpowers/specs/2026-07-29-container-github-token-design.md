@@ -35,14 +35,16 @@ exposure and simply had not hit it yet.
 
 ## Decisions
 
-**A dedicated PAT with no scopes.** mise needs a token only to lift the
-anonymous rate limit; its own documentation says no scopes are required. The
-alternative — reusing what `gh` holds — costs nothing to set up but hands
-every container, and everything running inside one, a credential carrying
-`repo` and `workflow`. `dot_config/shell/github-token.sh` already flags that
-blast radius as a deliberate trade for the MCP server on the host; extending
-it to containers is a bigger trade than this problem warrants. A leaked
-no-scope PAT costs an attacker nothing but public-read quota.
+**A dedicated fine-grained PAT with no extra permissions.** mise needs a
+token only to lift the anonymous rate limit; a fine-grained PAT scoped to
+"Public repositories (read-only)" already grants more than that requires.
+The alternative — reusing what `gh` holds — costs nothing to set up but
+hands every container, and everything running inside one, a credential
+carrying `repo` and `workflow`. `dot_config/shell/github-token.sh` already
+flags that blast radius as a deliberate trade for the MCP server on the
+host; extending it to containers is a bigger trade than this problem
+warrants. A leaked PAT with no permissions beyond public read costs an
+attacker nothing but public-read quota.
 
 **Delivered as `MISE_GITHUB_TOKEN`, not `GITHUB_TOKEN`.** The narrower name
 reaches mise and nothing else, so a container does not quietly acquire a
@@ -81,9 +83,12 @@ which reproduces this bug silently.
 | Contents | one line: `MISE_GITHUB_TOKEN=<pat>` |
 
 Creating the PAT is a human step and cannot be automated from here: generate
-it at <https://github.com/settings/tokens> with **no scopes ticked**, then
-produce the blob with the repo's documented command rather than
-`chezmoi add --encrypt`, which would break non-interactive apply:
+a **fine-grained** token at
+<https://github.com/settings/personal-access-tokens/new> with repository
+access set to "Public repositories (read-only)" and no repository or
+account permissions beyond that, then produce the blob with the repo's
+documented command rather than `chezmoi add --encrypt`, which would break
+non-interactive apply:
 
 ```sh
 printf 'MISE_GITHUB_TOKEN=%s\n' "$pat" > /tmp/dotfiles-env
@@ -122,7 +127,25 @@ rest of that pair:
 
 ```sh
 devpod() {
-  if [ "$1" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
+  local arg sub skip=0
+  for arg in "$@"; do
+    if [ "$skip" = 1 ]; then
+      skip=0
+      continue
+    fi
+    case "$arg" in
+      --context|--devpod-home|--log-output|--provider)
+        skip=1
+        ;;
+      -*)
+        ;;
+      *)
+        sub="$arg"
+        break
+        ;;
+    esac
+  done
+  if [ "$sub" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
     command devpod "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
   else
     command devpod "$@"
@@ -130,10 +153,19 @@ devpod() {
 }
 ```
 
-Both halves of the guard matter. The subcommand test keeps the flag off
-`devpod ssh`, `devpod list` and everything else that would reject it. The
-readability test is what makes a machine without the secret behave exactly
-as it does today rather than failing on a missing file.
+The guard has to find the subcommand first rather than just checking `$1`:
+devpod is a cobra CLI, so global flags are legal before the subcommand, and
+`devpod --debug up .` would otherwise misread `--debug` as the subcommand and
+silently skip the token file. (An earlier version of this function did
+exactly that — fixed in `c9d5933`.) The loop walks the arguments and skips
+option tokens, including the four global flags that take a separate value
+(`--context`, `--devpod-home`, `--log-output`, `--provider`) so their value
+isn't mistaken for the subcommand either, then takes the first non-option
+token as `sub`. Both halves of the resulting guard still matter: the
+subcommand test keeps the flag off `devpod ssh`, `devpod list` and everything
+else that would reject it, and the readability test is what makes a machine
+without the secret behave exactly as it does today rather than failing on a
+missing file.
 
 ### Degradation
 
@@ -147,7 +179,8 @@ quietly off, no new failure mode.
 
 **The token is readable inside the container.** Anything running there —
 including coding agents — can read the environment. That is the reason for
-insisting on zero scopes; the credential is worth nothing beyond quota.
+insisting on no permissions beyond public read; the credential is worth
+nothing beyond quota.
 
 **The dotfiles now shadow a binary.** `devpod` resolves to a function, which
 is a surprise when debugging something DevPod-related. `command devpod` is
@@ -159,10 +192,24 @@ unit, an editor integration — does not get the function and so does not get
 the token. Those paths keep today's behaviour rather than breaking, but they
 also keep today's bug.
 
-**One more secret to rotate.** The PAT joins the SSH signing key, the sops
-keys, the `gh` token and the sugarrush config. `mise run secrets-restore`
-already checks every blob still decrypts, so this one is covered by that the
-moment it exists.
+**A future devpod global flag could slip past the guard.** The value-taking
+globals the wrapper skips are hardcoded: `--context`, `--devpod-home`,
+`--log-output`, `--provider`. If devpod ships another global flag that takes
+a separate value and it isn't added to that list, the wrapper would misread
+the flag's value as the subcommand and silently skip the token file — the
+same failure mode `c9d5933` fixed, reopened by a devpod release rather than a
+caller's command line. Accepted: the wrapper still degrades to today's
+behavior (no token, possible rate limit) rather than breaking outright, and
+the fix is a one-line addition to the list when it happens.
+
+**One more secret to rotate — and this one expires.** The PAT joins the SSH
+signing key, the sops keys, the `gh` token and the sugarrush config. `mise
+run secrets-restore` only proves the *blob* still decrypts to the same
+bytes; it says nothing about whether the plaintext token is still live.
+Fine-grained PATs expire, and nothing local checks that — on expiry `devpod
+up` silently reverts to the rate-limit failure this design exists to fix,
+while `secrets-restore` and `mise run check` both stay green. There is no
+automated rotation reminder; see README's Dev containers paragraph.
 
 ## Verification
 
