@@ -18,15 +18,15 @@ FROM archlinux:base
 # liveness check in dot_config/shell/ssh-agent.sh needs `ssh` to exist to
 # tell a dead agent from a missing binary.
 #
-# base-devel and python are required too — mise's prebuilt binaries are not
-# enough. gemini-cli pulls node-pty, which ships no prebuilt binary for this
-# platform and compiles through node-gyp at install time; node-gyp needs
-# make/gcc (base-devel) and a python interpreter. python is listed here
-# explicitly rather than left to mise, because mise installing it as part of
-# the same batch as gemini-cli is an ordering race, not a guarantee.
+# No compiler toolchain here. base-devel and python used to be required
+# because gemini-cli pulled node-pty, whose install script is an
+# unconditional `node-gyp rebuild` — no prebuilt binary exists for any node
+# version, so every bootstrap compiled it. gemini-cli is gone from the tool
+# list, and nothing else on it builds from source: verified by bootstrapping
+# a container from this image with mise installing the whole set and nothing
+# missing. Add base-devel back in a project's own copy if it needs to build.
 RUN pacman -Syu --noconfirm --needed \
-      git zsh sudo curl ca-certificates which less mise \
-      openssh base-devel python \
+      git zsh sudo curl ca-certificates which less mise openssh \
  && pacman -Scc --noconfirm
 
 # dot_zshrc exports LANG=en_US.UTF-8. Arch ships only C/C.utf8/POSIX, so
