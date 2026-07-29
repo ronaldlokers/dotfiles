@@ -270,6 +270,13 @@ fi
 # `--silent`, which suppresses everything short of a panic, including the
 # `Execution of ./setup was unsuccessful` line that is how a broken bootstrap
 # announces itself.
+#
+# CXXFLAGS=-w for the same reason, one layer down. gemini-cli depends on
+# node-pty, which ships no prebuilt binary for the pinned node, so every
+# container compiles it with node-gyp and gcc reports warnings in nan and in
+# node's own headers — upstream code, nothing here can act on it. `-w` drops
+# warnings only: a real compile error still prints and still fails the build.
+# It reaches anything the bootstrap compiles, which in practice is node-gyp.
 if command -v devpod > /dev/null ; then
   devpod() {
     local arg sub skip=0
@@ -291,7 +298,8 @@ if command -v devpod > /dev/null ; then
       esac
     done
     if [ "$sub" = "up" ]; then
-      set -- "$@" --dotfiles-script-env MISE_QUIET=1
+      set -- "$@" --dotfiles-script-env MISE_QUIET=1 \
+                  --dotfiles-script-env CXXFLAGS=-w
       if [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
         set -- "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
       fi

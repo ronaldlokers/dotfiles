@@ -305,6 +305,13 @@ devpod's own `--silent`, which suppresses everything short of a panic,
 including the `Execution of ./setup was unsuccessful` line that is how a
 broken bootstrap announces itself.
 
+`CXXFLAGS=-w` goes along for the same reason, one layer down. `gemini-cli`
+depends on `node-pty`, which ships no prebuilt binary for the pinned node, so
+every container compiles it with node-gyp — and gcc then reports warnings in
+`nan` and in node's own headers, upstream code nothing here can act on. `-w`
+drops warnings only: a real compile error still prints and still fails the
+build.
+
 That token's expiry is not checked by anything local: `mise run
 secrets-restore` only proves the age blob still decrypts, not that the
 plaintext PAT is still live, and `mise run check` doesn't touch it either. A
