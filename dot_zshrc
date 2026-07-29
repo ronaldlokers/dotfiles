@@ -379,6 +379,31 @@ if command -v lsd > /dev/null ; then
   alias tree='ls --tree'
 fi
 
+# The coreutils replacements, under the names muscle memory already reaches
+# for. They were pinned as replacements but left unaliased, and the history
+# shows what that costs: `cat` and `ls` are used 144 times between them
+# because they are aliased, while dust/duf/btop sat at one or two apiece.
+#
+# Safe despite the flag differences — none of these accepts its predecessor's
+# options. An alias only applies to an interactive shell, so `du -sh` in any
+# script still runs coreutils. That is the same reasoning that makes cat=bat
+# above acceptable.
+#
+# Deliberately not aliased: `sed` to sd, whose arguments are entirely
+# different (`sed 's/x/y/'` simply fails), and `ping` to gping, which plots a
+# graph rather than standing in for ping's flags.
+if command -v dust > /dev/null ; then
+  alias du="dust"
+fi
+
+if command -v duf > /dev/null ; then
+  alias df="duf"
+fi
+
+if command -v btop > /dev/null ; then
+  alias top="btop"
+fi
+
 
 # ~~~~~~~~~~~~~~~ Plugins ~~~~~~~~~~~~~~~~~~~~~~~~
 

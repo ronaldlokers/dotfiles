@@ -53,6 +53,14 @@ The coreutils replacements (`dust`, `duf`, `btop`, `sd`, `jless`) are in mise fo
 the same reason — a container has no pacman, and reaching for `du` inside one
 should not be a worse experience than on the host.
 
+Three of them are aliased over the commands they replace: `du`, `df` and `top`.
+That is not cosmetic — an atuin audit found the aliased tools (`cat`, `ls`) used
+144 times between them while the unaliased replacements sat at one or two
+apiece, because using them meant remembering a new name. Aliases apply only to
+interactive shells, so `du -sh` in a script still runs coreutils. `sd` and
+`gping` are left alone deliberately: `sd` takes entirely different arguments
+from `sed`, and `gping` plots a graph rather than standing in for `ping`.
+
 tv's channels come from a pinned archive external rather than `tv
 update-channels`, so the host and a container see the same set, and Renovate
 bumps them with everything else. Several are host-only in practice:
