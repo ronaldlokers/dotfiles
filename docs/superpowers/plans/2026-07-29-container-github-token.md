@@ -90,7 +90,7 @@ In `.chezmoiscripts/run_before_00-unlock-secrets.sh.tmpl`, immediately after the
 
 The `{{"{{"}}` escaping is not optional — see Global Constraints.
 
-Note `~/.config/devpod/` is co-owned: DevPod keeps its own `config.yaml` there. `mkdir -p` plus `chmod 700` matches what the `gh` block does to a directory it shares with the tool.
+Note `~/.config/devpod/` is ours alone despite the name — DevPod keeps its state in `~/.devpod/` (`config.yaml`, `contexts/`, `agent/`). `mkdir -p` plus `chmod 700` still matches what the `gh` block does, and 700 matters more here, not less: nothing else has any business in this directory.
 
 - [ ] **Step 3: Lint**
 
@@ -111,8 +111,14 @@ Expected: `dotfiles-env` and DevPod's own files, but no `dotfiles-env.age`. If t
 
 - [ ] **Step 6: Confirm the blob decrypts under the repo's own check**
 
-Run: `mise run secrets-restore 2>&1 | grep devpod`
-Expected: an `ok` line for `dot_config/private_devpod/private_dotfiles-env.age`.
+`secrets-restore` enumerates blobs with `git ls-files`, so it cannot see a file git does not know about — run against an untracked blob it prints nothing and exits 0, which reads exactly like a pass. Stage first, then check:
+
+```bash
+git add .chezmoiignore .chezmoiscripts/run_before_00-unlock-secrets.sh.tmpl dot_config/private_devpod/
+mise run secrets-restore 2>&1 | grep devpod
+```
+
+Expected: an `ok` line for `dot_config/private_devpod/private_dotfiles-env.age`. Empty output means the staging did not take — investigate rather than moving on.
 
 - [ ] **Step 7: Commit**
 

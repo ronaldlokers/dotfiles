@@ -110,9 +110,10 @@ itself a chezmoi template, and the decrypt expression must survive rendering
 to be evaluated later — the existing blocks all do this, and writing the
 plain `{{ decrypt … }}` form instead produces a file that decrypts nothing.
 
-`~/.config/devpod/` is co-owned: DevPod writes its own `config.yaml` there.
-This adds a file to that directory rather than managing the directory, so
-the two do not collide.
+`~/.config/devpod/` is ours alone, despite the name. DevPod keeps its state in
+`~/.devpod/` — `config.yaml`, `contexts/`, `agent/`, verified on this machine —
+so there is no co-ownership here and nothing to collide with. The decrypt block
+creates the directory and it holds only this file.
 
 ### Delivery
 
