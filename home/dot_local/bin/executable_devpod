@@ -1,0 +1,74 @@
+#!/bin/sh
+# DevPod containers have no gh session, so mise hits GitHub's anonymous 60/hour
+# rate limit during a cold bootstrap and the all-or-nothing tool install dies on
+# HTTP 403. The token that fixes it can only be passed as a `devpod up` flag:
+# DevPod exposes no context option for it (v0.6.15 has DOTFILES_SCRIPT and
+# DOTFILES_URL and nothing else), so something has to add the flag on every
+# invocation.
+#
+# This was a shell function in .zshrc and .bashrc until it turned out that a
+# function can only ever cover interactive shells: `bash -c`, `zsh -c`, a
+# script, a cron job and an agent tool call all skip the rc files, so they got
+# no token and silently fell back to the anonymous quota — failing only on the
+# days that quota was already spent. A real executable on PATH covers every
+# caller, which is why the pinned binary now lands in ~/.local/libexec and this
+# sits in front of it.
+#
+# MISE_QUIET drops roughly forty lines of mise install progress relayed through
+# DevPod's logger while keeping the errors — a failing install still prints
+# `mise ERROR …` and exits non-zero. Deliberately not devpod's own `--silent`,
+# which suppresses everything short of a panic, including the `Execution of
+# ./setup was unsuccessful` line that is how a broken bootstrap announces
+# itself.
+#
+# CXXFLAGS=-w for the same reason, one layer down. gemini-cli depends on
+# node-pty, which ships no prebuilt binary for the pinned node, so every
+# container compiles it with node-gyp and gcc reports warnings in nan and in
+# node's own headers — upstream code, nothing here can act on it. `-w` drops
+# warnings only: a real compile error still prints and still fails the build.
+set -eu
+
+real="$HOME/.local/libexec/devpod"
+env_file="$HOME/.config/devpod/dotfiles-env"
+
+# Missing binary means the external hasn't landed (or this is a platform it
+# skips). Say so rather than dying with a bare "not found" on a name the user
+# can see on PATH.
+if [ ! -x "$real" ]; then
+	echo "devpod: $real is missing — run 'chezmoi apply' to fetch it" >&2
+	exit 127
+fi
+
+# Find the subcommand by walking the arguments rather than reading $1: global
+# flags may come first, and the four listed below take a value that must not be
+# mistaken for the subcommand.
+sub=""
+skip=0
+for arg in "$@"; do
+	if [ "$skip" = 1 ]; then
+		skip=0
+		continue
+	fi
+	case "$arg" in
+	--context | --devpod-home | --log-output | --provider)
+		skip=1
+		;;
+	-*) ;;
+	*)
+		sub="$arg"
+		break
+		;;
+	esac
+done
+
+if [ "$sub" = "up" ]; then
+	set -- "$@" --dotfiles-script-env MISE_QUIET=1 \
+		--dotfiles-script-env CXXFLAGS=-w
+	# The flag carries the *path*, never the value: the token must not reach
+	# this process's arguments, where any `ps` could read it.
+	if [ -r "$env_file" ]; then
+		set -- "$@" --dotfiles-script-env-file "$env_file"
+	fi
+fi
+
+exec "$real" "$@"
