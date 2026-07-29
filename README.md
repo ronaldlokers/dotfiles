@@ -289,9 +289,17 @@ the starter at `dot_local/share/devcontainer-template/`.
 DevPod clones and applies these dotfiles inside the container itself; nothing in
 the image does it. The host side (provider, IDE, `DOTFILES_URL`) is configured by
 `run_onchange_after_30-configure-devpod.sh.tmpl`, and `~/.local/bin/devpod` is a
-managed wrapper that passes a GitHub token and quiet-mode env into every
-`devpod up`. The pinned binary itself lives off PATH at `~/.local/libexec/devpod`;
-`~/.local/libexec/devpod` runs it unwrapped.
+managed wrapper that passes GitHub tokens and quiet-mode env into every
+`devpod up`: a no-scope PAT as `MISE_GITHUB_TOKEN` for the bootstrap's tool
+install, and your `gh` token as `GH_TOKEN` in the workspace so `gh` and HTTPS
+`git push` work inside the container. The pinned binary itself lives off PATH at
+`~/.local/libexec/devpod`; `~/.local/libexec/devpod` runs it unwrapped.
+
+> [!WARNING]
+> `GH_TOKEN` lands in `/etc/envfile.json` inside the container, mode `0644` —
+> readable by everything running there. It is a full-scope user token; treat a
+> container you would not hand push access to as a reason to run
+> `~/.local/libexec/devpod up` instead.
 
 **Updates** arrive two ways. Tool pins are bumped by a self-hosted
 [Renovate](https://docs.renovatebot.com) run (`.github/workflows/renovate.yaml`,

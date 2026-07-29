@@ -61,6 +61,13 @@ for arg in "$@"; do
 	esac
 done
 
+ws_env=""
+
+# Remove the generated workspace env file whatever happens after it is written.
+cleanup() {
+	[ -n "$ws_env" ] && rm -f "$ws_env"
+}
+
 if [ "$sub" = "up" ]; then
 	set -- "$@" --dotfiles-script-env MISE_QUIET=1 \
 		--dotfiles-script-env CXXFLAGS=-w
@@ -69,6 +76,51 @@ if [ "$sub" = "up" ]; then
 	if [ -r "$env_file" ]; then
 		set -- "$@" --dotfiles-script-env-file "$env_file"
 	fi
+
+	# gh inside the container, for `gh` itself and for HTTPS pushes through the
+	# `gh auth git-credential` helper in dot_config/git/config.tmpl — both read
+	# GH_TOKEN straight from the environment, so this one variable is the whole
+	# integration.
+	#
+	# Deliberately GH_TOKEN and not GITHUB_TOKEN or MISE_GITHUB_TOKEN: mise
+	# reads the latter two, and the tool-install path must keep using the
+	# no-scope PAT in $env_file. Only gh should ever hold the powerful token.
+	#
+	# Generated per invocation rather than kept on disk, because gh rotates its
+	# OAuth token and a stale copy would authenticate as nothing. It lives in
+	# $XDG_RUNTIME_DIR (tmpfs, 0700, cleared at logout), is written 0600, and is
+	# removed as soon as devpod returns.
+	#
+	# KNOWN EXPOSURE, accepted deliberately: DevPod materialises workspace env
+	# as /etc/envfile.json *inside* the container, mode 0644. Every process and
+	# every user in that container can read this token for the container's
+	# lifetime — a dependency's postinstall script, a test, an agent. It is a
+	# full-scope user token: whatever it can push to, they can push to. The
+	# no-scope PAT above is the model to copy for anything that does not
+	# specifically need gh.
+	if command -v gh >/dev/null 2>&1; then
+		gh_token="$(gh auth token 2>/dev/null || true)"
+		if [ -n "$gh_token" ]; then
+			ws_env="${XDG_RUNTIME_DIR:-$HOME/.cache}/devpod-workspace-env.$$"
+			(
+				umask 077
+				printf 'GH_TOKEN=%s\n' "$gh_token" >"$ws_env"
+			)
+			unset gh_token
+			set -- "$@" --workspace-env-file "$ws_env"
+		fi
+	fi
+fi
+
+# `exec` for everything else, so devpod owns the terminal and the signals. The
+# `up` path with a generated env file has to stay in the foreground instead, so
+# the file can be removed once devpod is done with it.
+if [ -n "$ws_env" ]; then
+	trap cleanup EXIT HUP INT TERM
+	"$real" "$@"
+	rc=$?
+	cleanup
+	exit "$rc"
 fi
 
 exec "$real" "$@"

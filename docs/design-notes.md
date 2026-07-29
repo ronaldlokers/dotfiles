@@ -348,6 +348,39 @@ that file to `devpod up --dotfiles-script-env-file`. The token carries no
 permissions beyond public-repository read, because mise needs it only for the
 rate limit — a container that leaks it leaks public-read quota and nothing else.
 
+### The other token: `gh` inside the container
+
+The PAT above is scoped to nothing on purpose, which also means it cannot push.
+For `gh` and HTTPS `git push` to work inside a container as *you*, the wrapper
+additionally hands `devpod up` a `--workspace-env-file` holding `GH_TOKEN`, read
+from `gh auth token` on the host at invocation time.
+
+`GH_TOKEN` and not `GITHUB_TOKEN`: mise reads `GITHUB_TOKEN` and
+`MISE_GITHUB_TOKEN`, and the tool-install path must keep using the no-scope PAT.
+Only `gh` — and the `gh auth git-credential` helper in `dot_config/git/config.tmpl`,
+which is what makes `git push` work — should ever see the powerful one. Inside a
+container `MISE_GITHUB_TOKEN` and `GITHUB_TOKEN` are both unset.
+
+It is generated per invocation rather than stored, because gh rotates its OAuth
+token and a stale copy would authenticate as nobody. The file is written 0600
+into `$XDG_RUNTIME_DIR` (tmpfs, 0700, cleared at logout) and removed as soon as
+devpod returns — which is why the `up` path runs devpod in the foreground instead
+of `exec`ing it. The flag carries the path, so the token never reaches `ps`.
+
+**The exposure this accepts.** DevPod materialises workspace env as
+`/etc/envfile.json` *inside* the container, mode `0644`. Every process and every
+user in that container can read the token for the container's lifetime — a
+dependency's postinstall script, a test suite, an agent. It is a full-scope user
+token: whatever it can push to, they can push to. That is a deliberate trade for
+being able to commit and push from inside a devcontainer, not an oversight. It is
+also the reason the two tokens stay separate: anything that does not specifically
+need `gh` should use the no-scope PAT, which leaks public-read quota and nothing
+else.
+
+If that trade ever stops being worth it, the shape to move to is a fine-grained
+PAT limited to the repositories a container may push to, minted separately from
+the host's gh session and stored like the other `.age` blobs.
+
 ### Why the wrapper is an executable and not a shell function
 
 It was a `devpod` function in both rc files first, and that version only ever
