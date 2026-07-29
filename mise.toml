@@ -19,7 +19,7 @@ gitleaks = "8.30.1"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init",
 	# dot_claude/settings.json no longer exists (it's now a modify_ script's
 	# baseline, merged at apply time) so there is nothing static left to
 	# `jq empty`. What matters now is that the script itself still emits
