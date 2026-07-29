@@ -7,6 +7,7 @@ key.txt.age
 .ssh/id_ed25519_signing.age
 .config/sops/age/keys.txt.age
 .config/gh/hosts.yml.age
+.config/devpod/dotfiles-env.age
 .config/sugarrush/config.toml.age
 /docs
 # Source artwork the screensaver branding is generated from, kept for

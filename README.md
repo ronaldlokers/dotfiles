@@ -265,6 +265,41 @@ use the pinned one, because `dot_zshrc` prefers it explicitly.
 Nothing installs the dotfiles from inside the container: DevPod clones and
 applies them itself, via the `DOTFILES_URL` option above.
 
+That bootstrap needs a GitHub token. mise resolves a version through the
+GitHub API for every `github:`, `vfox:` and `pipx:` tool, and unauthenticated
+that is 60 requests an hour per IP — less than this repo's tool list, so a
+cold container fails partway through with `rate limit exceeded` and takes the
+whole apply with it. The host is unaffected because `gh` is authenticated
+there; a container has no `gh` session, since `hosts.yml` only decrypts with a
+TTY.
+
+So `~/.config/devpod/dotfiles-env` holds a **fine-grained** PAT as
+`MISE_GITHUB_TOKEN`, and a `devpod` shell function in both rc files hands that
+file to `devpod up --dotfiles-script-env-file`. The wrapper walks the
+arguments rather than just checking `$1`, since devpod is a cobra CLI and
+global flags are legal before the subcommand; it skips option tokens —
+including the four value-taking globals (`--context`, `--devpod-home`,
+`--log-output`, `--provider`) — and treats the first non-option token as the
+subcommand, appending the token file only when that's `up` and the file is
+readable. (A future global flag that takes a separate value but isn't in that
+list would be misread as the subcommand and silently skip the token file.)
+The token carries no permissions beyond public-repository read because mise
+needs it only for the rate limit — a container that leaks it leaks
+public-read quota and nothing else. `command devpod` bypasses the wrapper,
+and a machine whose age identity is still locked has no such file, so the
+wrapper passes straight through and containers bootstrap exactly as they did
+before.
+
+That token's expiry is not checked by anything local: `mise run
+secrets-restore` only proves the age blob still decrypts, not that the
+plaintext PAT is still live, and `mise run check` doesn't touch it either. A
+lapsed fine-grained PAT looks exactly like the original bug — `devpod up`
+silently reverts to the rate-limit failure this section exists to fix, with
+every local check green. And this covers the dotfiles bootstrap only: a
+project whose own `mise.toml` pulls `github:`/`vfox:`/`pipx:` tools can still
+exhaust the anonymous quota in its `postCreateCommand`, since that runs
+before DevPod clones the dotfiles and this token is nowhere in scope yet.
+
 ## Co-owned configuration files
 
 Some files under `$HOME` are written by both this repo and by the program
@@ -400,6 +435,7 @@ Currently decrypted by the script:
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
 | `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
 | sugarrush config | `~/.config/sugarrush/config.toml` | `dot_config/private_sugarrush/private_config.toml.age` |
+| DevPod container token | `~/.config/devpod/dotfiles-env` | `dot_config/private_devpod/private_dotfiles-env.age` |
 
 To **add** a secret: encrypt it to the repo recipient as a `<name>.age` blob
 (`chezmoi encrypt --output <path>.age <file>`, `private_` prefix for `0600`

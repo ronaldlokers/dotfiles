@@ -236,6 +236,60 @@ if command -v tv > /dev/null ; then
   unset keymap
 fi
 
+# DevPod containers have no gh session — hosts.yml only decrypts with a TTY —
+# so mise resolves every github:/vfox:/pipx: tool against GitHub's 60/hour
+# anonymous limit and a cold bootstrap runs out partway through. This hands
+# `devpod up` a file holding a no-scope PAT, which DevPod injects into the
+# dotfiles install script.
+#
+# Wrapping the binary rather than shipping a `devpod-up` script: the flag has
+# to be there every time, and DevPod has no context option to persist it. Use
+# `command devpod` to bypass this.
+#
+# `[ "$1" = "up" ]` is not enough: devpod is a cobra CLI, so global flags are
+# legal *before* the subcommand (`devpod --debug up .`), and that silently
+# skipped the token file — the bootstrap just hit the rate limit again with
+# nothing pointing at why. Walk the arguments instead and treat the first one
+# that isn't a flag as the subcommand. `--context`, `--devpod-home`,
+# `--log-output` and `--provider` (the value-taking globals per `devpod
+# --help`) must also skip the token after them; everything else starting with
+# `-` (-h/--help/--debug/--silent, or any `--flag=value` form) is
+# self-contained. A future global flag that takes a value but isn't in that
+# list would be misread as the subcommand and everything after it would go
+# unseen — devpod's flag set is small and has been stable, so that's an
+# accepted gap rather than reason to build something heavier.
+#
+# Guarded on both the subcommand and the file: `up` because no other
+# subcommand accepts the flag, and readability because a machine whose age
+# identity has not been unlocked has no such file and must still run devpod.
+if command -v devpod > /dev/null ; then
+  devpod() {
+    local arg sub skip=0
+    for arg in "$@"; do
+      if [ "$skip" = 1 ]; then
+        skip=0
+        continue
+      fi
+      case "$arg" in
+        --context|--devpod-home|--log-output|--provider)
+          skip=1
+          ;;
+        -*)
+          ;;
+        *)
+          sub="$arg"
+          break
+          ;;
+      esac
+    done
+    if [ "$sub" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
+      command devpod "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
+    else
+      command devpod "$@"
+    fi
+  }
+fi
+
 
 # ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
 
