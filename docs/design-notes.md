@@ -232,6 +232,48 @@ apply. The version and hash come from
 `https://proton.me/download/pass-cli/versions.json`, which has to be read as a
 pair.
 
+### SSH keys come from Proton Pass
+
+The three private keys are stored as Proton Pass `ssh-key` items and restored by
+`run_after_13-restore-ssh-keys.sh.tmpl`. Two of them — the auth key and the AUR
+key — were previously backed up **nowhere**, existing only on this laptop while
+being load-bearing for container git and for `devpod up` (whose `DOTFILES_URL`
+is SSH). The signing key moved from an `.age` blob to the same place, so all
+three live together.
+
+That last part is a deliberate trade against the pattern the rest of this repo
+uses. An `.age` blob needs no account, no network and no session; a Proton item
+needs all three. What it buys is that no private key sits in git history, where
+it stays for good even after a rotation.
+
+The shape follows the guarded-script rule below rather than a template file:
+the script **only creates what is missing**, so the steady state is a no-op that
+never contacts the vault. An expired session, an offline laptop or a Proton
+outage cannot break a machine that is already provisioned — the whole cost lands
+on a fresh one, which needs `pass-cli login` once and a second apply.
+
+Details that matter:
+
+- `run_after`, not `run_before`: `pass-cli` arrives as a host-only external, and
+  externals are applied before the after-scripts, so this is the earliest point
+  in an apply where the binary exists.
+- `--field private_key`, not `--output json | jq`: scripts run in name order and
+  `run_after_` sorts before `run_onchange_after_install_packages`, so on a fresh
+  machine mise has not installed `jq` yet.
+- The retrieved key is validated with `ssh-keygen -y` before being moved into
+  place. An empty or truncated key file is worse than no key at all — ssh fails
+  with a parse error instead of falling back to another identity.
+- `id_ed25519_signing.pub` stays a managed file (git needs it for
+  `gpg.ssh.allowedSignersFile`), so the script derives a `.pub` only when one is
+  absent rather than fighting chezmoi over it.
+- Containers exit early: no `pass-cli`, no session, and git there uses the
+  forwarded agent instead.
+
+The residual risk is concentration. The age passphrase backup already lives in
+Proton Pass, and now the SSH keys do too, so a Proton lockout costs both the
+break-glass path and day-to-day git. An offline copy of the keys, held wherever
+you keep the age passphrase's own backup, is what closes that.
+
 ### If a host-only secret ever does come from Proton Pass
 
 chezmoi ships the integration already — 2.70.5 has `protonPass` and

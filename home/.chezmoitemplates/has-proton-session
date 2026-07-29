@@ -1,0 +1,23 @@
+{{- /* Single source of truth for "can we read from Proton Pass right now?".
+       Renders the literal string "true" or "false", same convention as
+       is-container and is-devpod-platform.
+
+       Two conditions, in this order and for different reasons:
+
+       lookPath returns "" rather than failing when the binary is absent, which
+       is the container case: .chezmoiexternals/pass-cli.toml is host-only, so
+       inside a devpod container there is no pass-cli at all. It is also the
+       first-apply case on a fresh machine, where the external has not landed
+       yet.
+
+       `pass-cli info` is the session test. It has to be wrapped in `sh -c ...
+       && echo true || echo false` because chezmoi's `output` aborts the whole
+       template on a non-zero exit — which is the very failure this gate exists
+       to prevent. Wrapped, sh always exits 0 and the template gets a string.
+
+       Cost is one pass-cli subprocess per apply that reaches this template,
+       ~11ms unauthenticated. A stat on a session file would be cheaper but
+       pass-cli documents no stable path for one. */ -}}
+{{- if lookPath "pass-cli" -}}
+{{- output "sh" "-c" "pass-cli info >/dev/null 2>&1 && echo true || echo false" | trim -}}
+{{- else -}}false{{- end -}}

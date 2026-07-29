@@ -74,7 +74,6 @@ and skips cleanly when no identity is available.
 
 | Secret | Target | Source blob (under `home/`) |
 | --- | --- | --- |
-| SSH signing key | `~/.ssh/id_ed25519_signing` | `private_dot_ssh/private_id_ed25519_signing.age` |
 | sops age keys | `~/.config/sops/age/keys.txt` | `dot_config/private_sops/private_age/private_keys.txt.age` |
 | `gh` token | `~/.config/gh/hosts.yml` | `dot_config/private_gh/private_hosts.yml.age` |
 | sugarrush config | `~/.config/sugarrush/config.toml` | `dot_config/private_sugarrush/private_config.toml.age` |
@@ -110,6 +109,38 @@ age -d -i /path/to/new-identity.txt <some-blob> >/dev/null && echo ok
 
 `key.txt.age` is excluded throughout: it's passphrase-encrypted rather than
 encrypted to a recipient, and it's where the file identity comes from.
+
+## SSH keys
+
+The three private keys — auth (`id_ed25519`), git signing
+(`id_ed25519_signing`) and AUR (`aur`) — live in **Proton Pass**, not in this
+repo. `run_after_13-restore-ssh-keys.sh.tmpl` restores whichever are missing:
+
+```sh
+pass-cli login          # once per machine, and after a pass-cli major bump
+chezmoi apply           # restores any missing key into ~/.ssh, mode 600
+```
+
+It only ever *creates* what is absent, so an established machine is a silent
+no-op that never touches the network. That means an expired session, an offline
+laptop or a Proton outage cannot break a machine that already works — the cost
+falls entirely on a fresh one.
+
+On a fresh machine the first apply has no `pass-cli` yet (it arrives as an
+external), so the script says what to do and the second apply finishes the job.
+
+Vault item titles, which the script matches on:
+
+| Key | Proton Pass item |
+| --- | --- |
+| `~/.ssh/id_ed25519` | `dotfiles: ssh auth key` |
+| `~/.ssh/id_ed25519_signing` | `dotfiles: git signing key` |
+| `~/.ssh/aur` | `dotfiles: aur ssh key` |
+
+> [!WARNING]
+> These keys are reachable only through your Proton account. Unlike the `.age`
+> blobs — which need no account, no network and no session — losing Proton
+> access loses them. Keep an offline copy somewhere you trust.
 
 ## YubiKey
 
