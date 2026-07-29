@@ -35,6 +35,42 @@ every timer firing without a word. It asks git instead
 (`git -C "$source_dir" rev-parse --is-inside-work-tree`), which walks up to the
 repo root.
 
+### The version floor
+
+`.chezmoiversion` sits next to `.chezmoiroot` at the repo root, outside `home/` —
+it has to be read before the root is descended into. It names `2.70.5`, the same
+version `home/dot_config/mise/config.toml` pins, because that pin is the only
+chezmoi CI and every machine actually exercises. A fresh machine satisfies the
+floor regardless: `setup` installs latest from `get.chezmoi.io`.
+
+Two files now carry that number, so `mise run lint` asserts they agree. Renovate
+bumps the mise pin on its own schedule; the failing assertion is what says "bump
+the floor too" rather than letting them drift apart silently.
+
+### `exact_` on two directories, not six
+
+`exact_` makes chezmoi delete anything in the target directory it doesn't
+manage, so it only fits directories this repo is the sole writer of. Two
+qualify: `home/private_dot_ssh/exact_private_config.d` (whose whole point is
+that `~/.ssh/config` includes it and nothing else writes there) and
+`home/dot_local/share/exact_devcontainer-template` (a starter this repo
+generates in full).
+
+Four were refused, each because something else writes into the target:
+
+- `dot_config/nvim/lua/plugins/` — Omarchy drops `all-themes.lua`, `theme.lua`,
+  `omarchy-theme-hotreload.lua` and two more in there, and LazyVim's starter
+  leaves `example.lua`. `exact_` would delete all six on the next apply and take
+  Omarchy's nvim theming with them.
+- `dot_config/television/cable/` — the tv-channels external unpacks into the
+  same target.
+- `dot_local/bin/` — holds the chezmoi, mise and devpod binaries, none of them
+  managed as files.
+- `dot_claude/skills/` — holds `omarchy`, installed from outside this repo.
+
+The test before adding `exact_` anywhere is `chezmoi apply --dry-run --verbose
+<target>`: if it proposes a deletion, the directory has another writer.
+
 ## Packages
 
 Two lists, split by *where* a tool is wanted rather than by what installs it:
@@ -177,6 +213,24 @@ skipped. It skips rather than fails when `age` is absent, because mise installs
 chezmoi has a built-in age, but built-in age can't load plugins — so driving a
 YubiKey-backed identity means pointing `age.command` at a real binary, which is
 why `age` is pinned in mise on every machine that decrypts anything.
+
+### Proton Pass is pinned, but not wired into apply
+
+`pass-cli` is installed as a checksummed external and used by hand. It is *not*
+a secret source for chezmoi, even though it offers the same `inject`/`run` model
+a 1Password-backed setup would use, because a Proton session cannot exist inside
+a devpod container or in CI — the same failure mode `chezmoi add --encrypt` is
+banned for. The `.age` blobs work offline with no account, and the YubiKey path
+needs no session at all.
+
+It is an external rather than a mise pin because Proton publishes it from
+`proton.me`, not GitHub, and it isn't in the mise registry — so it follows
+`.chezmoiexternals/k9s.toml`: a pinned URL plus a `checksum.sha256`. Bumping
+stays manual and Renovate is deliberately not wired up, because a bump of the
+version alone would produce an external that fails its own checksum on every
+apply. The version and hash come from
+`https://proton.me/download/pass-cli/versions.json`, which has to be read as a
+pair.
 
 ## Dev containers
 
