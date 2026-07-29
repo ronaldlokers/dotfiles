@@ -73,6 +73,12 @@ run = [
 	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
+	# Two files now carry a chezmoi version: the .chezmoiversion floor and the
+	# mise pin every machine actually installs. Renovate bumps the pin; this is
+	# what says "bump the floor too". A multi-line literal ('''), because the
+	# sed script needs single quotes and a double-quoted TOML string would need
+	# every " and \ escaped.
+	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; [ "$v" = "$p" ] || { echo ".chezmoiversion ($v) and the mise chezmoi pin ($p) disagree" >&2; exit 1; }''',
 ]
 
 [tasks.secrets]
