@@ -16,14 +16,28 @@ export PATH="$HOME/.local/bin:$PATH"
 # HOME-redirected apply (`mise run verify`, CI, `devpod up`) dies with "Config
 # files in /home/<user>/.config/mise/config.toml are not trusted". From / the
 # only config left is $HOME's own, which is the one this script means to install.
+config="$HOME/.config/mise/config.toml"
+
+# Name the config explicitly and run from a directory with no ancestors,
+# because mise picks up neither reliably on its own during a HOME-redirected
+# apply:
+#
+#   * mise merges a config from every ancestor of the cwd, and
+#     `<ancestor>/.config/mise/config.toml` counts. chezmoi runs scripts with
+#     cwd = $HOME, so on a machine where the redirected HOME sits under a real
+#     user's home — or where the source tree does — that user's live tool list
+#     gets merged in. Its trust record lives in the real user's state dir, so
+#     the apply dies with "Config files in /home/<user>/.config/mise/config.toml
+#     are not trusted". `cd /` leaves no ancestor to merge.
+#
+#   * mise's *global* config dir does not always follow $HOME: on GitHub's
+#     runners it resolves from the passwd entry (/home/runner/.config/mise)
+#     while the data dir follows $HOME. Under `cd /` alone that leaves no
+#     config at all, and `mise install` cheerfully reports "all tools are
+#     installed" having installed nothing. MISE_GLOBAL_CONFIG_FILE pins the
+#     one file this script means to install from.
+export MISE_GLOBAL_CONFIG_FILE="$config"
 cd /
 
-echo "=== DEBUG cwd=$(pwd) HOME=$HOME ==="
-echo "--- which mise: $(command -v mise) ---"
-echo "--- config ls ---"; mise config ls || true
-echo "--- doctor dirs ---"; mise doctor 2>/dev/null | sed -n '/dirs/,/^$/p' || true
-echo "--- ls --missing (count) ---"; mise ls --missing 2>&1 | wc -l
-echo "=== END DEBUG ==="
-
-mise trust "$HOME/.config/mise/config.toml"
+mise trust "$config"
 mise install
