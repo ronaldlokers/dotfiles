@@ -232,6 +232,55 @@ apply. The version and hash come from
 `https://proton.me/download/pass-cli/versions.json`, which has to be read as a
 pair.
 
+### If a host-only secret ever does come from Proton Pass
+
+chezmoi ships the integration already — 2.70.5 has `protonPass` and
+`protonPassJSON`, and both shell out to the `pass-cli` this repo pins, so the
+only thing between a working call and a failing one is `pass-cli login`. What
+follows is what a spike established about doing that safely; none of it is wired
+up, because no secret needs it yet.
+
+An unguarded `protonPass` in a template is a hard failure with no fallback:
+chezmoi templates have no try/catch, so a missing session aborts the entire
+apply. That kills the container bootstrap (the external is host-only, so
+`pass-cli` isn't there at all), CI's clean-HOME run (binary present, session
+impossible), and any non-TTY apply on a host whose session has expired. It is
+the same failure mode `chezmoi add --encrypt` is banned for.
+
+A gate makes it safe to call. It belongs in `.chezmoitemplates`, rendering
+`"true"`/`"false"` like `is-container`:
+
+```
+{{- if lookPath "pass-cli" -}}
+{{- output "sh" "-c" "pass-cli info >/dev/null 2>&1 && echo true || echo false" | trim -}}
+{{- else -}}false{{- end -}}
+```
+
+Both halves earn their place. `lookPath` returns `""` rather than failing when
+the binary is absent, which is the container case. The `sh -c … && echo true ||
+echo false` wrapper is not stylistic: chezmoi's `output` aborts the template on a
+non-zero exit, so probing the session with a bare `output "pass-cli" "info"`
+would trigger the very failure the gate exists to prevent. Cost is ~11ms
+unauthenticated, and whether an authenticated `pass-cli info` reaches the network
+was not measured — if it does, the gate can go false while offline, which the
+shape below tolerates.
+
+**The gate alone is not enough, and this is the part worth remembering.** Guarding
+a *template file* is quietly destructive: gate false renders an empty file, and
+chezmoi responds by **removing the target**. Applying once with a session and
+again without it deletes the secret from `$HOME` — an expired session or an
+offline laptop is enough. The `.age` blobs never behave that way.
+
+So a Proton-sourced secret has to take the same shape the blobs do: a guarded
+block in a `run_before` script that writes the file when the session is there and
+says so and moves on when it isn't, with the target listed in `.chezmoiignore`.
+Absence then leaves an already-written secret untouched, which is the whole
+point.
+
+Even with that shape it stays a *host-only* mechanism. A container and CI can
+never have a Proton session, so anything a container needs still has to be an
+`.age` blob.
+
 ## Dev containers
 
 ### Arch, not Debian
