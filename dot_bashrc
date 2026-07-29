@@ -311,6 +311,19 @@ if command -v tv > /dev/null ; then
   unset keymap
 fi
 
+# DevPod containers have no gh session, so mise hits GitHub's anonymous rate
+# limit during a cold bootstrap. Same wrapper as in .zshrc — see the comment
+# there for why this wraps the binary and why both guards are needed.
+if command -v devpod > /dev/null ; then
+  devpod() {
+    if [ "$1" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
+      command devpod "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
+    else
+      command devpod "$@"
+    fi
+  }
+fi
+
 # Keep SSH_AUTH_SOCK pointing at a *live* agent — shared logic, also
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
