@@ -86,7 +86,7 @@ if [ "$has_proton" != "true" ] && ! pat_login; then
 			echo "[ssh-keys] $(basename "$key") is missing and Proton Pass is unavailable."
 			echo "[ssh-keys] Either run 'pass-cli login', or re-apply with"
 			echo "[ssh-keys] PROTON_PASS_PERSONAL_ACCESS_TOKEN set (token: Dotfiles vault,"
-			echo "[ssh-keys] item 'dotfiles: bootstrap PAT')."
+			echo "[ssh-keys] item 'bootstrap PAT')."
 			break
 		fi
 	done
@@ -136,6 +136,6 @@ restore() {
 	echo "[ssh-keys] restored $(basename "$target") from Proton Pass"
 }
 
-restore "dotfiles: ssh auth key" "$HOME/.ssh/id_ed25519"
-restore "dotfiles: git signing key" "$HOME/.ssh/id_ed25519_signing"
-restore "dotfiles: aur ssh key" "$HOME/.ssh/aur"
+restore "ssh auth key" "$HOME/.ssh/id_ed25519"
+restore "git signing key" "$HOME/.ssh/id_ed25519_signing"
+restore "aur ssh key" "$HOME/.ssh/aur"

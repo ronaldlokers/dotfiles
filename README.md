@@ -118,7 +118,7 @@ Pass**, not in this repo. `run_after_13-restore-ssh-keys.sh.tmpl` restores
 whichever are missing.
 
 On a fresh machine, hand it the bootstrap token — it is in that same vault under
-`dotfiles: bootstrap PAT`, readable from the Proton Pass app or web:
+`bootstrap PAT`, readable from the Proton Pass app or web:
 
 ```sh
 PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply
@@ -143,10 +143,10 @@ Vault item titles, which the script matches on (all in the `Dotfiles` vault):
 
 | Key | Proton Pass item |
 | --- | --- |
-| `~/.ssh/id_ed25519` | `dotfiles: ssh auth key` |
-| `~/.ssh/id_ed25519_signing` | `dotfiles: git signing key` |
-| `~/.ssh/aur` | `dotfiles: aur ssh key` |
-| bootstrap token | `dotfiles: bootstrap PAT` |
+| `~/.ssh/id_ed25519` | `ssh auth key` |
+| `~/.ssh/id_ed25519_signing` | `git signing key` |
+| `~/.ssh/aur` | `aur ssh key` |
+| bootstrap token | `bootstrap PAT` |
 
 > [!WARNING]
 > These keys are reachable only through your Proton account. Unlike the `.age`
