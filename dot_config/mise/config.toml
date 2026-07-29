@@ -20,7 +20,6 @@ direnv = "2.37.1"
 atuin = "18.17.1"
 yq = "4.53.3"
 jq = "1.8.2"
-kubeconform = "0.8.0"
 delta = "0.19.2"
 zoxide = "0.10.0"
 gh = "2.96.0"
@@ -35,15 +34,16 @@ tmux = "3.7b"
 # keystroke away. fzf stays pinned regardless: fzf-tab, the zsh completion
 # menu loaded from dot_zshrc, is built on it.
 television = "0.15.9"
-# both are in Arch's extra repo too, but they're TUIs — wanted inside devpod
-# containers as much as on the host, so mise pins them instead of pacman
+# in Arch's extra repo too, but it's a TUI — wanted inside devpod containers as
+# much as on the host, so mise pins it instead of pacman. superfile sat here as
+# a second file manager until an atuin-history audit showed the pair splitting
+# eight invocations between them across ~1200 commands; one is enough.
 yazi = "26.5.6"
-superfile = "1.6.0"
 # Coreutils replacements — du (dust), df (duf), top (btop), sed (sd) and a
 # JSON pager (jless), plus hyperfine for benchmarking and gping for a plotted
-# ping. In mise rather than the host package list for the same reason as yazi
-# and superfile: a devpod container has no pacman, so anything not pinned here
-# simply isn't there.
+# ping. In mise rather than the host package list for the same reason as yazi:
+# a devpod container has no pacman, so anything not pinned here simply isn't
+# there.
 dust = "1.2.4"
 duf = "0.9.1"
 btop = "1.4.7"

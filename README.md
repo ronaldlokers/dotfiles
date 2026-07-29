@@ -36,10 +36,18 @@ Two lists, split by where a tool is wanted rather than by what installs it:
 | Desktop apps | host only | `run_after_20-install-host-packages.sh.tmpl` |
 
 Anything that runs in a terminal belongs in mise, even when a distro package
-exists — `yazi` and `superfile` are in Arch's `extra` and `sugarrush` has its own
-AUR package, but all three are TUIs, wanted inside a container as much as on the
-host. mise pins versions and Renovate bumps them; the host list is unpinned and
-tracks whatever the distro ships.
+exists — `yazi` is in Arch's `extra` and `sugarrush` has its own AUR package,
+but both are TUIs, wanted inside a container as much as on the host. mise pins
+versions and Renovate bumps them; the host list is unpinned and tracks whatever
+the distro ships.
+
+The list is pruned on evidence rather than instinct: atuin's history makes it
+cheap to ask how often a tool is genuinely reached for, remembering that many
+are invoked indirectly (`bat` through the `cat` alias, `fd` and `rg` through tv
+channels, `delta` through git, `rtk` through the Claude Code hook) and that a
+count of zero for those means nothing. `superfile` and `kubeconform` left that
+way — the first a second file manager next to `yazi`, the second already pinned
+by the one project that uses it.
 
 The coreutils replacements (`dust`, `duf`, `btop`, `sd`, `jless`) are in mise for
 the same reason — a container has no pacman, and reaching for `du` inside one
