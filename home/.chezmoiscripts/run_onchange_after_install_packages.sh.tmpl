@@ -18,5 +18,12 @@ export PATH="$HOME/.local/bin:$PATH"
 # only config left is $HOME's own, which is the one this script means to install.
 cd /
 
+echo "=== DEBUG cwd=$(pwd) HOME=$HOME ==="
+echo "--- which mise: $(command -v mise) ---"
+echo "--- config ls ---"; mise config ls || true
+echo "--- doctor dirs ---"; mise doctor 2>/dev/null | sed -n '/dirs/,/^$/p' || true
+echo "--- ls --missing (count) ---"; mise ls --missing 2>&1 | wc -l
+echo "=== END DEBUG ==="
+
 mise trust "$HOME/.config/mise/config.toml"
 mise install
