@@ -1,0 +1,78 @@
+#!/bin/sh
+# Load the SSH keys held in Proton Pass into the running ssh-agent.
+#
+# The keys never touch the disk. `pass-cli ssh-agent load` hands them straight
+# to the agent, which is enough for everything this machine does with them:
+# git over SSH, and commit signing — git signs through the agent as long as
+# user.signingkey names a *public* key file, which dot_config/git/config.tmpl
+# does. DevPod forwards the same agent into containers, so they inherit the
+# keys without ever holding a secret either.
+#
+# Called automatically by dot_config/shell/ssh-agent.sh when the agent is empty,
+# and safe to run by hand at any time — loading keys that are already loaded is
+# a no-op.
+set -eu
+
+quiet=0
+[ "${1:-}" = "--quiet" ] && quiet=1
+
+say() {
+	[ "$quiet" = 1 ] || echo "$@"
+}
+
+command -v pass-cli >/dev/null 2>&1 || {
+	say "proton-ssh-load: pass-cli is not installed"
+	exit 0
+}
+
+# A container has no pass-cli and no Proton session by design: it gets the keys
+# from the forwarded agent instead.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+vault="Dotfiles"
+pat_file="$HOME/.config/pass-cli-bootstrap-pat"
+
+# Authenticate if the session has lapsed. The token is scoped viewer on the
+# Dotfiles vault and nothing else. It arrives in the environment on a fresh
+# machine and is cached at $pat_file afterwards, so later logins need no
+# interaction. Passed through the environment rather than
+# `--personal-access-token`, whose value would be visible in `ps`.
+if ! pass-cli info >/dev/null 2>&1; then
+	pat="${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}"
+	cache_it=1
+	if [ -z "$pat" ] && [ -r "$pat_file" ]; then
+		pat="$(cat "$pat_file")"
+		cache_it=0
+	fi
+
+	if [ -z "$pat" ]; then
+		say "proton-ssh-load: no Proton Pass session."
+		say "proton-ssh-load: run 'pass-cli login', or set"
+		say "proton-ssh-load: PROTON_PASS_PERSONAL_ACCESS_TOKEN (Dotfiles vault,"
+		say "proton-ssh-load: item 'bootstrap PAT') and run this again."
+		exit 0
+	fi
+
+	if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$pat" pass-cli login >/dev/null 2>&1; then
+		say "proton-ssh-load: could not authenticate to Proton Pass"
+		exit 0
+	fi
+
+	if [ "$cache_it" = 1 ]; then
+		mkdir -p "$(dirname "$pat_file")"
+		(
+			umask 077
+			printf '%s\n' "$pat" >"$pat_file"
+		)
+		say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
+	fi
+	unset pat
+fi
+
+if [ "$quiet" = 1 ]; then
+	pass-cli ssh-agent load --vault-name "$vault" >/dev/null 2>&1 || exit 0
+else
+	pass-cli ssh-agent load --vault-name "$vault"
+fi

@@ -22,3 +22,8 @@ key.txt.age
 # drift apart.
 .local/bin/devpod
 {{ end -}}
+{{ if eq (includeTemplate "is-container" .) "true" -}}
+# The Proton Pass key loader is host-only for the same reason: no pass-cli and
+# no session inside a container, which gets the keys from the forwarded agent.
+.local/bin/proton-ssh-load
+{{ end -}}

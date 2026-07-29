@@ -232,67 +232,53 @@ apply. The version and hash come from
 `https://proton.me/download/pass-cli/versions.json`, which has to be read as a
 pair.
 
-### SSH keys come from Proton Pass
+### SSH keys live in Proton Pass, and only in the agent
 
-The three private keys are stored as Proton Pass `ssh-key` items and restored by
-`run_after_13-restore-ssh-keys.sh.tmpl`. Two of them — the auth key and the AUR
-key — were previously backed up **nowhere**, existing only on this laptop while
-being load-bearing for container git and for `devpod up` (whose `DOTFILES_URL`
-is SSH). The signing key moved from an `.age` blob to the same place, so all
-three live together.
+The three private keys are stored as Proton Pass `ssh-key` items in a dedicated
+**Dotfiles vault**, and `~/.local/bin/proton-ssh-load` loads them into the
+running ssh-agent with `pass-cli ssh-agent load`. They are never written to
+`~/.ssh`.
 
-That last part is a deliberate trade against the pattern the rest of this repo
-uses. An `.age` blob needs no account, no network and no session; a Proton item
-needs all three. What it buys is that no private key sits in git history, where
-it stays for good even after a rotation.
+Two of them — the auth key and the AUR key — were previously backed up
+**nowhere**, existing only on this laptop while being load-bearing for container
+git and for `devpod up` (whose `DOTFILES_URL` is SSH). The signing key was an
+`.age` blob. All three now live together, and no private key sits in git
+history, where it would stay for good even after a rotation.
 
-They live in a dedicated **Dotfiles vault**, which is what makes unattended
-restore workable. A personal access token can be granted `viewer` on that vault
-and nothing else, so the credential that bootstraps a machine cannot read the
-rest of the password manager. Item-level grants were tried first and are worse
-in practice: a token scoped to individual items cannot resolve `--vault-name` or
-`--item-title` at all — it sees no vault listing — so retrieval would have to
-hardcode opaque share and item IDs, and `--field` silently returns nothing,
-forcing a `jq` dependency the first apply does not have. Vault scope makes
-`--vault-name Dotfiles --item-title '…' --field private_key` work directly.
+Keeping them out of `~/.ssh` is what makes this simpler than a restore-to-disk
+script rather than more complicated. Nothing needs syncing, nothing can drift,
+and a stolen disk yields no keys. It works because everything this machine does
+with them goes through the agent anyway:
 
-The token itself lives in that same vault (`dotfiles: bootstrap PAT`), which is
-circular only in appearance: a fresh machine reads it from the Proton Pass app
-or web, not through the CLI it is bootstrapping. It reaches the script through
-`PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
-`~/.config/pass-cli-bootstrap-pat` (0600) once it has been proven to work, so
-later applies re-authenticate on their own when the session lapses. It is never
-passed as `--personal-access-token`: a flag value is readable in `ps` by any
-user on the machine. Caching it locally costs nothing that isn't already
-conceded — the keys it unlocks are sitting in `~/.ssh` on the same disk.
+- **git over SSH** — the agent answers.
+- **commit signing** — git signs with an agent-held key as long as
+  `user.signingkey` names a *public* key file, which `dot_config/git/config.tmpl`
+  does. Verified: signing succeeds with only `id_ed25519_signing.pub` present.
+- **containers** — DevPod forwards the agent, so they inherit the keys and hold
+  no secret of their own.
 
-The shape follows the guarded-script rule below rather than a template file:
-the script **only creates what is missing**, so the steady state is a no-op that
-never contacts the vault. An expired session, an offline laptop or a Proton
-outage cannot break a machine that is already provisioned — the whole cost lands
-on a fresh one, which needs `pass-cli login` once and a second apply.
+Loading is lazy. `dot_config/shell/ssh-agent.sh` already hunts for a live agent
+on every shell start; it now also asks `ssh-add -l` whether that agent is empty
+and, if so, runs the loader. `ssh-add -l` exits 1 for "no identities" and 2 for
+"no agent", which is what distinguishes the two cases. Once loaded, every later
+shell sees a populated agent and does nothing.
 
-Details that matter:
+A **personal access token** scoped `viewer` on the Dotfiles vault handles
+authentication, so a fresh machine needs no browser. Vault scope rather than
+item scope is deliberate: a token granted only individual items cannot resolve
+`--vault-name` or `--item-title` at all — it sees no vault listing — which would
+force opaque share and item IDs into the repo. The token reaches the loader
+through `PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
+`~/.config/pass-cli-bootstrap-pat` (0600) once proven, never passed as
+`--personal-access-token` whose value `ps` would expose. It lives in the vault
+it unlocks (`bootstrap PAT`), which is circular only in appearance: a fresh
+machine reads it from the Proton Pass app, not from the CLI being bootstrapped.
 
-- `run_after`, not `run_before`: `pass-cli` arrives as a host-only external, and
-  externals are applied before the after-scripts, so this is the earliest point
-  in an apply where the binary exists.
-- `--field private_key`, not `--output json | jq`: scripts run in name order and
-  `run_after_` sorts before `run_onchange_after_install_packages`, so on a fresh
-  machine mise has not installed `jq` yet.
-- The retrieved key is validated with `ssh-keygen -y` before being moved into
-  place. An empty or truncated key file is worse than no key at all — ssh fails
-  with a parse error instead of falling back to another identity.
-- `id_ed25519_signing.pub` stays a managed file (git needs it for
-  `gpg.ssh.allowedSignersFile`), so the script derives a `.pub` only when one is
-  absent rather than fighting chezmoi over it.
-- Containers exit early: no `pass-cli`, no session, and git there uses the
-  forwarded agent instead.
-
-The residual risk is concentration. The age passphrase backup already lives in
-Proton Pass, and now the SSH keys do too, so a Proton lockout costs both the
-break-glass path and day-to-day git. An offline copy of the keys, held wherever
-you keep the age passphrase's own backup, is what closes that.
+What this trades away is the property the `.age` blobs have: they need no
+account, no network and no session. These keys need all three, and the Proton
+account now holds both the age passphrase backup and the SSH keys — so a Proton
+lockout costs both the break-glass path and day-to-day git. An offline copy is
+what closes that, and nothing in this repo can do it for you.
 
 ### If a host-only secret ever does come from Proton Pass
 
