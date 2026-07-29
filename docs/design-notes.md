@@ -294,10 +294,29 @@ it. The host is unaffected because `gh` is authenticated there; a container has
 no `gh` session, since `hosts.yml` only decrypts with a TTY.
 
 So `~/.config/devpod/dotfiles-env` holds a **fine-grained** PAT as
-`MISE_GITHUB_TOKEN`, and a `devpod` shell function in both rc files hands that
-file to `devpod up --dotfiles-script-env-file`. The token carries no permissions
-beyond public-repository read, because mise needs it only for the rate limit — a
-container that leaks it leaks public-read quota and nothing else.
+`MISE_GITHUB_TOKEN`, and `~/.local/bin/devpod` — a managed wrapper script — hands
+that file to `devpod up --dotfiles-script-env-file`. The token carries no
+permissions beyond public-repository read, because mise needs it only for the
+rate limit — a container that leaks it leaks public-read quota and nothing else.
+
+### Why the wrapper is an executable and not a shell function
+
+It was a `devpod` function in both rc files first, and that version only ever
+worked from an interactive shell. `bash -c`, `zsh -c`, scripts, timers and agent
+tool calls do not source rc files, so none of them got the token: they fell back
+to the anonymous 60/hour quota and failed only on the days it was already spent —
+with a `403` from mise that points at GitHub, not at the missing flag. DevPod has
+no context option to persist the flag either (v0.6.15 exposes `DOTFILES_URL` and
+`DOTFILES_SCRIPT` and nothing else), so the flag has to be added per invocation
+by something every caller goes through. That is a file on `PATH`.
+
+The binary therefore moved to `~/.local/libexec/devpod`, off `PATH`, and the
+external writes it there; `~/.local/bin/devpod` is the wrapper and `exec`s it.
+`~/.local/libexec/dot_keep` exists solely so chezmoi creates that directory — an
+external cannot create its own parent, and without it the apply fails with
+`stat …/.local/libexec: no such file or directory`. The wrapper is ignored inside
+containers and on non-linux-amd64 platforms via the same two templates that gate
+the external, so the two cannot drift apart.
 
 The wrapper walks the arguments rather than just checking `$1`, since devpod is a
 cobra CLI and global flags are legal before the subcommand (`devpod --debug up .`
@@ -305,9 +324,9 @@ is valid). It skips option tokens — including the four value-taking globals
 `--context`, `--devpod-home`, `--log-output`, `--provider` — and treats the first
 non-option token as the subcommand. A future global flag that takes a separate
 value but isn't in that list would be misread as the subcommand and silently skip
-the token file. `command devpod` bypasses the wrapper, and a machine whose age
-identity is still locked has no such file, so the wrapper passes straight through
-and containers bootstrap exactly as they did before.
+the token file. `~/.local/libexec/devpod` runs the binary unwrapped, and a machine
+whose age identity is still locked has no token file, so the wrapper passes
+straight through and containers bootstrap exactly as they did before.
 
 Two limits worth knowing. The token's expiry is not checked by anything local:
 `mise run secrets-restore` only proves the age blob still decrypts, not that the

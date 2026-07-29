@@ -15,3 +15,11 @@ key.txt.age
 # no screensaver to brand, so the file would just sit there unread.
 .config/omarchy/branding/screensaver.txt
 {{ end -}}
+{{ if or (eq (includeTemplate "is-container" .) "true") (eq (includeTemplate "is-devpod-platform" .) "false") -}}
+# The devpod wrapper only means something where the binary it fronts is
+# installed, and .chezmoiexternals/devpod.toml skips both cases: inside a
+# container (DevPod drives containers, it doesn't run in one) and on a platform
+# with no linux-amd64 release asset. Same two templates, so the gates can't
+# drift apart.
+.local/bin/devpod
+{{ end -}}

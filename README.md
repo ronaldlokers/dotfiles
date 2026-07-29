@@ -220,7 +220,7 @@ table are relative to it.
 | `dot_config/nvim/` | Neovim config: vendored [LazyVim starter](https://github.com/LazyVim/starter) plus own tweaks |
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, and `modify_settings.json` |
 | `dot_config/omarchy/branding/` | Omarchy screensaver branding, generated from `assets/`. Host-only |
-| `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check` |
+| `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check`, and `devpod` — a wrapper fronting the pinned binary in `~/.local/libexec` |
 | `.chezmoiexternals/` | downloads pinned to a version and, where upstream publishes one, a checksum: the mise binary, pure, zsh/tmux plugins, television channels, k9s, and `pass-cli` (host-only, pinned by version + sha256 because Proton ships it from `proton.me` rather than GitHub) |
 | `assets/` (repo root, outside `home/`) | source artwork generated files derive from, never copied into `$HOME` |
 
@@ -288,8 +288,10 @@ the starter at `dot_local/share/devcontainer-template/`.
 
 DevPod clones and applies these dotfiles inside the container itself; nothing in
 the image does it. The host side (provider, IDE, `DOTFILES_URL`) is configured by
-`run_onchange_after_30-configure-devpod.sh.tmpl`, and a `devpod` shell function in
-both rc files passes a GitHub token and quiet-mode env into every `devpod up`.
+`run_onchange_after_30-configure-devpod.sh.tmpl`, and `~/.local/bin/devpod` is a
+managed wrapper that passes a GitHub token and quiet-mode env into every
+`devpod up`. The pinned binary itself lives off PATH at `~/.local/libexec/devpod`;
+`~/.local/libexec/devpod` runs it unwrapped.
 
 **Updates** arrive two ways. Tool pins are bumped by a self-hosted
 [Renovate](https://docs.renovatebot.com) run (`.github/workflows/renovate.yaml`,

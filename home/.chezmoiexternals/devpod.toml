@@ -15,7 +15,12 @@
 # Pinned to an immutable release asset, same as the mise binary. The CLI is a
 # single static binary; the desktop app assets in the same release aren't used.
 # Targets linux-amd64 (the Omarchy host); another platform needs its own asset.
-[".local/bin/devpod"]
+#
+# Lands in libexec rather than on PATH: ~/.local/bin/devpod is a managed wrapper
+# that adds the dotfiles-script env flags to every `devpod up` and execs this.
+# See dot_local/bin/executable_devpod for why that has to be an executable and
+# not a shell function.
+[".local/libexec/devpod"]
 type = "file"
 executable = true
 url = "https://github.com/loft-sh/devpod/releases/download/{{ $devpodVersion }}/devpod-linux-amd64"

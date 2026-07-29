@@ -1,0 +1,7 @@
+Placeholder so chezmoi creates ~/.local/libexec.
+
+.chezmoiexternals/devpod.toml downloads the devpod binary here, deliberately
+off PATH, because ~/.local/bin/devpod is the managed wrapper that fronts it.
+An external cannot create its own parent directory — chezmoi only makes
+directories it manages — so without this file the apply fails with
+"stat /home/<user>/.local/libexec: no such file or directory".
