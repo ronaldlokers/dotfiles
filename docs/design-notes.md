@@ -4,6 +4,37 @@ Why this repo is built the way it is. [`README.md`](../README.md) covers what to
 run; this file covers the decisions behind it, so a change that looks obviously
 correct can be checked against the reason the current shape exists.
 
+## The source tree lives in `home/`
+
+`.chezmoiroot` names `home` as the source root, so the repo root holds only
+things chezmoi never reads: `README.md`, `CLAUDE.md`, `docs/`, `assets/`,
+`setup`, `mise.toml`, `.github/`.
+
+Before it, every one of those was source state that happened to be listed in
+`.chezmoiignore`. That made the ignore file load-bearing in a way nothing
+checked: adding a new doc, a lint config or a CI helper at the repo root and
+forgetting the entry applied it straight into `$HOME`, silently and on every
+machine. The failure mode was a new file appearing in someone's home directory,
+which no test looks for. `.chezmoiroot` removes the class of mistake instead of
+guarding against it — a file outside `home/` cannot be applied, whatever
+`.chezmoiignore` says. What is left in `.chezmoiignore` is only what it is
+actually for: paths chezmoi *should* see but must not copy.
+
+Two files stayed inside the source tree deliberately. `key.txt.age` and
+`ghostty.terminfo` are read through `{{ .chezmoi.sourceDir }}` and `include`,
+both of which resolve relative to the source directory, so moving them along
+with the tree kept those call sites correct with no edit. Neither is applied:
+both are still listed in `.chezmoiignore`.
+
+`--source "$PWD"` is unaffected — chezmoi reads `.chezmoiroot` from the
+directory it is pointed at and descends — so `mise run verify`, CI's clean-HOME
+bootstrap and `setup` all keep working unchanged. What did break is anything
+that assumed the source directory *is* the repo: `dotfiles-update-check` tested
+`[ -d "$source_dir/.git" ]`, which is now false, and would have exited 0 on
+every timer firing without a word. It asks git instead
+(`git -C "$source_dir" rev-parse --is-inside-work-tree`), which walks up to the
+repo root.
+
 ## Packages
 
 Two lists, split by *where* a tool is wanted rather than by what installs it:

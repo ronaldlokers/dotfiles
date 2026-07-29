@@ -9,8 +9,12 @@ source_dir="{{ .chezmoi.sourceDir }}"
 
 # Every early exit is 0. This runs unattended on a timer, and "no network" or
 # "not a git checkout" are ordinary states, not failures worth logging as such.
-[ -d "$source_dir/.git" ] || exit 0
+#
+# A literal "$source_dir/.git" check would break under .chezmoiroot: source_dir
+# is the chezmoiroot subdirectory, while .git lives at the repo root above it.
+# Ask git instead — it walks up from $source_dir to find the enclosing repo.
 command -v git >/dev/null 2>&1 || exit 0
+git -C "$source_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
 branch="$(git -C "$source_dir" symbolic-ref --short -q HEAD || true)"
 [ -n "$branch" ] || exit 0   # detached HEAD: nothing meaningful to compare

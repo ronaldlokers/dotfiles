@@ -149,10 +149,10 @@ jobs:
           # the bootstrap job already tests that chezmoi *places* the unit; here
           # it just needs to be present so the enable script can start it.
           mkdir -p "$HOME/.config/systemd/user"
-          cp dot_config/systemd/user/ssh-agent.service \
+          cp home/dot_config/systemd/user/ssh-agent.service \
              "$HOME/.config/systemd/user/ssh-agent.service"
           chezmoi execute-template --source "$PWD" \
-            < .chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl \
+            < home/.chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl \
             > "$RUNNER_TEMP/enable.sh"
           sh "$RUNNER_TEMP/enable.sh"
       - name: assert the ssh-agent service is active with a live socket
@@ -210,7 +210,7 @@ jobs:
         run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /usr/local/bin
       - name: devpod external renders to nothing
         run: |
-          out="$(chezmoi execute-template --source "$PWD" < .chezmoiexternals/devpod.toml)"
+          out="$(chezmoi execute-template --source "$PWD" < home/.chezmoiexternals/devpod.toml)"
           if [ -n "$(printf '%s' "$out" | tr -d '[:space:]')" ]; then
             echo "::error::devpod external is non-empty inside a container:"
             printf '%s\n' "$out"
@@ -220,7 +220,7 @@ jobs:
       - name: host-packages script detects the container and skips
         run: |
           chezmoi execute-template --source "$PWD" \
-            < .chezmoiscripts/run_after_20-install-host-packages.sh.tmpl > /tmp/pkgs.sh
+            < home/.chezmoiscripts/run_after_20-install-host-packages.sh.tmpl > /tmp/pkgs.sh
           # The shared .chezmoitemplates/is-container must have resolved true.
           grep -qx 'is_container=true' /tmp/pkgs.sh \
             || { echo "::error::is-container template did not detect the container"; exit 1; }
@@ -241,7 +241,7 @@ jobs:
       - name: configure-devpod script detects the container and skips
         run: |
           chezmoi execute-template --source "$PWD" \
-            < .chezmoiscripts/run_onchange_after_30-configure-devpod.sh.tmpl > /tmp/devpod-configure.sh
+            < home/.chezmoiscripts/run_onchange_after_30-configure-devpod.sh.tmpl > /tmp/devpod-configure.sh
           # The shared .chezmoitemplates/is-container must have resolved true.
           grep -qx 'is_container=true' /tmp/devpod-configure.sh \
             || { echo "::error::is-container template did not detect the container"; exit 1; }
@@ -300,14 +300,14 @@ jobs:
           # encrypted to the scratch key. key.txt.age is left alone: it is
           # passphrase-encrypted, and pre-placing key.txt above means the script
           # never reaches its passphrase branch.
-          for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+          for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
             printf 'dummy-content-for-%s\n' "$(basename "$blob")" \
               | age -a -r "$recipient" > "$blob"
           done
           # The recipient in .chezmoi.toml.tmpl is irrelevant here — nothing
           # re-encrypts — but the identity path must resolve, and the unlock
           # script builds that itself from key.txt.
-          echo "rewrote $(git ls-files '*.age' | grep -cv '^key.txt.age$') blobs"
+          echo "rewrote $(git ls-files '*.age' | grep -cv '^home/key\.txt\.age$') blobs"
       - name: apply, and assert every secret was derived
         run: |
           set -eu
@@ -360,7 +360,7 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           recipient="$(sed -n 's/^# public key: //p' "$TESTHOME/.config/chezmoi/key.txt")"
           printf 'rotated-content\n' | age -a -r "$recipient" \
-            > dot_config/private_gh/private_hosts.yml.age
+            > home/dot_config/private_gh/private_hosts.yml.age
           HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
           got="$(cat "$TESTHOME/.config/gh/hosts.yml")"
           [ "$got" = "rotated-content" ] \

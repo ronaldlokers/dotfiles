@@ -19,7 +19,7 @@ gitleaks = "8.30.1"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup .chezmoiscripts/*.sh.tmpl .chezmoiscripts/run_after_12-ensure-ssh-include.sh dot_claude/executable_statusline.sh dot_claude/modify_settings.json dot_config/shell/ssh-agent.sh dot_config/shell/github-token.sh dot_local/share/devcontainer-template/post-create.sh dot_local/bin/executable_devcontainer-init",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init",
 	# dot_claude/settings.json no longer exists (it's now a modify_ script's
 	# baseline, merged at apply time) so there is nothing static left to
 	# `jq empty`. What matters now is that the script itself still emits
@@ -40,7 +40,7 @@ run = [
 	# substituted command's own exit status, and mise's `errexit` aborts
 	# this task line right there if it's non-zero -- no shell-specific
 	# option required, and no pipe to swallow anything.
-	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
+	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# The no-jq fallback path (see modify_settings.json's comments) is only
 	# ever exercised by hand-testing today -- `jq` is a system package on
 	# this host *and* on GitHub's ubuntu-latest runners (normally sitting
@@ -70,7 +70,7 @@ run = [
 	# `trap ... EXIT` (mirroring [tasks.verify] below) rather than a
 	# manual `rm` at the end, so it's removed even if errexit aborts this
 	# line early on a failure.
-	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
+	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 ]
@@ -204,7 +204,7 @@ rc=0
 # key.txt.age is excluded on purpose: it's passphrase-protected rather than
 # identity-encrypted, so it can't be checked without a TTY — and it is the very
 # thing every other blob is checked with.
-for blob in $(git ls-files '*.age' | grep -v '^key.txt.age$'); do
+for blob in $(git ls-files '*.age' | grep -v '^home/key\.txt\.age$'); do
 	# `| wc -c` rather than reading the plaintext into a variable: this only
 	# needs to know the blob produced bytes, and counting them keeps the
 	# secret out of the shell's memory and any `set -x` output. (An earlier
