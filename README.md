@@ -290,6 +290,14 @@ and a machine whose age identity is still locked has no such file, so the
 wrapper passes straight through and containers bootstrap exactly as they did
 before.
 
+The same `up` also gets `MISE_QUIET=1`, secret or not. A cold bootstrap
+otherwise prints well over a hundred lines of mise install progress through
+DevPod's logger; `MISE_QUIET` drops that and keeps the errors — a failing
+install still prints `mise ERROR …` and exits non-zero. Deliberately not
+devpod's own `--silent`, which suppresses everything short of a panic,
+including the `Execution of ./setup was unsuccessful` line that is how a
+broken bootstrap announces itself.
+
 That token's expiry is not checked by anything local: `mise run
 secrets-restore` only proves the age blob still decrypts, not that the
 plaintext PAT is still live, and `mise run check` doesn't touch it either. A

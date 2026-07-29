@@ -313,8 +313,9 @@ fi
 
 # DevPod containers have no gh session, so mise hits GitHub's anonymous rate
 # limit during a cold bootstrap. Same wrapper as in .zshrc — see the comment
-# there for why this wraps the binary, why both guards are needed, and why
-# subcommand detection walks the arguments instead of just checking $1.
+# there for why this wraps the binary, why the guards are what they are, why
+# subcommand detection walks the arguments instead of just checking $1, and
+# why the bootstrap is quieted with MISE_QUIET rather than devpod --silent.
 if command -v devpod > /dev/null ; then
   devpod() {
     local arg sub skip=0
@@ -335,11 +336,13 @@ if command -v devpod > /dev/null ; then
           ;;
       esac
     done
-    if [ "$sub" = "up" ] && [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
-      command devpod "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
-    else
-      command devpod "$@"
+    if [ "$sub" = "up" ]; then
+      set -- "$@" --dotfiles-script-env MISE_QUIET=1
+      if [ -r "$HOME/.config/devpod/dotfiles-env" ]; then
+        set -- "$@" --dotfiles-script-env-file "$HOME/.config/devpod/dotfiles-env"
+      fi
     fi
+    command devpod "$@"
   }
 fi
 
