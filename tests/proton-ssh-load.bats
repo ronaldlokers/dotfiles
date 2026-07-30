@@ -304,15 +304,34 @@ EOF
 	[[ "$output" == *"could not authenticate"* ]]
 }
 
-# A rejected cached token must not nag on every new shell.
+# A rejected cached token must not nag on every new shell. This is the real
+# shell-startup shape: dot_zshrc's ssh-agent.sh calls `proton-ssh-load --quiet`
+# on every new terminal with an empty agent, and stdin there is a real tty.
 #
-# Deliberately not run_load_tty: this path never calls --prompt, so the script
-# never reads stdin at all, and a pty's line discipline echoes fed input back
-# into $output regardless of whether the script ever consumes it (see the
-# "Caveat" note on run_load_tty in helpers.bash). That would fail this
-# assertion for a reason that has nothing to do with the script's own output,
-# so a plain env run — no pty, no typed input needed — is used instead.
+# Cannot assert `[ -z "$output" ]` here: run_load_tty's pty echoes the fed
+# answer back into $output as soon as it is written, whether or not the
+# script ever reads it (see the "Caveat" note on run_load_tty in
+# helpers.bash) — and this path never reads stdin at all, since --prompt is
+# not passed. Asserting exact emptiness would fail on that echo alone, for a
+# reason that has nothing to do with the script's own output. Assert the
+# absence of the script's own messages instead, the same way the sibling test
+# "bare --quiet never prompts, even on a terminal" (above) already does.
 @test "a rejected token is silent without --prompt" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "unused" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --quiet
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"Proton Pass PAT"* ]]
+	[[ "$output" != *"was rejected"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	! grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# The CI / chezmoi-apply shape: stdin is closed, not a tty, so there is no pty
+# to echo anything and $output really must be empty. Kept alongside the tty
+# version above rather than replacing it — each pins a different invocation
+# shape, and neither's coverage substitutes for the other's.
+@test "a rejected token is silent without --prompt and without a tty" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_stale\n' >"$PAT_FILE"
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
