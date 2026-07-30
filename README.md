@@ -246,13 +246,19 @@ machine is behind the remote — it only notifies. Run it by hand with
 tooling and defines the checks, so local runs and CI use identical versions:
 
 ```sh
-mise run check     # lint + gitleaks + clean-HOME bootstrap (what CI runs)
-mise run lint      # shellcheck, settings.json, renovate config
+mise run check     # lint + tests + gitleaks + clean-HOME bootstrap (what CI runs)
+mise run lint      # shellcheck, actionlint, renovate config
+mise run test      # bats suite over the scripts
 mise run verify    # bootstrap into a throwaway HOME, non-interactively
 ```
 
 `verify` is the one that matters before pushing: it redirects `/dev/null` into
 the apply, reproducing the no-TTY conditions of `devpod up` and CI.
+
+`test` covers what `verify` structurally cannot. A clean-HOME apply only ever
+walks the empty-machine path, so it never sees an `~/.ssh/config` that already
+has a `Host` block above the `Include`, or a context percentage arriving as a
+bare fraction. Those branches live in `tests/`.
 
 CI (`.github/workflows/ci.yaml`) runs the same checks on push, PR and a weekly
 canary, plus `host-ssh-agent` (a real systemd user session) and

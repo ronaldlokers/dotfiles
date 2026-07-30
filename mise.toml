@@ -7,6 +7,8 @@
 [tools]
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
+actionlint = "1.7.12"
+bats = "1.14.0"
 # renovate stays an `npx --yes` call rather than a mise tool: it is run by this
 # one lint line only.
 
@@ -14,14 +16,12 @@ gitleaks = "8.30.1"
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
 	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_proton-ssh-load",
-	# modify_settings.json is a script now, so assert it emits valid JSON.
-	# Command substitution rather than a pipeline: `jq empty` exits 0 on empty
-	# stdin, and dash (CI's /bin/sh) has no pipefail.
-	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
-	# The no-jq fallback, exercised with a scratch PATH holding only a symlink to
-	# `cat`. Stdin must be non-empty or the script returns from its first branch
-	# without reaching the fallback.
-	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
+	# The workflows lint themselves: a typo in a job key or a bad `needs:`
+	# reference otherwise only shows up as a skipped job on a green PR.
+	"actionlint",
+	# modify_settings.json's own behaviour — valid JSON out, the no-jq fallback,
+	# the fixed-point property — is covered by tests/modify-settings.bats. Two
+	# unreadable one-liners used to live here instead.
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
 	# Two files now carry a chezmoi version: the .chezmoiversion floor and the
@@ -31,6 +31,14 @@ run = [
 	# every " and \ escaped.
 	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; [ "$v" = "$p" ] || { echo ".chezmoiversion ($v) and the mise chezmoi pin ($p) disagree" >&2; exit 1; }''',
 ]
+
+[tasks.test]
+description = "run the bats suite against the scripts"
+# These cover the branches a clean-HOME apply never reaches. `verify` proves an
+# apply succeeds on an empty machine; it says nothing about what the ssh-include
+# script does to a config that already has a Host block in it, or what the
+# statusline prints when the context percentage arrives as a bare fraction.
+run = "bats --print-output-on-failure tests/"
 
 [tasks.secrets]
 description = "scan the full history for committed secrets, as CI does"
@@ -174,4 +182,4 @@ esac
 description = "everything CI runs, in one command"
 # `shells` is not part of CI — CI has no applied $HOME to start a shell in — but
 # it is cheap and catches the one class of breakage the other three miss.
-depends = ["lint", "secrets", "verify", "shells"]
+depends = ["lint", "test", "secrets", "verify", "shells"]

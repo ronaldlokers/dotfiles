@@ -27,6 +27,16 @@ jobs:
       - name: lint
         run: mise run lint
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      # Same reasoning as the lint job: the suite and the bats that runs it are
+      # both pinned in mise.toml, so a local run and this one are identical.
+      - uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
+      - name: test
+        run: mise run test
+
   gitleaks:
     runs-on: ubuntu-latest
     steps:
@@ -112,9 +122,12 @@ jobs:
           # PATH activation (which doesn't fire under `zsh -ic`).
           # Run from $TESTHOME, not the checkout: mise merges every config in
           # the cwd hierarchy, so standing in the repo pulls in its own
-          # mise.toml — the tooling that lints this repo — and reports
-          # shellcheck/gitleaks as "missing" dotfiles tools. They are neither
+          # mise.toml — the tooling that lints this repo — and reports the
+          # linters there as "missing" dotfiles tools. They are neither
           # installed into the test HOME nor meant to be.
+          # (Do not start that line with the linter's own name: shellcheck
+          # reads a comment opening with its name as a directive, fails to
+          # parse it, and silently stops checking the rest of this script.)
           missing="$(cd "$TESTHOME" && HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
           if [ -n "$missing" ]; then
             echo "::error::configured mise tools are not installed:"
@@ -144,7 +157,8 @@ jobs:
       - name: place the unit and run the real enable script
         run: |
           export PATH="$RUNNER_TEMP/bin:$PATH"
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
           chezmoi init --source "$PWD"
           # the bootstrap job already tests that chezmoi *places* the unit; here
           # it just needs to be present so the enable script can start it.
@@ -157,7 +171,8 @@ jobs:
           sh "$RUNNER_TEMP/enable.sh"
       - name: assert the ssh-agent service is active with a live socket
         run: |
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
           # `enable --now` returns as soon as systemd accepts the job, not when
           # ssh-agent has created its socket. Asserting immediately is a race
           # this job lost only occasionally, which is worse than losing it
