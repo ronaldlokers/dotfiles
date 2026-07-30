@@ -274,7 +274,12 @@ EOF
 	grep -q "ssh-agent load" "$STUB_LOG"
 }
 
-# Stale beats truncated, the same rule restore() follows.
+# Stale beats truncated, the same rule restore() follows. The two extra
+# assertions (rejection notice, two distinct login attempts) exist because
+# without them this test kept passing even when the retry branch itself was
+# deleted outright: the cache-unchanged and final-message checks alone cannot
+# tell "never retried" apart from "retried and failed again" — both leave the
+# cache untouched and print the same final message.
 @test "a rejected cached token survives a rejected replacement" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_stale\n' >"$PAT_FILE"
@@ -283,6 +288,11 @@ EOF
 	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
 	[[ "$output" == *"could not authenticate"* ]]
 	! grep -q "ssh-agent load" "$STUB_LOG"
+	# The retry actually happened: the rejection notice was printed, and a
+	# second login was attempted (the rejected typed replacement), not just
+	# the first (the rejected cached token).
+	[[ "$output" == *"was rejected"* ]]
+	[ "$(grep -c '^login' "$STUB_LOG")" -eq 2 ]
 }
 
 # The "prompted already?" guard is what bounds this, not the token's source.
@@ -296,8 +306,14 @@ EOF
 
 # Counted through the stub log rather than the prompt text, because the prompt
 # is printed without a trailing newline and does not grep by line.
+#
+# Feeds TWO lines, not one: a single line hits EOF on the (hypothetical)
+# second ask_pat call regardless of whether the "asked already?" guard
+# exists, so a one-line feed cannot tell "guarded" apart from "unguarded" —
+# both end up with exactly one login attempt. A second line only gets
+# consumed, and a second login only gets attempted, if the guard is missing.
 @test "prompts at most once" {
-	run_load_tty "pst_bad_typed" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
+	run_load_tty $'pst_first_bad\npst_second' PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
 	[ "$status" -eq 0 ]
 	[ "$(grep -c '^login' "$STUB_LOG")" -eq 1 ]
 	[ ! -f "$PAT_FILE" ]
@@ -323,6 +339,10 @@ EOF
 	[ "$status" -eq 0 ]
 	[[ "$output" != *"Proton Pass PAT"* ]]
 	[[ "$output" != *"was rejected"* ]]
+	# --quiet suppresses the final "could not authenticate" too, not just the
+	# prompt; the non-tty sibling below already pins this via [ -z "$output" ],
+	# but this shape needs its own check since it can't assert exact emptiness.
+	[[ "$output" != *"could not authenticate"* ]]
 	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
 	! grep -q "ssh-agent load" "$STUB_LOG"
 }
