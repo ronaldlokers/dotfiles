@@ -150,16 +150,17 @@ run = '''
 set -eu
 rc=0
 for title in "ssh auth key" "git signing key" "aur ssh key" \
-             "sops age keys" "gh hosts.yml" "sugarrush config" "devpod dotfiles-env"; do
+             "sops age keys" "gh hosts.yml" "sugarrush config" \
+             "devpod dotfiles-env" "devpod project-tokens"; do
 	case "$title" in
 	*"ssh"*key | *"signing key") field=private_key ;;
 	*) field=note ;;
 	esac
 	n="$(pass-cli item view --vault-name Dotfiles --item-title "$title" --field "$field" 2>/dev/null | wc -c)"
 	if [ "$n" -gt 0 ]; then
-		printf 'ok    %-20s %s bytes\n' "$title" "$n"
+		printf 'ok    %-22s %s bytes\n' "$title" "$n"
 	else
-		printf 'FAIL  %-20s unreadable\n' "$title" >&2
+		printf 'FAIL  %-22s unreadable\n' "$title" >&2
 		rc=1
 	fi
 done

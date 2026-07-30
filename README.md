@@ -57,6 +57,7 @@ repo.
 | `gh` token | `~/.config/gh/hosts.yml` | `gh hosts.yml` |
 | sugarrush config | `~/.config/sugarrush/config.toml` | `sugarrush config` |
 | DevPod container token | `~/.config/devpod/dotfiles-env` | `devpod dotfiles-env` |
+| DevPod project tokens | `~/.config/devpod/project-tokens` | `devpod project-tokens` |
 
 Fetched every apply, rewritten only when changed, so a rotation in the vault
 propagates. A failed or empty fetch leaves the existing file alone.
@@ -221,10 +222,9 @@ runs, but cannot copy them out.
 The GitHub **API** is the exception — `gh pr create` needs a token. Opt in per
 project:
 
-```sh
-install -m600 /dev/null ~/.config/devpod/project-tokens
-printf 'owner/repo=github_pat_...\n' >> ~/.config/devpod/project-tokens
-```
+Add an `owner/repo=token` line to the **`devpod project-tokens`** note in the
+Dotfiles vault, then `chezmoi apply`. Surrounding whitespace is tolerated; a
+blank note is not — it trips the empty-fetch guard and warns on every apply.
 
 Keyed on the project's **push** remote, so a fork resolves to your fork. Mint
 each token fine-grained and limited to that repo. No entry, no token.

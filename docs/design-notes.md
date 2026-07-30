@@ -391,11 +391,12 @@ the helper already works and is what `gh repo clone` produces.
 
 What forwarding does *not* cover is the GitHub API: SSH cannot authenticate it,
 so `gh pr create`, `gh api` and the MCP server still need a token. That is what
-`~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600, absent
-by default, and consulted by the wrapper for the workspace being started. Each
-entry should be a fine-grained PAT limited to that one repository. The 0644
-exposure still applies to whatever is passed, which is exactly why it is one
-repo's worth rather than the whole account's.
+`~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600,
+restored from the vault like the other file-shaped secrets and holding no
+entries on a machine that has minted none, and consulted by the wrapper for the
+workspace being started. Each entry should be a fine-grained PAT limited to
+that one repository. The 0644 exposure still applies to whatever is passed,
+which is exactly why it is one repo's worth rather than the whole account's.
 
 Keying is on the **push** remote, not the directory name: a Home Assistant
 checkout pushes to your fork, and the fork is what you can mint a token for

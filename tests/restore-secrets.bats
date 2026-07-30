@@ -28,6 +28,7 @@ setup() {
 	printf 'github.com:\n  oauth_token: fake\n' >"$ITEMS/gh hosts.yml"
 	printf '[sugarrush]\nkey = "fake"\n' >"$ITEMS/sugarrush config"
 	printf 'TOKEN=fake\n' >"$ITEMS/devpod dotfiles-env"
+	printf 'ronaldlokers/homelab=fake-token\n' >"$ITEMS/devpod project-tokens"
 
 	SCRIPT="$BATS_TEST_TMPDIR/restore.sh"
 	render_template "$TMPL" "$SCRIPT" "$BIN:$PATH"
@@ -56,6 +57,7 @@ setup_file() {
 	[ -s "$HOME/.config/gh/hosts.yml" ]
 	[ -s "$HOME/.config/sugarrush/config.toml" ]
 	[ -s "$HOME/.config/devpod/dotfiles-env" ]
+	[ -s "$HOME/.config/devpod/project-tokens" ]
 }
 
 @test "writes the fetched content, not something else" {
@@ -68,7 +70,9 @@ setup_file() {
 	run_restore
 	[ "$status" -eq 0 ]
 	for f in "$AGE" "$HOME/.config/gh/hosts.yml" \
-		"$HOME/.config/sugarrush/config.toml" "$HOME/.config/devpod/dotfiles-env"; do
+		"$HOME/.config/sugarrush/config.toml" \
+		"$HOME/.config/devpod/dotfiles-env" \
+		"$HOME/.config/devpod/project-tokens"; do
 		[ "$(stat -c %a "$f")" = "600" ]
 	done
 }
@@ -154,6 +158,7 @@ setup_file() {
 	grep -q -- "--vault-name Dotfiles" "$STUB_LOG"
 	grep -q -- "--item-title sops age keys" "$STUB_LOG"
 	grep -q -- "--item-title devpod dotfiles-env" "$STUB_LOG"
+	grep -q -- "--item-title devpod project-tokens" "$STUB_LOG"
 }
 
 # The apply path is the one caller that should prompt. ssh-agent.sh must not,
