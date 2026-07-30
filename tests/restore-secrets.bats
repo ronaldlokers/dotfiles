@@ -176,3 +176,18 @@ STUB
 	[ "$status" -eq 0 ]
 	grep -q -- "--quiet --prompt" "$PSL_LOG"
 }
+
+# The other half of the boundary above, and the higher-consequence one: this
+# runs on every new terminal with an empty agent, so --prompt here would block
+# every shell startup on a hung read. Only a comment enforced this before —
+# nothing failed if someone added the flag. A static check on the invocation
+# is enough; sourcing the whole rc would need a live shell and a real or faked
+# agent, for no more coverage than reading the line it calls proton-ssh-load
+# from.
+@test "ssh-agent.sh never passes --prompt to proton-ssh-load" {
+	rc="$BATS_TEST_DIRNAME/../home/dot_config/shell/ssh-agent.sh"
+	line="$(grep -n 'proton-ssh-load' "$rc")"
+	[ -n "$line" ]
+	[[ "$line" == *"--quiet"* ]]
+	[[ "$line" != *"--prompt"* ]]
+}

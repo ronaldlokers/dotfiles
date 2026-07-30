@@ -264,6 +264,27 @@ EOF
 	grep -q "^login" "$STUB_LOG"
 }
 
+# No existing test pins that echo is actually off while the token is typed:
+# replacing the `stty -echo` line with a no-op still passed every test in this
+# file. The reason is run_load_tty (and the herestring shape used two tests
+# above): both feed the typed answer through a bash herestring at process
+# start, so the bytes are already sitting in the pty's input queue before the
+# script has even forked, let alone reached `stty -echo` -- echo state cannot
+# affect what those harnesses observe. helpers.bash documents the token
+# showing up in $output as an expected artifact of exactly that timing.
+#
+# This test deliberately does NOT use run_load_tty: it needs the typed answer
+# to arrive strictly *after* the prompt is printed and echo has been turned
+# off, not before the script even starts. `sleep 1` clears process startup
+# comfortably -- the stub `pass-cli info` returns instantly, so a fork and
+# exec is the only thing that has to happen before the delayed write lands.
+@test "the typed token is never echoed to the terminal" {
+	cmd="env HOME=\"$HOME\" STUB_LOG=\"$STUB_LOG\" PATH=\"$BIN:$PATH\" PASS_INFO_RC=1 sh \"$SCRIPT\" --quiet --prompt"
+	run script -qec "$cmd" /dev/null < <(sleep 1; printf '%s\n' "pst_typed_secret")
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"pst_typed_secret"* ]]
+}
+
 @test "a rejected cached token re-prompts and the new one replaces it" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_stale\n' >"$PAT_FILE"
