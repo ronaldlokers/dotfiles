@@ -9,13 +9,17 @@ shellcheck = "0.11.0"
 gitleaks = "8.30.1"
 actionlint = "1.7.12"
 bats = "1.14.0"
+# The suite renders a script template, so the tests need chezmoi itself. Kept at
+# the same version as the machines install; the lint task below asserts all
+# three copies of this number agree.
+chezmoi = "2.70.5"
 # renovate stays an `npx --yes` call rather than a mise tool: it is run by this
 # one lint line only.
 
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_proton-ssh-load",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_proton-ssh-load tests/helpers.bash",
 	# The workflows lint themselves: a typo in a job key or a bad `needs:`
 	# reference otherwise only shows up as a skipped job on a green PR.
 	"actionlint",
@@ -24,12 +28,13 @@ run = [
 	# unreadable one-liners used to live here instead.
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
-	# Two files now carry a chezmoi version: the .chezmoiversion floor and the
-	# mise pin every machine actually installs. Renovate bumps the pin; this is
-	# what says "bump the floor too". A multi-line literal ('''), because the
+	# Three files now carry a chezmoi version: the .chezmoiversion floor, the
+	# mise pin every machine installs, and this repo's own pin (the tests render
+	# a script template, so they need the binary). Renovate bumps the pins; this
+	# is what says "bump the floor too". A multi-line literal ('''), because the
 	# sed script needs single quotes and a double-quoted TOML string would need
 	# every " and \ escaped.
-	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; [ "$v" = "$p" ] || { echo ".chezmoiversion ($v) and the mise chezmoi pin ($p) disagree" >&2; exit 1; }''',
+	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; r="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' mise.toml)"; { [ "$v" = "$p" ] && [ "$v" = "$r" ]; } || { echo ".chezmoiversion ($v), the machine pin ($p) and this repo's pin ($r) disagree" >&2; exit 1; }''',
 ]
 
 [tasks.test]

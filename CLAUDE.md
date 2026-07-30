@@ -39,8 +39,16 @@ there uses the forwarded ssh-agent; the DevPod token arrives as an env file.
 - Never edit chezmoi-managed file in `$HOME` direct — edit source
   (`chezmoi source-path <file>`), run `chezmoi apply`. Source tree sit under
   `home/` (`.chezmoiroot`), so `source-path` return path below `home/`.
-- Repo-only files (docs, `setup`, `mise.toml`, this file) live *outside*
-  `home/`. Anything inside `home/` is source state and get applied into `$HOME`
-  unless `.chezmoiignore` say otherwise.
+- Repo-only files (docs, `setup`, `mise.toml`, `tests/`, this file) live
+  *outside* `home/`. Anything inside `home/` is source state and get applied
+  into `$HOME` unless `.chezmoiignore` say otherwise.
 - Verify changes against clean HOME way CI does before pushing:
-  `HOME="$(mktemp -d)" chezmoi apply --source "$PWD" </dev/null`.
+  `HOME="$(mktemp -d)" chezmoi apply --source "$PWD" </dev/null`, or
+  `mise run verify` which do the same with the XDG vars cleared.
+- Run `mise run test` too. Clean-HOME apply only ever walk the empty-machine
+  path, so it prove nothing about a script meeting state that already exist — a
+  `~/.ssh/config` with a `Host` block above the `Include`, a secret fetch that
+  come back empty. Those branch live in `tests/*.bats`.
+- Script under test are not executable in the source tree — chezmoi run them
+  itself. Invoke through `sh`/`bash` in a test, not directly.
+- `mise run check` is all of it: lint, test, gitleaks, verify, shells.
