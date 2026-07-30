@@ -18,13 +18,8 @@ FROM archlinux:base
 # liveness check in dot_config/shell/ssh-agent.sh needs `ssh` to exist to
 # tell a dead agent from a missing binary.
 #
-# No compiler toolchain here. base-devel and python used to be required
-# because gemini-cli pulled node-pty, whose install script is an
-# unconditional `node-gyp rebuild` — no prebuilt binary exists for any node
-# version, so every bootstrap compiled it. gemini-cli is gone from the tool
-# list, and nothing else on it builds from source: verified by bootstrapping
-# a container from this image with mise installing the whole set and nothing
-# missing. Add base-devel back in a project's own copy if it needs to build.
+# No compiler toolchain: nothing in the mise tool list builds from source. Add
+# base-devel in a project's own copy if it needs to build.
 RUN pacman -Syu --noconfirm --needed \
       git zsh sudo curl ca-certificates which less mise openssh \
  && pacman -Scc --noconfirm
@@ -36,11 +31,9 @@ RUN pacman -Syu --noconfirm --needed \
 RUN sed -i 's/^#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
  && locale-gen
 
-# What the common-utils feature used to set up. It refuses to run on Arch
-# (it accepts debian, rhel and alpine only), so the user, the sudoers entry
-# and the login shell are created here instead. UID/GID 1000 matches the
-# usual host user; devcontainer.json's updateRemoteUserUID fixes up the
-# case where the host user is not 1000.
+# The devcontainer common-utils feature refuses to run on Arch, so the user,
+# sudoers entry and login shell are created here. UID/GID 1000 matches the usual
+# host user; updateRemoteUserUID handles the rest.
 ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000

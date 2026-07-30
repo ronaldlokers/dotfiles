@@ -1,12 +1,7 @@
 #!/bin/bash
-# Clone the personal repos that aren't checked out yet.
-#
-# On demand, not part of `chezmoi apply`: a fresh machine shouldn't be made to
-# pull every repo before it's usable, and a devpod container has no business
-# holding them at all. Adding a repo here is a one-line edit.
-#
-# Idempotent — an existing checkout is left completely alone, including its
-# branch, remotes and uncommitted work. This clones; it never updates.
+# Clone the personal repos that aren't checked out yet. On demand, not part of
+# apply. Clones only: an existing checkout is left alone, branch, remotes and
+# uncommitted work included.
 set -euo pipefail
 
 # XDG_PROJECTS_DIR is declared in ~/.config/user-dirs.dirs but isn't exported

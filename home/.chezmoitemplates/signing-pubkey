@@ -1,27 +1,9 @@
-{{- /* The git signing *public* key, as a bare `ssh-ed25519 AAAA…` string.
+{{- /* The git signing public key as a bare `ssh-ed25519 AAAA…` string, from
+       Proton Pass, falling back to the agent. Renders empty if neither answers,
+       and config.tmpl then omits user.signingkey so commits fail loudly.
 
-       Proton Pass is the source of truth: the key is a field of the `git
-       signing key` item, the same item the private half comes from. Nothing
-       here is secret — a public key is public — but keeping it out of the repo
-       means one place to change when the key rotates instead of three.
-
-       Two sources, in order, because neither is available everywhere:
-
-       1. Proton Pass, gated on has-proton-session. The gate is not optional:
-          chezmoi's protonPass function aborts the entire template when pass-cli
-          fails, so calling it unguarded would break `chezmoi apply` in every
-          container (no pass-cli) and in CI (no session).
-
-       2. The ssh-agent, which holds the key whenever proton-ssh-load has run —
-          and inside a container, where DevPod forwards the host's agent. Its
-          `ssh-add -L` output is already in the right format. Wrapped in `sh -c`
-          for the same reason as above: a missing agent must yield an empty
-          string, not abort the template.
-
-       If both fail this renders empty and dot_config/git/config.tmpl omits
-       user.signingkey, which makes the next commit fail with "user.signingkey
-       needs to be set" rather than silently producing unsigned commits. That is
-       the intended behaviour: loud, and fixed by running proton-ssh-load. */ -}}
+       Both calls must stay guarded: protonPass aborts the entire template when
+       pass-cli fails, and `output` does the same on a non-zero exit. */ -}}
 {{- if eq (includeTemplate "has-proton-session" .) "true" -}}
 {{- protonPass "pass://HKQ0vUtADZgZYVg9bUWhhCWiTtGr3BN2EthtEvJIc_odo0SO-m8j2pQ3sHDqQqZ3XMo6q5E6KuybcW0LmLbm8Q==/oeoBEx8LHV1-NOk3sJuaYe56ocAn1DWxArqQKMYHdWqkkHm31pV4ZYCU2prvp-jdiVD_5oAOBBR8F4kE1BfoDA==/public_key" | trim -}}
 {{- else -}}

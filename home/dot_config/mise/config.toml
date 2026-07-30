@@ -13,10 +13,7 @@ python = "3.14.6"
 ripgrep = "15.1.0"
 neovim = "0.12.4"
 direnv = "2.37.1"
-# Shell history in SQLite: fuzzy search, exit status, and per-directory
-# filtering on the Up arrow. Sync is off (see ~/.config/atuin/config.toml), so
-# there is no account and no network call at shell start. 18.17.1 is the newest
-# release visible under this repo's minimum_release_age setting.
+# Shell history in SQLite; sync off, see ~/.config/atuin/config.toml.
 atuin = "18.17.1"
 yq = "4.53.3"
 jq = "1.8.2"
@@ -24,10 +21,8 @@ delta = "0.19.2"
 zoxide = "0.10.0"
 gh = "2.96.0"
 tmux = "3.7b"
-# One picker over live tmux sessions plus zoxide's frecency list; picking an
-# entry attaches or creates. Not in the mise registry, so the github backend
-# fetches the release binary directly — same arrangement as the sugarrush pin
-# further down. Renovate's mise manager understands `github:` pins natively.
+# Picker over tmux sessions plus zoxide's frecency list. Not in the mise
+# registry, so the github backend fetches the release binary.
 "github:joshmedeski/sesh" = "2.28.0"
 # Channel-based fuzzy finder. Takes Ctrl-T, Alt-C and the sesh picker off fzf,
 # and puts every channel — git branches, k8s pods, systemd units — one

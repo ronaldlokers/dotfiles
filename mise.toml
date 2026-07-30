@@ -7,69 +7,20 @@
 [tools]
 shellcheck = "0.11.0"
 gitleaks = "8.30.1"
-# renovate is deliberately NOT a `npm:renovate` tool here. mise's npm backend
-# enforces a provenance trust policy, and renovate's tree currently trips it:
-# @yarnpkg/libzip 3.2.0 shipped a SLSA attestation, 3.2.2 ships none, which
-# reads as a trust downgrade and fails the install. Silencing that with
-# trust_policy_excludes would be a real security decision, not a build fix, so
-# the validator is invoked through a version-pinned npx in the lint task below.
-# The pin is the part that matters: the original bug was an *unversioned*
-# `--package renovate`, which reuses whatever is already in the npx cache.
+# renovate stays an `npx --yes` call rather than a mise tool: it is run by this
+# one lint line only.
 
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
 	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_proton-ssh-load",
-	# dot_claude/settings.json no longer exists (it's now a modify_ script's
-	# baseline, merged at apply time) so there is nothing static left to
-	# `jq empty`. What matters now is that the script itself still emits
-	# valid JSON. Feed it representative input with a key the repo doesn't
-	# manage, so this exercises the real jq merge path — not just the
-	# empty-stdin baseline shortcut.
-	#
-	# A plain pipeline can't be trusted to report the middle command's
-	# failure here: `jq empty` exits 0 on *empty* stdin, so if
-	# modify_settings.json died and printed nothing, `... | jq empty` would
-	# still exit 0. `pipefail` would fix that, but it isn't portable to the
-	# shell mise actually runs this in -- mise's default task shell is
-	# plain `sh -c -o errexit` (`mise settings get
-	# unix_default_inline_shell_args`), and on Debian/Ubuntu (this repo's
-	# CI runner included) `/bin/sh` is dash, which has no `-o pipefail` and
-	# aborts the whole task on the attempt. Capture the script's output in
-	# a command substitution instead: `out="$(...)"` takes on the
-	# substituted command's own exit status, and mise's `errexit` aborts
-	# this task line right there if it's non-zero -- no shell-specific
-	# option required, and no pipe to swallow anything.
+	# modify_settings.json is a script now, so assert it emits valid JSON.
+	# Command substitution rather than a pipeline: `jq empty` exits 0 on empty
+	# stdin, and dash (CI's /bin/sh) has no pipefail.
 	"out=\"$(echo '{\"agentPushNotifEnabled\": true}' | ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
-	# The no-jq fallback path (see modify_settings.json's comments) is only
-	# ever exercised by hand-testing today -- `jq` is a system package on
-	# this host *and* on GitHub's ubuntu-latest runners (normally sitting
-	# right next to `cat` in /usr/bin), so a bare `mise run lint`/`verify`
-	# never actually runs the script without jq on PATH; excluding jq's
-	# mise install alone wouldn't be enough. Build a scratch PATH holding
-	# only a symlink to `cat` -- the one external command the script's
-	# no-jq path needs (`command -v jq` and `printf` are bash builtins, so
-	# nothing else has to resolve) -- so jq is genuinely unreachable, and
-	# confirm the fallback still emits valid JSON rather than failing the
-	# apply. `jq empty` itself runs with the real PATH restored, so
-	# validation doesn't depend on the thing being excluded.
-	#
-	# Stdin here has to be non-empty, unlike the check above feeding this
-	# same script: an *empty* stdin hits modify_settings.json's very first
-	# branch (no on-disk file yet) and returns before the script ever gets
-	# to `command -v jq` at all, regardless of what's on PATH. `< /dev/null`
-	# here would build the whole scratch-PATH apparatus and then exercise
-	# nothing with it -- the empty-stdin branch, not the no-jq fallback,
-	# would be what actually ran. Piping in the same representative JSON as
-	# the check above is what forces execution to reach, and exercise, the
-	# `printf '%s\n' "$current"` fallback line.
-	#
-	# Same command-substitution shape as the check above, for the same
-	# dash-portability reason -- see its comment for why a bare pipeline
-	# can't be trusted here either. The scratch dir is cleaned up via
-	# `trap ... EXIT` (mirroring [tasks.verify] below) rather than a
-	# manual `rm` at the end, so it's removed even if errexit aborts this
-	# line early on a failure.
+	# The no-jq fallback, exercised with a scratch PATH holding only a symlink to
+	# `cat`. Stdin must be non-empty or the script returns from its first branch
+	# without reaching the fallback.
 	"d=$(mktemp -d); trap 'rm -rf \"$d\"' EXIT; ln -s \"$(command -v cat)\" \"$d/cat\"; out=\"$(echo '{\"agentPushNotifEnabled\": true}' | PATH=\"$d\" ./home/dot_claude/modify_settings.json)\"; printf '%s' \"$out\" | jq empty",
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
@@ -95,18 +46,13 @@ set -eu
 testhome="$(mktemp -d)"
 trap 'rm -rf "$testhome"' EXIT
 
-# Clearing HOME is not enough to get a clean run: this desktop exports
-# XDG_CONFIG_HOME and friends pointing back at the real ~/.config, so chezmoi
-# and mise keep reading — and writing — the live config even with HOME
-# redirected. A drill once regenerated the real ~/.config/chezmoi/chezmoi.toml
-# that way. CI has no XDG_* set, so only local runs need this.
+# Clearing HOME is not enough: this desktop exports XDG_* pointing back at the
+# real ~/.config, so chezmoi and mise would read and write the live config. CI
+# has no XDG_* set, so only local runs need this.
 clean_env="env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME"
 
-# mise resolves release tags through the GitHub API, and unauthenticated calls
-# share the machine's 60/hour. A few clean-HOME runs in a row exhaust it and the
-# all-or-nothing tool install then dies on HTTP 403 — a failure that looks like
-# a broken config but isn't. CI already passes a token for this reason; borrow
-# the gh one locally so both behave the same.
+# mise resolves release tags through the GitHub API; unauthenticated calls share
+# the machine's 60/hour and the all-or-nothing install then dies on 403.
 if [ -z "${MISE_GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
 	MISE_GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
 	export MISE_GITHUB_TOKEN
@@ -115,31 +61,11 @@ fi
 $clean_env HOME="$testhome" chezmoi init --source "$PWD" </dev/null >/dev/null
 $clean_env HOME="$testhome" chezmoi apply --source "$PWD" </dev/null
 
-# The same assertion CI's bootstrap job makes. It lives here too because the
-# first version of this task didn't have it, and CI caught a failure that a
-# green local run had just missed — which is the exact gap this file exists to
-# close.
-#
-# Run from /, not from the repo and not from $testhome: mise merges a config
-# from every ancestor of the cwd, and `<ancestor>/.config/mise/config.toml`
-# counts. Standing in the repo pulls in this very file and reports the repo's
-# lint tooling as missing dotfiles tools; standing anywhere under a real home
-# (which $testhome is, whenever TMPDIR points there) pulls in that user's live
-# config. From / only $HOME's own config is left.
-#
-# mise's own failures are errors, not an empty tool list. An earlier version
-# piped stderr to /dev/null and swallowed the exit status, so a mise that could
-# not read its config at all reported "all configured tools present".
-#
-# $clean_env matters here for the same reason it does on the apply above: with
-# this desktop's XDG_DATA_HOME and XDG_STATE_HOME still set, mise reads the live
-# machine's installs instead of $testhome's, and every tool looks present no
-# matter what the throwaway HOME actually got.
-#
-# MISE_GLOBAL_CONFIG_FILE for the same reason the install script sets it: mise's
-# global config dir does not always follow $HOME (on GitHub's runners it comes
-# from the passwd entry), so from / there would be no config at all and an empty
-# "missing" list would pass without checking anything.
+# The same assertion CI's bootstrap job makes. Run from /, with $clean_env and
+# the config pinned: mise merges a config from every ancestor of the cwd, the
+# XDG vars would point it at the live machine, and its global config dir does
+# not always follow $HOME. Any of the three makes this check pass vacuously.
+# mise's own failures are errors, not an empty tool list.
 errlog="$(mktemp)"
 if ! missing="$(cd / && $clean_env HOME="$testhome" MISE_GLOBAL_CONFIG_FILE="$testhome/.config/mise/config.toml" PATH="$testhome/.local/bin:$PATH" mise ls --missing 2>"$errlog")"; then
 	echo "mise could not list tools in the throwaway HOME:" >&2
@@ -179,23 +105,8 @@ for shell in zsh bash; do
 		echo "skip  $shell (not installed)"
 		continue
 	fi
-	# Both streams are captured: an init line that fails prints to stderr,
-	# and one that accidentally echoes prints to stdout. A clean interactive
-	# startup says nothing on either.
-	#
-	# A shell with no controlling terminal on any fd — this task's own
-	# subshell, whenever mise itself runs from a context with no pty
-	# attached (an agent's tool sandbox, some other headless wrapper) —
-	# prints tty-acquisition noise that has nothing to do with the rc
-	# files: zsh's fzf integration can't restore the `zle` option on exit,
-	# bash can't claim a process group for job control. The whole point of
-	# this check is catching rc-file regressions, not tty plumbing, so give
-	# the shell a real pty via `script` when one is installed. `-e`
-	# (bundled into `-qec`) makes `script` return the wrapped command's own
-	# exit code rather than its own, so the non-zero-exit branch below
-	# still means what it says. Falls back to the direct, tty-less form
-	# when `script` is missing; that fallback can still report tty noise
-	# instead of a real rc-file problem.
+	# Both streams captured: a failing init line prints to stderr, a noisy but
+	# successful one to stdout. Either is a finding.
 	if command -v script >/dev/null 2>&1; then
 		out="$(script -qec "$shell -ic true" /dev/null 2>&1 </dev/null)" && status=0 || status=$?
 	else
@@ -220,13 +131,8 @@ exit "$rc"
 
 [tasks.secrets-check]
 description = "check every secret in Proton Pass is still readable"
-# The restore path is the only thing standing between a dead machine and every
-# secret in here, and nothing else exercises it: a renamed vault item or a
-# lapsed grant stays silent until the day it is needed. Deliberately not part of
-# `check` — it needs a Proton session, which CI does not have.
-#
-# Only ever reports lengths. Printing a secret to prove it decrypts would defeat
-# the exercise.
+# Nothing else exercises the restore path: a renamed item or lapsed grant stays
+# silent until a machine is rebuilt. Reports lengths only, never contents.
 run = '''
 set -eu
 rc=0
@@ -250,11 +156,9 @@ exit "$rc"
 
 [tasks.prune]
 description = "remove mise tool installs no longer referenced by any tracked config"
-# Deliberately never run from a chezmoi apply. `mise prune` removes tools no
-# tracked config asks for, and a machine that hasn't opened a project recently
-# has not tracked that project's mise.toml -- pruning there throws away tools it
-# will re-download on the next visit. Manual invocation only, and it shows the
-# dry run before touching anything.
+# Never run from a chezmoi apply: a machine that has not opened a project
+# recently has not tracked its mise.toml, and pruning there forces a
+# re-download. Manual only, and it shows the dry run first.
 run = '''
 set -eu
 mise prune --dry-run

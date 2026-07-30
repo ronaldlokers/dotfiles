@@ -1,25 +1,10 @@
-# Managed by chezmoi. Truly machine-local settings (identity overrides,
-# host-specific credential helpers) belong in ~/.gitconfig, which git reads
-# after this file and which chezmoi leaves alone. The gh credential helper
-# below is portable — gh is installed on every machine via mise — so it lives
-# here: it lets HTTPS pushes to github.com authenticate with the gh token.
-# SSH remotes ignore it, so it doesn't affect the normal ssh git_protocol flow.
+# Managed by chezmoi. Machine-local settings belong in ~/.gitconfig, which git
+# reads after this file.
 {{ if eq (includeTemplate "is-container" .) "true" -}}
-# Containers only: rewrite github HTTPS remotes to SSH.
-#
-# DevPod forwards the host's ssh-agent (SSH_AGENT_FORWARDING, on by default), so
-# a container can clone, fetch and push — including private repos — and sign
-# commits, with *nothing secret stored inside it*. The alternative is handing the
-# container a token, which DevPod materialises as /etc/envfile.json mode 0644,
-# readable by everything running there for the container's lifetime.
-#
-# The rewrite is needed because the forwarding only helps SSH remotes, and
-# project remotes are HTTPS. Without it a push inside a container fails with
-# "could not read Username for 'https://github.com'" and the credential helper
-# above has no token to offer, since `gh` is not authenticated in there.
-#
-# Container-only: on the host, HTTPS plus the gh helper already works and is the
-# transport `gh repo clone` produces, so rewriting there would be churn.
+# Containers only: DevPod forwards the ssh-agent, but forwarding helps SSH
+# remotes only, and project remotes are HTTPS. Without this a push inside a
+# container fails with "could not read Username". On the host the gh credential
+# helper already covers HTTPS.
 [url "git@github.com:"]
 	insteadOf = https://github.com/
 {{ end -}}
@@ -34,16 +19,12 @@
 	email = {{ .email }}
 {{- $signingKey := includeTemplate "signing-pubkey" . }}
 {{- if $signingKey }}
-	# The key itself rather than a path to a .pub file: the private half lives
-	# in Proton Pass and is only ever loaded into the ssh-agent, so there is no
-	# key file in ~/.ssh to point at. git signs through the agent, which needs
-	# only to be told *which* key. Resolved by .chezmoitemplates/signing-pubkey.
+	# The literal key, not a path: nothing lives in ~/.ssh, so git is told which
+	# agent-held key to sign with. From .chezmoitemplates/signing-pubkey.
 	signingkey = key::{{ $signingKey }}
 {{- else }}
-	# Neither Proton Pass nor the ssh-agent could supply the signing key, so
-	# user.signingkey is deliberately absent: commit.gpgsign is still on, so the
-	# next commit fails loudly instead of quietly going unsigned. Fix with
-	# `proton-ssh-load`, then re-apply.
+	# No signing key available. commit.gpgsign stays on, so the next commit
+	# fails loudly rather than going unsigned. Fix: proton-ssh-load, re-apply.
 {{- end }}
 [gpg]
 	format = ssh

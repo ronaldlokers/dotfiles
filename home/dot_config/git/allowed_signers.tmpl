@@ -1,9 +1,5 @@
-{{- /* Who git trusts to have signed a commit. The key comes from the same
-       place user.signingkey does (.chezmoitemplates/signing-pubkey, backed by
-       Proton Pass), so a rotation is one edit in the vault rather than three in
-       this repo. Renders empty when neither Proton nor the agent can supply it,
-       which makes `git log --show-signature` report the signature as untrusted
-       rather than silently trusting the wrong key. */ -}}
+{{- /* Who git trusts to have signed a commit. Same source as
+       user.signingkey, so a rotation is one edit in the vault. */ -}}
 {{- $key := includeTemplate "signing-pubkey" . }}
 {{- if $key }}
 {{ .email }} {{ $key }}
