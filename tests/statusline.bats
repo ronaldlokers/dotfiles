@@ -24,6 +24,21 @@ render_raw() {
 	printf '%s' "$1" | bash "$SCRIPT" | sed 's/\x1b\[[0-9;]*m//g'
 }
 
+# A throwaway repo with one commit on a known branch. Tests build their own
+# rather than reading this checkout: under actions/checkout the working copy is
+# on a detached HEAD, so anything asserted about "the current branch" means
+# something different in CI than it does locally.
+make_repo() {
+	local dir="$1" branch="${2:-work}"
+	mkdir -p "$dir"
+	git -C "$dir" init -q -b "$branch"
+	git -C "$dir" config user.email t@example.com
+	git -C "$dir" config user.name t
+	printf 'a\n' >"$dir/tracked"
+	git -C "$dir" add tracked
+	git -C "$dir" commit -qm init
+}
+
 @test "reports context used, not the remaining percentage it is given" {
 	run render 90
 	[[ "$output" == *"10%"* ]]
@@ -88,8 +103,20 @@ render_raw() {
 }
 
 @test "shows the branch inside a git repo" {
-	run render 50
-	[[ "$output" == *"$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"* ]]
+	repo="$BATS_TEST_TMPDIR/on-a-branch"
+	make_repo "$repo" feature-x
+	run render 50 "$repo"
+	[[ "$output" == *"󰘬 feature-x"* ]]
+}
+
+# What CI itself runs in: actions/checkout detaches HEAD, and git reports the
+# branch as "(detached)" rather than a name.
+@test "reports a detached HEAD instead of a branch name" {
+	repo="$BATS_TEST_TMPDIR/detached"
+	make_repo "$repo"
+	git -C "$repo" checkout -q --detach
+	run render 50 "$repo"
+	[[ "$output" == *"(detached)"* ]]
 }
 
 @test "omits the git segment outside a repo" {
@@ -104,13 +131,7 @@ render_raw() {
 
 @test "counts dirty files" {
 	repo="$BATS_TEST_TMPDIR/dirty"
-	mkdir -p "$repo"
-	git -C "$repo" init -q
-	git -C "$repo" config user.email t@example.com
-	git -C "$repo" config user.name t
-	printf 'a\n' >"$repo/tracked"
-	git -C "$repo" add tracked
-	git -C "$repo" commit -qm init
+	make_repo "$repo"
 	printf 'b\n' >"$repo/tracked"
 	printf 'c\n' >"$repo/untracked"
 	run render 50 "$repo"
