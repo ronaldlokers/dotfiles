@@ -55,9 +55,13 @@ ask_pat() {
 	[ "$asked" = 0 ] || return 1
 	asked=1
 
-	# Echo off before anything is printed: pass-cli info above is a real
-	# network round-trip, and a paste that lands in that window must never be
-	# echoed to the screen or land in scrollback. Restored on interrupt too —
+	# Echo off before anything is printed: the stty -g failure path just below
+	# can therefore never leave a dangling prompt, and there is no window
+	# between printing the prompt and disabling echo. Known limitation, left
+	# open deliberately: pass-cli info above runs before ask_pat is even
+	# entered, so a paste that lands during that network round-trip is
+	# echoed by the tty driver like any other typing before this point —
+	# closing that window is out of scope here. Restored on interrupt too —
 	# a Ctrl-C here would otherwise leave the terminal with no echo at all.
 	stty_save="$(stty -g 2>/dev/null)" || return 1
 	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
@@ -76,8 +80,12 @@ ask_pat() {
 	pat=""
 	# read returns non-zero at EOF, which set -e would take as fatal.
 	read -r pat || true
-	stty "$stty_save" 2>/dev/null || true
+	# Clear the TSTP/CONT trap before restoring stty: otherwise a suspend or
+	# resume signal landing in the gap between the two would re-assert
+	# echo-off with nothing left to undo it, leaving the terminal echo-less
+	# after this function — and the script — has already exited.
 	trap - INT TERM HUP TSTP CONT
+	stty "$stty_save" 2>/dev/null || true
 	printf '\n' >&2
 
 	[ -n "$pat" ]
@@ -134,15 +142,21 @@ if ! pass-cli info >/dev/null 2>&1; then
 	if [ "$cache_it" = 1 ]; then
 		mkdir -p "$(dirname "$pat_file")"
 		pat_tmp="$pat_file.tmp.$$"
-		(
+		if (
 			umask 077
 			printf '%s\n' "$pat" >"$pat_tmp"
-		)
-		mv -f "$pat_tmp" "$pat_file"
-		# umask only governs creation; an existing file with looser modes
-		# would otherwise survive the mv unchanged.
-		chmod 600 "$pat_file"
-		say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
+		) && mv -f "$pat_tmp" "$pat_file"; then
+			# mv within one directory is rename(2): it replaces the inode
+			# outright, so a pre-existing file's mode cannot survive it. Kept
+			# anyway as an explicit, self-documenting guarantee that this
+			# file is 600 regardless of how it got written.
+			chmod 600 "$pat_file"
+			say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
+		else
+			# A partial write or a failed rename must not leave a plaintext
+			# token sitting in a *.tmp.* file forever.
+			rm -f "$pat_tmp"
+		fi
 	fi
 	unset pat
 fi

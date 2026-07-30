@@ -73,6 +73,19 @@ run_load() {
 	[ "$(stat -c %a "$PAT_FILE")" = "600" ]
 }
 
+# Mirrors "leaves no temp file behind after a failed fetch" in
+# restore-secrets.bats: a write that cannot land must not leave a plaintext
+# token sitting in a *.tmp.* file forever.
+@test "leaves no temp file behind after a failed cache write" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	chmod 500 "$(dirname "$PAT_FILE")"
+	run_load PASS_INFO_RC=1 PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_from_env
+	chmod 700 "$(dirname "$PAT_FILE")"
+	[ "$status" -eq 0 ]
+	[ ! -f "$PAT_FILE" ]
+	[ -z "$(find "$(dirname "$PAT_FILE")" -name '*.tmp.*' -print -quit 2>/dev/null)" ]
+}
+
 @test "falls back to the cached token when the environment has none" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_cached\n' >"$PAT_FILE"
