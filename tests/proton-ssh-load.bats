@@ -263,3 +263,61 @@ EOF
 	[ "$(cat "$PAT_FILE")" = "pst_typed" ]
 	grep -q "^login" "$STUB_LOG"
 }
+
+@test "a rejected cached token re-prompts and the new one replaces it" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "pst_fresh" PASS_INFO_RC=1 PASS_LOGIN_BAD_TOKEN=pst_stale -- --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"was rejected"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_fresh" ]
+	grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# Stale beats truncated, the same rule restore() follows.
+@test "a rejected cached token survives a rejected replacement" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "pst_also_bad" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	[[ "$output" == *"could not authenticate"* ]]
+	! grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# The "prompted already?" guard is what bounds this, not the token's source.
+@test "a rejected environment token re-prompts too" {
+	run_load_tty "pst_fresh" PASS_INFO_RC=1 \
+		PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_env_bad \
+		PASS_LOGIN_BAD_TOKEN=pst_env_bad -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_fresh" ]
+}
+
+# Counted through the stub log rather than the prompt text, because the prompt
+# is printed without a trailing newline and does not grep by line.
+@test "prompts at most once" {
+	run_load_tty "pst_bad_typed" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(grep -c '^login' "$STUB_LOG")" -eq 1 ]
+	[ ! -f "$PAT_FILE" ]
+	[[ "$output" == *"could not authenticate"* ]]
+}
+
+# A rejected cached token must not nag on every new shell.
+#
+# Deliberately not run_load_tty: this path never calls --prompt, so the script
+# never reads stdin at all, and a pty's line discipline echoes fed input back
+# into $output regardless of whether the script ever consumes it (see the
+# "Caveat" note on run_load_tty in helpers.bash). That would fail this
+# assertion for a reason that has nothing to do with the script's own output,
+# so a plain env run — no pty, no typed input needed — is used instead.
+@test "a rejected token is silent without --prompt" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+		PASS_LOGIN_RC=1 sh "$SCRIPT" --quiet
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+}

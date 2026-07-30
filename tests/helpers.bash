@@ -10,6 +10,8 @@
 #
 #   PASS_INFO_RC   exit code for `pass-cli info`      (default 0 — session live)
 #   PASS_LOGIN_RC  exit code for `pass-cli login`     (default 0)
+#   PASS_LOGIN_BAD_TOKEN  a token value that `pass-cli login` rejects; any
+#                         other token falls through to PASS_LOGIN_RC
 #   PASS_VIEW_RC   exit code for `pass-cli item view` (default 0)
 #   PASS_SSH_RC    exit code for `pass-cli ssh-agent` (default 0)
 #   PASS_ITEM_DIR  directory of files named after item titles; the matching
@@ -28,6 +30,13 @@ info)
 	exit "${PASS_INFO_RC:-0}"
 	;;
 login)
+	# Lets a test reject one specific token and accept the next, which
+	# PASS_LOGIN_RC cannot express. The token arrives in the environment, so
+	# this is also the only place the stub can see it at all.
+	if [ -n "${PASS_LOGIN_BAD_TOKEN:-}" ] &&
+		[ "${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}" = "$PASS_LOGIN_BAD_TOKEN" ]; then
+		exit 1
+	fi
 	exit "${PASS_LOGIN_RC:-0}"
 	;;
 ssh-agent)
