@@ -70,6 +70,10 @@ uv = "0.11.32"
 # uvx_args: pomo imports typing_extensions but doesn't declare it; on
 # python >=3.14 nothing pulls it in transitively anymore
 "pipx:git+https://github.com/mischavandenburg/pomo.git" = { version = "v0.4.0", uvx_args = "--with typing-extensions" }
+# Builds a knowledge graph of a codebase. The `/graphify` skill it ships is
+# vendored into dot_claude/skills rather than left to `graphify install`, so a
+# fresh machine gets it from an apply.
+"pipx:graphifyy" = "0.9.30"
 
 [settings]
 # run pipx-backend tools through uvx so no system python/pipx is needed
