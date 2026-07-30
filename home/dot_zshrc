@@ -76,15 +76,10 @@ done
 # ~~~~~~~~~~~~~~~ Omarchy ~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-# On Omarchy machines the omarchy-zsh package ships shared shell config
-# under /usr/share; source it from there so it coexists with this file.
-# Never run omarchy-setup-zsh — it *replaces* ~/.zshrc and ~/.bashrc,
-# which chezmoi owns. zoptions sets options, runs compinit and loads
-# autosuggestions + syntax-highlighting; envs/aliases/functions add
-# omarchy's aliases and helpers (tdl, format-drive, ...). shell/inits
-# is deliberately skipped: mise, fzf and zoxide are set up in this file
-# already, and the prompt is pure, not starship. Everything below this
-# block wins where the two disagree (vi-mode, history size, ls/v).
+# Omarchy's shared shell config from /usr/share. shell/inits is skipped: mise,
+# fzf and zoxide are set up below, and the prompt is pure, not starship.
+# Everything below this block wins where the two disagree.
+# Never run omarchy-setup-zsh: it replaces the rc files chezmoi owns.
 if [ -r /usr/share/omarchy-zsh/shell/zoptions ]; then
   source /usr/share/omarchy-zsh/shell/zoptions
   source /usr/share/omarchy-zsh/shell/envs
@@ -108,26 +103,16 @@ if [ -z "${_omarchy_zsh:-}" ]; then
   fi
 fi
 
-# fzf's own widgets are gone: atuin owns Ctrl-R, tv owns Ctrl-T and Alt-C (see
-# the tv block further down), and `source <(fzf --zsh)` was left binding
-# nothing. fzf itself stays — fzf-tab, the completion menu loaded at the
-# bottom of this file, is built on it, though fzf-tab pipes its own
-# candidates to fzf and never reads this variable. FZF_DEFAULT_COMMAND is
-# kept for ad-hoc `fzf` invocations.
+# No fzf widgets: atuin owns Ctrl-R, tv owns Ctrl-T and Alt-C. fzf itself stays
+# for fzf-tab and ad-hoc use.
 if command -v fzf > /dev/null && command -v fd > /dev/null ; then
   export FZF_DEFAULT_COMMAND="fd --type f --hidden --exclude .git"
 fi
 
-# zoxide wants to run after compinit. --cmd cd replaces cd outright rather than
-# adding a `z` beside it: a real path still goes straight through (cd .., cd -,
-# cd ~/x), and only an argument that isn't a directory falls back to frecency
-# matching. `cdi` is the interactive picker.
-#
-# omarchy's aliases file defines `cd=zd`, its own near-identical wrapper. An
-# alias is expanded before a function is looked up, so on a machine that has
-# omarchy-zsh it would shadow the cd defined here and leave the two kinds of
-# machine behaving differently. Drop it, the way the rest of this file wins
-# over the omarchy block; `z` is kept as an alias so the old name still works.
+# Must run after compinit. --cmd cd replaces cd: real paths pass through, only
+# non-directory arguments fall back to frecency. `cdi` is the picker.
+# Unalias omarchy's own `cd=zd` first — aliases are expanded before functions,
+# so it would shadow this one.
 if command -v zoxide > /dev/null ; then
   unalias cd 2>/dev/null
   eval "$(zoxide init zsh --cmd cd)"
@@ -147,17 +132,9 @@ setopt share_history      # share history between all shells (tmux panes)
 setopt hist_ignore_dups   # don't record consecutive duplicates
 setopt hist_ignore_space  # don't record commands starting with a space
 
-# atuin is the only thing binding Ctrl-R now — the fzf block above just
-# exports FZF_DEFAULT_COMMAND and binds nothing, and tv (further down) owns
-# Ctrl-T and Alt-C instead. Up is atuin's directory-filtered search,
-# configured in ~/.config/atuin/config.toml.
-#
-# The zsh options above still apply: atuin records into its own database, but
-# ~/.zsh_history stays the fallback for any shell where atuin isn't installed.
-#
-# --disable-ai: atuin's default init also binds `?` to its account-gated AI
-# TUI. This setup deliberately has no atuin account (see the local-only
-# decision above), so that binding can only ever open a dead end.
+# atuin owns Ctrl-R; Up is its directory-filtered search. ~/.zsh_history stays
+# the fallback where atuin is absent. --disable-ai: no account here, so its `?`
+# binding would open a dead end.
 if command -v atuin > /dev/null ; then
   eval "$(atuin init zsh --disable-ai)"
 fi
@@ -178,22 +155,12 @@ prompt pure
 bindkey -v
 export KEYTIMEOUT=1 # make switching between modes faster
 
-# tv's pickers, bound into every keymap that is actually live: `bindkey -v`
-# above means an emacs-only binding would be dead in insert mode, which is
-# where these are used.
-#
-# `tv init zsh` is deliberately not sourced — in 0.15.9 it emits completions
-# only, no bindings, so these widgets are the whole integration.
+# tv's pickers, bound into every live keymap (vi-mode is on above). `tv init
+# zsh` emits completions only, so these widgets are the whole integration.
 if command -v tv > /dev/null ; then
-  # Ctrl-T is the channel menu: pick a channel, then pick inside it, and the
-  # result lands on the command line. It is two `tv` calls rather than the
-  # `channels` meta-channel because that channel's enter action runs `tv {}`
-  # in execute mode, and the inner picker then writes its selection to the
-  # terminal instead of back here — the command line would stay empty.
-  #
-  # Channels whose enter action *does* something (sesh connects, git-branch
-  # checks out) print nothing, so nothing is inserted. That is correct: the
-  # action already happened.
+  # Ctrl-T: pick a channel, then pick inside it. Two `tv` calls rather than the
+  # `channels` meta-channel, whose enter action runs in execute mode and writes
+  # to the terminal instead of the command line.
   tv-menu-widget() {
     local channel selection
     channel="$(tv list-channels | tv)" || return 0
@@ -236,20 +203,9 @@ if command -v tv > /dev/null ; then
   unset keymap
 fi
 
-# yazi, for the orient-and-peek loop rather than for navigation. A history
-# audit found 145 of 177 `cd` calls were name jumps (`cd zenith`), which
-# zoxide already answers in one word — but also 89 bare `ls` and 48 `cat`,
-# the arrive-look-peek cycle a file manager with previews collapses into one
-# interface. That is the gap this fills; it takes nothing from `cd`.
-#
-# `cd` rather than upstream's `builtin cd`: cd here IS zoxide (--cmd cd), so
-# going through it records the directory and every later `cd`, tv dirs pick
-# and sesh entry gets better for it. With `builtin` the two tools would stay
-# strangers. `command cat` because cat is aliased to bat further down.
-#
-# Alt-Y is free in viins and vicmd, the keymaps vi-mode actually uses; it is
-# `yank-pop` in emacs, which is dormant here, and binding all three keeps this
-# consistent with the tv widgets above.
+# yazi on Alt-Y, for the look-and-peek loop rather than navigation.
+# `cd` not `builtin cd`: cd is zoxide here, so the jump gets recorded.
+# `command cat` because cat is aliased to bat below.
 if command -v yazi > /dev/null ; then
   y() {
     local tmp cwd
@@ -307,19 +263,9 @@ if command -v lsd > /dev/null ; then
   alias tree='ls --tree'
 fi
 
-# The coreutils replacements, under the names muscle memory already reaches
-# for. They were pinned as replacements but left unaliased, and the history
-# shows what that costs: `cat` and `ls` are used 144 times between them
-# because they are aliased, while dust/duf/btop sat at one or two apiece.
-#
-# Safe despite the flag differences — none of these accepts its predecessor's
-# options. An alias only applies to an interactive shell, so `du -sh` in any
-# script still runs coreutils. That is the same reasoning that makes cat=bat
-# above acceptable.
-#
-# Deliberately not aliased: `sed` to sd, whose arguments are entirely
-# different (`sed 's/x/y/'` simply fails), and `ping` to gping, which plots a
-# graph rather than standing in for ping's flags.
+# Coreutils replacements under the original names. Interactive-only, so scripts
+# still get coreutils. Not aliased: `sed`→sd (incompatible arguments) and
+# `ping`→gping (plots a graph rather than standing in).
 if command -v dust > /dev/null ; then
   alias du="dust"
 fi

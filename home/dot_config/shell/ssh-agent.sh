@@ -1,14 +1,9 @@
 # shellcheck shell=sh
-# Keep SSH_AUTH_SOCK pointing at a *live* agent. Forwarded sockets
-# (devpod/ssh -A) die when their connection closes but the socket file
-# lingers, so -S alone can't spot a stale one: probe with ssh-add, which
-# exits 2 only when no agent answers. If the current socket is dead, fall
-# back to the stable symlink, then any live devpod-forwarded socket, then
-# the systemd user ssh-agent (dot_config/systemd/user).
+# Keep SSH_AUTH_SOCK pointing at a live agent, then make sure it holds keys.
 #
-# Sourced by both dot_zshrc and dot_bashrc — it runs in the calling shell,
-# so each keeps its own word-splitting semantics exactly as when this was
-# inlined in the two rc files.
+# Forwarded sockets die with their connection but the socket file lingers, so
+# probe with ssh-add rather than testing -S: it exits 2 only when no agent
+# answers. Sourced by dot_zshrc and dot_bashrc.
 _agent_live() {
   [ -S "${1:-}" ] || return 1
   SSH_AUTH_SOCK="$1" ssh-add -l > /dev/null 2>&1
@@ -28,8 +23,7 @@ if ! _agent_live "${SSH_AUTH_SOCK:-}"; then
   done
   unset _s
 fi
-# republish the live agent at the stable path so long-lived shells
-# (tmux panes, resurrected sessions) can recover it after a reconnect
+# Republish at a stable path so long-lived shells recover after a reconnect.
 if [ "${SSH_AUTH_SOCK:-}" != "$_agent_link" ] && _agent_live "${SSH_AUTH_SOCK:-}"; then
   mkdir -p "$HOME/.ssh"
   ln -sf "$SSH_AUTH_SOCK" "$_agent_link"
@@ -37,12 +31,8 @@ if [ "${SSH_AUTH_SOCK:-}" != "$_agent_link" ] && _agent_live "${SSH_AUTH_SOCK:-}
 fi
 unset _agent_link
 
-# An agent with no identities means the keys have not been loaded yet — a fresh
-# login, or a reboot. They live in Proton Pass rather than on disk, so fetch
-# them once and leave the agent to hold them. `ssh-add -l` exits 1 for "no
-# identities" (2 is "no agent", already handled above), so this fires only when
-# there is a live but empty agent, and never inside a container where the
-# forwarded agent arrives pre-loaded.
+# Keys live in Proton Pass, not on disk. `ssh-add -l` exits 1 for "no
+# identities" and 2 for "no agent", so this fires only on a live empty agent.
 if _agent_live "${SSH_AUTH_SOCK:-}" &&
   ! SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -l > /dev/null 2>&1 &&
   command -v proton-ssh-load > /dev/null 2>&1; then

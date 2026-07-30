@@ -179,20 +179,10 @@ elif command -v mise > /dev/null ; then
   eval "$(mise activate bash)"
 fi
 
-# fzf's `**<TAB>` fuzzy path completion, and *only* that. Nothing else here
-# provides it — fzf-tab is zsh-only and tv has no completion integration.
-#
-# `fzf --bash` emits two halves: key bindings, then completion. Sourcing the
-# whole thing would bind Ctrl-T, Alt-C and Ctrl-R across all three keymaps.
-# Most of those get overridden later by tv and atuin, but not all: atuin binds
-# Ctrl-R in emacs and vi-insert only, so fzf's vi-command binding would
-# survive and Esc-then-Ctrl-R would open fzf's history search instead of
-# atuin's. Hence the sed: take the completion half alone, bind nothing.
-#
-# The one thing the completion half needs from the other is `__fzf_awk`, a
-# variable naming the awk to use — set it here rather than pulling in the
-# bindings for it. mawk when present, as fzf itself prefers, since it is
-# markedly faster than the GNU one on the line-splitting it does.
+# fzf's `**<TAB>` completion only. `fzf --bash` emits bindings then completion;
+# sourcing both would leave fzf's Ctrl-R bound in vi-command, where atuin does
+# not bind. Hence the sed. __fzf_awk is the one variable the completion half
+# needs from the bindings half.
 if command -v fzf > /dev/null ; then
   if command -v mawk > /dev/null ; then
     __fzf_awk=mawk
@@ -211,24 +201,17 @@ if command -v bat > /dev/null ; then
   export MANROFFOPT="-c"
 fi
 
-# zoxide-backed cd, same as in .zshrc. --cmd cd replaces cd outright: a
-# real path still goes straight through (cd .., cd -, cd ~/x), and only an
-# argument that isn't a directory falls back to frecency matching. `cdi` is
-# the interactive picker, `z` the old name. Placed after the PROMPT_COMMAND
-# assignment above, which zoxide's hook appends itself to.
+# zoxide-backed cd, as in .zshrc: real paths pass through, only non-directory
+# arguments fall back to frecency. Must follow the PROMPT_COMMAND assignment
+# above, which zoxide's hook appends to.
 if command -v zoxide > /dev/null ; then
   eval "$(zoxide init bash --cmd cd)"
   alias z="cd"
 fi
 
-# Aliases, kept deliberately in step with the ones in .zshrc — the two
-# files have no shared alias source, so a change to one wants the same
-# change here. Each is guarded on its tool, so a machine (or container)
-# missing one just keeps the stock command.
-#
-# These come last on purpose: `ls` is already aliased to `ls --color=auto`
-# by the dircolors block further up, and the later definition is the one
-# that sticks.
+# Kept in step with .zshrc by hand; add to both. Each is guarded on its tool.
+# Last on purpose: the dircolors block above also aliases `ls`, and the later
+# definition wins.
 
 if command -v nvim > /dev/null ; then
   alias v="nvim"
@@ -349,63 +332,18 @@ fi
 # sourced by dot_zshrc. See ~/.config/shell/ssh-agent.sh.
 [ -r "$HOME/.config/shell/ssh-agent.sh" ] && . "$HOME/.config/shell/ssh-agent.sh"
 
-# Hand gh's token to the GitHub MCP server, which reads it from the
-# environment. Shared logic, also sourced by dot_zshrc.
-# See ~/.config/shell/github-token.sh.
+# gh's token for the GitHub MCP server. Shared with dot_zshrc.
 [ -r "$HOME/.config/shell/github-token.sh" ] && . "$HOME/.config/shell/github-token.sh"
 
-# bash-preexec gives bash the preexec/precmd hooks atuin needs; it is a chezmoi
-# external (.chezmoiexternals/bash-preexec.toml). Guarded on the file so a shell
-# still starts on a machine that hasn't applied since this change, or in a
-# container where the external hasn't been fetched. Sourced this late on
-# purpose: it adopts whatever PROMPT_COMMAND already holds, which by now
-# includes zoxide's hook.
+# bash-preexec provides the preexec/precmd hooks atuin needs, installed as an
+# external. Sourced this late so it adopts the PROMPT_COMMAND set above.
 if [ -r "$HOME/.bash/bash-preexec.sh" ]; then
   . "$HOME/.bash/bash-preexec.sh"
 
-  # bash-preexec rebuilds each command from `builtin history 1` rather than
-  # reading it directly (that's how it feeds preexec/precmd functions their
-  # argument), and that rebuild is exactly what HISTCONTROL's "ignorespace"
-  # rule breaks: a line kept out of the history list is a line `history 1`
-  # can't see. bash-preexec's own installer works around that the only way
-  # it can — by rewriting HISTCONTROL to drop "ignorespace" entirely — and
-  # it does so once, at the very first prompt it draws, before any command
-  # of ours has been typed. A plain one-shot re-export placed here would
-  # already be too late: it runs *before* that rewrite, not after, so it
-  # gets overwritten the same way the original setting did. Re-asserting it
-  # from a precmd hook — run again before every prompt, not just once — is
-  # what actually restores the escape hatch: by the time the next command
-  # is typed, "ignorespace" is back in effect.
-  #
-  # We restore *only* "ignorespace", not "ignoreboth" — deliberately
-  # dropping "ignoredups". A leading-space command is kept out of the
-  # history list, so a later `history 1` inside bash-preexec's DEBUG trap
-  # resolves to the command *before* it, and every registered preexec
-  # function (atuin's included) gets invoked a second time with that
-  # stale, already-seen text. The atuin preexec guard below the atuin init
-  # tells that stale replay apart from a real repeat by checking whether
-  # the history number advanced — but "ignoredups" also keeps a genuinely
-  # repeated command out of the history list, which advances the history
-  # number exactly as little as the stale replay does. With both rules
-  # active the guard cannot tell "the same command typed twice" from "a
-  # spaced command's phantom re-fire of the command before it" — they look
-  # identical from `history 1`'s point of view — and every real repeat
-  # would silently lose its atuin entry (timestamp, duration, exit code):
-  # rerunning a build, arrow-up + Enter. Dropping "ignoredups" removes that
-  # ambiguity at the source: a real repeat still advances the history
-  # number (it's added again, uniqued only by *not* being on the entry
-  # right before it, which "ignorespace" alone doesn't touch), so the guard
-  # passes it through, while a leading-space command still doesn't, so the
-  # guard still catches it.
-  #
-  # This is a deliberate divergence from zsh's `setopt hist_ignore_dups` —
-  # bash's own history list and ~/.bash_history end up with adjacent
-  # duplicate lines that zsh's never would. That's acceptable specifically
-  # because atuin owns Ctrl-R now: bash's history file is no longer what
-  # gets searched interactively, just what bash-preexec's DEBUG trap reads
-  # to identify "the command that just ran" — and atuin's own database,
-  # unaffected by HISTCONTROL, is where real de-duplication would belong
-  # if it mattered there.
+  # Re-assert ignorespace from a precmd hook, not once at startup: bash-preexec
+  # rewrites HISTCONTROL at its first prompt and would clobber a one-shot
+  # export. ignoredups stays dropped — see "bash history, atuin and
+  # ignorespace" in docs/design-notes.md.
   __bp_reassert_ignorespace() { export HISTCONTROL=ignorespace; }
   precmd_functions+=(__bp_reassert_ignorespace)
 fi

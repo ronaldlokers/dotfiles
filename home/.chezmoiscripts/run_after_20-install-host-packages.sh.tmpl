@@ -1,57 +1,32 @@
 #!/bin/bash
 set -euo pipefail
 
-# Desktop applications for the host. CLI tools do NOT belong here — they go in
-# dot_config/mise/config.toml, which pins them and follows into devpod
-# containers. This file is only for things that need a display and a system
-# package manager (GUI apps, kernel-adjacent tooling).
+# Desktop applications for the host: things needing a display or a system
+# package manager. CLI tools go in dot_config/mise/config.toml instead.
 #
-# Deliberately a plain `run_after`, not `run_onchange`: this script skips
-# whenever it can't reach a package manager or can't get root, and chezmoi
-# records a run_onchange script's hash as soon as it exits 0 — a skipped run
-# would be remembered as done and never retried. Running every apply and
-# no-opping instead costs one `pacman -Q` per package (milliseconds) and lets a
-# later, better-equipped apply finish the job. Same reasoning as the secrets
-# script being a plain run_before.
-#
-# Packages are Arch-native (several exist only in the AUR), so on any other
-# distro this exits cleanly and installs nothing rather than guessing at
-# equivalent package names.
+# A plain run_after, not run_onchange, so a skipped run is retried later rather
+# than remembered as done. Arch-only; exits cleanly elsewhere.
 
 # Shipped by the distro's own repos.
 REPO_PACKAGES=(
 	discord
-	# The terminal emulator itself, so it belongs here and not in mise despite
-	# the "anything that runs in a terminal goes in mise" rule — it needs a
-	# display, and a container reaches a terminal through the host's. Which
-	# terminal Super+Return actually opens is decided separately, by
-	# dot_config/xdg-terminals.list.
+	# Needs a display, so not mise. Which terminal Super+Return opens is set
+	# by dot_config/xdg-terminals.list.
 	ghostty
 	obsidian
 	proton-vpn-gtk-app
 	prusa-slicer
 	rpi-imager
 	signal-desktop
-	# Mesh VPN. Host-only: it owns a network interface and routing table for the
-	# whole machine, which a devpod container inherits through the host anyway —
-	# a second tailscaled inside a container would be a separate node fighting
-	# for the same routes.
+	# Mesh VPN. Host-only: owns machine-wide routing, which containers inherit.
 	tailscale
-	# Touch-to-sudo. pam-u2f pulls in libfido2, which is also what OpenSSH needs
-	# for ed25519-sk keys. Host-only: it authenticates a human at this physical
-	# machine, and a container has neither the USB device nor its own PAM stack
-	# worth touching.
+	# Touch-to-sudo; pulls in libfido2, also needed for ed25519-sk keys.
 	pam-u2f
-	# YubiKey PIV: pcsclite provides the pcscd smartcard daemon that
-	# age-plugin-yubikey talks to, yubikey-manager the ykman CLI for inspecting
-	# and resetting the PIV applet. Host-only — they exist to drive physical
-	# hardware, so a container has no use for them.
+	# YubiKey: pcscd smartcard daemon plus the ykman CLI.
 	pcsclite
 	yubikey-manager
-	# Ships the udev rules that make the YubiKey's OTP/HID interface reachable
-	# without root. yubikey-manager alone leaves /dev/hidraw* owned by root, so
-	# `ykman otp ...` fails with "connection type not supported/enabled" — which
-	# reads like a disabled applet rather than the permission problem it is.
+	# udev rules for the OTP/HID interface; without them ykman otp fails with a
+	# misleading "connection type not supported".
 	yubikey-personalization
 	# The age PIV plugin. Comes from pacman rather than mise because upstream's
 	# releases carry darwin and windows assets only — there is no linux binary
@@ -59,19 +34,14 @@ REPO_PACKAGES=(
 	age-plugin-yubikey
 	# The login shell, and the one this repo actually configures — dot_zshrc holds
 	# the prompt, autosuggestions, fzf-tab and completion setup, while dot_bashrc
-	# is only a fallback. From pacman rather than mise despite being a CLI tool: a
-	# login shell has to be listed in /etc/shells and already be running before
-	# anything gets far enough to activate mise.
+	# is only a fallback. From pacman, not mise: a login shell must be in
+	# /etc/shells and running before mise activates.
 	zsh
 )
 
-# Not in the official repos, so these go through an AUR helper. Building from
-# the AUR runs upstream PKGBUILDs as arbitrary code — the list is curated by
-# hand and should stay that way.
-#
-# yay/paru resolve a binary repo before falling back to the AUR, so entries here
-# also cover packages a machine happens to get from a custom repo — spotify is
-# in Omarchy's own repo but AUR-only on stock Arch, and this handles both.
+# AUR packages. Building these runs upstream PKGBUILDs as arbitrary code, so
+# curate the list by hand. yay/paru check binary repos first, which also covers
+# packages served from a custom repo on some machines.
 AUR_PACKAGES=(
 	bambustudio-bin
 	chirp-next
@@ -82,16 +52,8 @@ AUR_PACKAGES=(
 	zen-browser-bin
 )
 
-# Containers get none of this: no display, no system package manager worth
-# mutating, and a devpod container is rebuilt too often to carry GUI apps.
-# The test itself lives in .chezmoitemplates/is-container, shared with the
-# devpod external — the two gates have to agree, so they read from one place.
-# Unquoted on purpose: the template renders a bare true/false, and quoting it
-# would nest quotes inside the Go action, which shellcheck reads as "A"B"C".
-# The pragmas are unavoidable — CI lints this template, not the rendered script,
-# so shellcheck sees a literal open-brace pair and an assignment it can't
-# follow. (Don't spell that pair out here: it would open a template action and
-# swallow the rest of the file.)
+# Containers get none of this. Unquoted on purpose, and the pragmas are
+# unavoidable: CI shellchecks the template, not the rendered script.
 # shellcheck disable=SC1083
 is_container={{ includeTemplate "is-container" . }}
 # shellcheck disable=SC2154
@@ -104,10 +66,8 @@ if ! command -v pacman >/dev/null 2>&1; then
 	exit 0
 fi
 
-# pacman needs root. Non-interactive applies (`devpod up`, CI's clean-HOME
-# bootstrap) have no TTY to prompt on, so a password-requiring sudo would hang
-# forever. Probe with `sudo -n` and fall through to a real prompt only when
-# stdin is a terminal.
+# Probe with `sudo -n` first: a non-interactive apply has no TTY, and a
+# password prompt would hang forever.
 if ! sudo -n true 2>/dev/null && [ ! -t 0 ]; then
 	echo "[packages] no TTY and sudo needs a password; skipping host packages." >&2
 	echo "[packages] Run 'chezmoi apply' from an interactive shell to install them." >&2
@@ -120,8 +80,7 @@ missing() {
 
 failed=()
 
-# Collect first, install in one transaction: pacman resolves shared
-# dependencies once, and a single sudo prompt covers the whole batch.
+# One transaction: shared dependencies resolve once, one sudo prompt.
 pending=()
 for pkg in "${REPO_PACKAGES[@]}"; do
 	missing "$pkg" && pending+=("$pkg")
@@ -131,16 +90,14 @@ if [ ${#pending[@]} -gt 0 ]; then
 	echo "[packages] installing from repos: ${pending[*]}" >&2
 	# --needed so an already-satisfied package is skipped rather than reinstalled.
 	sudo pacman -S --needed --noconfirm "${pending[@]}" || true
-	# pacman can exit 0 having skipped a package (e.g. a name that moved repos),
-	# so trust the database, not the exit code.
+	# pacman can exit 0 having skipped a package; trust the database.
 	for pkg in "${pending[@]}"; do
 		missing "$pkg" && failed+=("$pkg")
 	done
 fi
 
-# yay and paru are interchangeable for `-S`; use whichever the machine has.
-# Resolved to an absolute path because the build below runs on a stripped PATH
-# that may not contain the helper's own directory.
+# yay and paru are interchangeable here. Absolute path, because the build
+# below runs on a stripped PATH.
 aur_helper=""
 for helper in yay paru; do
 	if aur_helper="$(command -v "$helper" 2>/dev/null)"; then
@@ -149,13 +106,9 @@ for helper in yay paru; do
 	aur_helper=""
 done
 
-# An AUR build inherits this script's PATH, where mise's shims sit ahead of
-# /usr/bin — so `python` in a PKGBUILD resolves to a mise-managed interpreter
-# that can't see the pacman-installed build modules the PKGBUILD declared as
-# makedepends. chirp-next dies on "No module named build" that way, and any
-# PKGBUILD calling python/node/ruby is exposed to the same thing. Worse than
-# failing outright: a package whose build succeeds can bake mise's paths into
-# the installed files. Build against system interpreters only.
+# Build on a system-only PATH: mise's shims shadow /usr/bin, so a PKGBUILD
+# calling python/node/ruby would get a mise interpreter that cannot see its
+# own makedepends — or worse, bake mise paths into the package.
 SYSTEM_PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin"
 
 pending=()

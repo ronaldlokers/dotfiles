@@ -1,49 +1,22 @@
 #!/bin/sh
-# DevPod containers have no gh session, so mise hits GitHub's anonymous 60/hour
-# rate limit during a cold bootstrap and the all-or-nothing tool install dies on
-# HTTP 403. The token that fixes it can only be passed as a `devpod up` flag:
-# DevPod exposes no context option for it (v0.6.15 has DOTFILES_SCRIPT and
-# DOTFILES_URL and nothing else), so something has to add the flag on every
-# invocation.
-#
-# This was a shell function in .zshrc and .bashrc until it turned out that a
-# function can only ever cover interactive shells: `bash -c`, `zsh -c`, a
-# script, a cron job and an agent tool call all skip the rc files, so they got
-# no token and silently fell back to the anonymous quota — failing only on the
-# days that quota was already spent. A real executable on PATH covers every
-# caller, which is why the pinned binary now lands in ~/.local/libexec and this
-# sits in front of it.
-#
-# MISE_QUIET drops roughly forty lines of mise install progress relayed through
-# DevPod's logger while keeping the errors — a failing install still prints
-# `mise ERROR …` and exits non-zero. Deliberately not devpod's own `--silent`,
-# which suppresses everything short of a panic, including the `Execution of
-# ./setup was unsuccessful` line that is how a broken bootstrap announces
-# itself.
-#
-# CXXFLAGS=-w for the same reason, one layer down. gemini-cli depends on
-# node-pty, which ships no prebuilt binary for the pinned node, so every
-# container compiles it with node-gyp and gcc reports warnings in nan and in
-# node's own headers — upstream code, nothing here can act on it. `-w` drops
-# warnings only: a real compile error still prints and still fails the build.
+# Wrapper for the pinned devpod binary in ~/.local/libexec. Adds the
+# dotfiles-script env flags to every `devpod up`: a no-scope GitHub token for
+# mise's rate limit, plus MISE_QUIET and CXXFLAGS=-w to keep bootstrap output
+# readable. Run ~/.local/libexec/devpod directly to bypass this.
 set -eu
 
 real="$HOME/.local/libexec/devpod"
 env_file="$HOME/.config/devpod/dotfiles-env"
 
-# Missing binary means the external hasn't landed (or this is a platform it
-# skips). Say so rather than dying with a bare "not found" on a name the user
-# can see on PATH.
+# Missing binary means the external has not landed, or this platform skips it.
 if [ ! -x "$real" ]; then
 	echo "devpod: $real is missing — run 'chezmoi apply' to fetch it" >&2
 	exit 127
 fi
 
-# Find the subcommand by walking the arguments rather than reading $1: global
-# flags may come first, and the four listed below take a value that must not be
-# mistaken for the subcommand. The next non-flag argument after it is the
-# workspace source (`devpod up .`), which is what the per-project token lookup
-# keys on.
+# Walk the arguments rather than reading $1: global flags may precede the
+# subcommand, and the four below take a value. The next non-flag argument is
+# the workspace source, which the per-project token lookup keys on.
 sub=""
 src=""
 skip=0
@@ -74,34 +47,22 @@ cleanup() {
 	[ -n "$ws_env" ] && rm -f "$ws_env"
 }
 
-# Look up an opt-in, per-project GitHub token for the workspace being started.
-#
-# Git itself needs no token in a container: DevPod forwards the ssh-agent and
-# dot_config/git/config.tmpl rewrites github HTTPS remotes to SSH there, so
-# clone, fetch, push and commit signing all work with nothing secret at rest
-# inside the container. What SSH cannot do is authenticate the GitHub *API*, so
-# a project whose workflow uses `gh` (`gh pr create`, `gh api`) still needs a
-# token — and only that project.
-#
-# ~/.config/devpod/project-tokens is `owner/repo=token`, one per line, mode
-# 0600, and absent by default. Mint each token fine-grained and limited to the
-# single repository, with only the permissions that project's `gh` use needs.
-# Anything in the container can read it (see the 0644 note in the design notes),
-# so the point is that "anything" is confined to one repo.
+# Opt-in per-project GitHub token, for projects whose workflow needs the GitHub
+# API (`gh pr create`). Git itself needs none — containers use the forwarded
+# agent. ~/.config/devpod/project-tokens is `owner/repo=token`, 0600, absent by
+# default; each entry should be fine-grained and limited to that one repo.
 project_token() {
 	tokens="$HOME/.config/devpod/project-tokens"
 	[ -r "$tokens" ] || return 1
 
-	# Key on the push remote rather than the directory name: a Home Assistant
-	# checkout pushes to your fork, and the fork is what a token can be minted
-	# for. Falls back to $PWD, since `devpod up .` is the common form.
+	# Key on the push remote, not the directory name: a fork is what you can
+	# mint a token for. Falls back to $PWD, the common `devpod up .` form.
 	proj="${1:-$PWD}"
 	[ -d "$proj" ] || proj="$PWD"
 	url="$(git -C "$proj" remote get-url --push origin 2>/dev/null)" || return 1
 	[ -n "$url" ] || return 1
 
-	# git@github.com:owner/repo.git and https://github.com/owner/repo both
-	# reduce to owner/repo.
+	# Both remote URL forms reduce to owner/repo.
 	key="$(printf '%s' "$url" |
 		sed -e 's|^git@github\.com:||' \
 			-e 's|^ssh://git@github\.com/||' \
@@ -115,18 +76,15 @@ project_token() {
 if [ "$sub" = "up" ]; then
 	set -- "$@" --dotfiles-script-env MISE_QUIET=1 \
 		--dotfiles-script-env CXXFLAGS=-w
-	# The flag carries the *path*, never the value: the token must not reach
-	# this process's arguments, where any `ps` could read it.
+	# The flag carries the path, never the value — `ps` would show the value.
 	if [ -r "$env_file" ]; then
 		set -- "$@" --dotfiles-script-env-file "$env_file"
 	fi
 
-	# $2 of the subcommand is the workspace source when given (`devpod up .`).
 	tok="$(project_token "$src" 2>/dev/null || true)"
 	if [ -n "$tok" ]; then
-		# GH_TOKEN, not GITHUB_TOKEN or MISE_GITHUB_TOKEN: mise reads the
-		# latter two and must keep using the no-scope PAT above. Only `gh`
-		# should see a token that can write anything.
+		# GH_TOKEN, not GITHUB_TOKEN/MISE_GITHUB_TOKEN: mise reads those and
+		# must keep using the no-scope PAT above.
 		ws_env="${XDG_RUNTIME_DIR:-$HOME/.cache}/devpod-workspace-env.$$"
 		(
 			umask 077
@@ -137,9 +95,8 @@ if [ "$sub" = "up" ]; then
 	fi
 fi
 
-# `exec` for everything else, so devpod owns the terminal and the signals. The
-# path that generated an env file stays in the foreground instead, so the file
-# can be removed once devpod is done reading it.
+# `exec` elsewhere so devpod owns the terminal and signals; the env-file path
+# stays in the foreground so the file can be removed afterwards.
 if [ -n "$ws_env" ]; then
 	trap cleanup EXIT HUP INT TERM
 	"$real" "$@"

@@ -1,16 +1,7 @@
 #!/bin/sh
-# Load the SSH keys held in Proton Pass into the running ssh-agent.
-#
-# The keys never touch the disk. `pass-cli ssh-agent load` hands them straight
-# to the agent, which is enough for everything this machine does with them:
-# git over SSH, and commit signing — git signs through the agent as long as
-# user.signingkey names a *public* key file, which dot_config/git/config.tmpl
-# does. DevPod forwards the same agent into containers, so they inherit the
-# keys without ever holding a secret either.
-#
-# Called automatically by dot_config/shell/ssh-agent.sh when the agent is empty,
-# and safe to run by hand at any time — loading keys that are already loaded is
-# a no-op.
+# Load the SSH keys held in Proton Pass into the running ssh-agent; they never
+# touch disk. Called by dot_config/shell/ssh-agent.sh when the agent is empty,
+# and safe to run by hand — reloading is a no-op.
 set -eu
 
 quiet=0
@@ -25,8 +16,7 @@ command -v pass-cli >/dev/null 2>&1 || {
 	exit 0
 }
 
-# A container has no pass-cli and no Proton session by design: it gets the keys
-# from the forwarded agent instead.
+# Containers get keys from the forwarded agent instead.
 if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
@@ -34,11 +24,9 @@ fi
 vault="Dotfiles"
 pat_file="$HOME/.config/pass-cli-bootstrap-pat"
 
-# Authenticate if the session has lapsed. The token is scoped viewer on the
-# Dotfiles vault and nothing else. It arrives in the environment on a fresh
-# machine and is cached at $pat_file afterwards, so later logins need no
-# interaction. Passed through the environment rather than
-# `--personal-access-token`, whose value would be visible in `ps`.
+# Authenticate if the session lapsed. Token comes from the environment on a
+# fresh machine and is cached at $pat_file after. Passed via the environment,
+# never as --personal-access-token, whose value shows up in `ps`.
 if ! pass-cli info >/dev/null 2>&1; then
 	pat="${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}"
 	cache_it=1

@@ -170,6 +170,29 @@ the wrong history search. The completion half needs one variable (`__fzf_awk`)
 from the other half, which `dot_bashrc` sets itself. The tv widgets are bound
 across all three keymaps for the same reason.
 
+### bash history, atuin and `ignorespace`
+
+bash-preexec rebuilds each command from `builtin history 1` to feed
+preexec/precmd hooks, so a command kept out of the history list is invisible to
+it. Its installer works around that by rewriting `HISTCONTROL` to drop
+`ignorespace` at the first prompt — which is why `dot_bashrc` re-asserts the
+setting from a precmd hook rather than once at startup: a one-shot export runs
+before that rewrite and gets clobbered.
+
+Only `ignorespace` is restored, deliberately dropping `ignoredups`. A
+leading-space command is absent from the history list, so bash-preexec's DEBUG
+trap resolves `history 1` to the *previous* command and re-fires every preexec
+function with stale text. The guard beside atuin's init detects that by checking
+whether the history number advanced — but `ignoredups` also withholds a genuine
+repeat from the list, advancing the number exactly as little. With both rules
+active the guard cannot distinguish "same command twice" from "phantom re-fire",
+and every real repeat would silently lose its atuin entry.
+
+The cost is adjacent duplicates in `~/.bash_history`, which zsh's
+`hist_ignore_dups` would never produce. Acceptable because atuin owns `Ctrl-R`:
+bash's history file is no longer what gets searched, only what the DEBUG trap
+reads, and atuin's database is unaffected by `HISTCONTROL`.
+
 ### Television channels
 
 Channels come from a pinned archive external rather than `tv update-channels`, so

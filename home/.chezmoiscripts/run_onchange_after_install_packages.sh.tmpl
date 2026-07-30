@@ -3,9 +3,7 @@ set -euo pipefail
 
 # packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
 
-# mise must be resolvable by name, not just full path: tool backends spawn
-# child processes that call `mise` (e.g. the npm backend's reshim wrapper),
-# and ~/.local/bin isn't on PATH yet on a fresh machine.
+# mise must resolve by name: tool backends spawn children that call `mise`.
 export PATH="$HOME/.local/bin:$PATH"
 
 # Run from a directory with no ancestors: mise merges a config from every parent
@@ -18,24 +16,10 @@ export PATH="$HOME/.local/bin:$PATH"
 # only config left is $HOME's own, which is the one this script means to install.
 config="$HOME/.config/mise/config.toml"
 
-# Name the config explicitly and run from a directory with no ancestors,
-# because mise picks up neither reliably on its own during a HOME-redirected
-# apply:
-#
-#   * mise merges a config from every ancestor of the cwd, and
-#     `<ancestor>/.config/mise/config.toml` counts. chezmoi runs scripts with
-#     cwd = $HOME, so on a machine where the redirected HOME sits under a real
-#     user's home — or where the source tree does — that user's live tool list
-#     gets merged in. Its trust record lives in the real user's state dir, so
-#     the apply dies with "Config files in /home/<user>/.config/mise/config.toml
-#     are not trusted". `cd /` leaves no ancestor to merge.
-#
-#   * mise's *global* config dir does not always follow $HOME: on GitHub's
-#     runners it resolves from the passwd entry (/home/runner/.config/mise)
-#     while the data dir follows $HOME. Under `cd /` alone that leaves no
-#     config at all, and `mise install` cheerfully reports "all tools are
-#     installed" having installed nothing. MISE_GLOBAL_CONFIG_FILE pins the
-#     one file this script means to install from.
+# Pin both the config path and the cwd. mise merges a config from every
+# ancestor of the cwd (including <ancestor>/.config/mise/config.toml), and its
+# global config dir does not always follow $HOME — either one silently installs
+# the wrong tool list during a HOME-redirected apply. See the design notes.
 export MISE_GLOBAL_CONFIG_FILE="$config"
 cd /
 
