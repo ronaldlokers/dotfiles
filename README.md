@@ -13,7 +13,7 @@ are relative to it — `dot_zshrc` is `home/dot_zshrc` on disk.
 
 ```sh
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
-chezmoi apply                                            # asks for the PAT if needed
+chezmoi apply                                             # asks for the PAT if needed
 PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply   # or supply it up front
 ```
 
