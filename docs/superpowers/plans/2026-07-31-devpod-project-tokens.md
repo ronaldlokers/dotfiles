@@ -267,7 +267,7 @@ One `restore` line, plus everything that must move with it so the change does no
 
 **Interfaces:**
 - Consumes: `project_token()` from Task 1, contract unchanged.
-- Produces: no new functions. The vault item title `devpod project-tokens` becomes a string three places must agree on — the restore script, the `secrets-check` list in `mise.toml`, and the bats fixture filename. A typo in any one of them is the failure mode this task's tests exist to catch.
+- Produces: no new functions. The vault item title `devpod project-tokens` becomes a string three places must agree on — the restore script, the `secrets-check` list in `mise.toml`, and the bats fixture filename. Only two of those are covered by this task's tests: the bats suite catches a typo in the restore script's copy (via the fixture-driven `restore-secrets.bats`), but not one in the `mise.toml` copy — that string is exercised only by `mise run secrets-check` against a live vault, which nothing in CI runs.
 
 - [ ] **Step 1: Write the failing test changes**
 

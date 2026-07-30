@@ -223,8 +223,15 @@ The GitHub **API** is the exception — `gh pr create` needs a token. Opt in per
 project:
 
 Add an `owner/repo=token` line to the **`devpod project-tokens`** note in the
-Dotfiles vault, then `chezmoi apply`. Surrounding whitespace is tolerated; a
-blank note is not — it trips the empty-fetch guard and warns on every apply.
+Dotfiles vault, then `chezmoi apply`. Surrounding whitespace is tolerated.
+
+Emptying the note does **not** revoke the last token: a blank fetch trips the
+empty-fetch guard ("stale beats truncated") and the existing file — and the
+token in it — is left alone on every machine, forever, warning only on each
+apply. To drop the last entry, leave a line with no `=` instead, e.g.
+`# no entries` — the parser requires an `=` and silently skips anything
+without one, so the file restores as effectively empty without ever being
+literally empty.
 
 Keyed on the project's **push** remote, so a fork resolves to your fork. Mint
 each token fine-grained and limited to that repo. No entry, no token.

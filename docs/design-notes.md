@@ -392,9 +392,14 @@ the helper already works and is what `gh repo clone` produces.
 What forwarding does *not* cover is the GitHub API: SSH cannot authenticate it,
 so `gh pr create`, `gh api` and the MCP server still need a token. That is what
 `~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600,
-restored from the vault like the other file-shaped secrets and holding no
-entries on a machine that has minted none, and consulted by the wrapper for the
-workspace being started. Each entry should be a fine-grained PAT limited to
+restored from a single shared vault note and consulted by the wrapper for the
+workspace being started. "Single shared note" is a cost, not a detail: every
+machine that applies with a Proton session receives *every* entry in it, not
+just the ones it minted, so a token scoped to one host's project now sits at
+0600 on every other host too. That spread was accepted deliberately, in
+exchange for the property a per-machine file cannot offer — a revoked token
+disappears from every machine on its next apply instead of lingering wherever
+it was typed in by hand. Each entry should be a fine-grained PAT limited to
 that one repository. The 0644 exposure still applies to whatever is passed,
 which is exactly why it is one repo's worth rather than the whole account's.
 

@@ -31,7 +31,11 @@ The accepted cost is that every machine with a Proton session now holds every
 project token at 0600, rather than each token living only on the host it was
 minted for. The compensating gain is that deletions propagate — `restore()`
 writes the whole file, so dropping a line from the vault note removes it
-everywhere on the next apply, which hand-editing never did.
+everywhere on the next apply, which hand-editing never did. That holds for any
+line except the last one: emptying the note entirely trips the empty-fetch
+guard, which leaves the existing file — and its one remaining token — in
+place rather than writing it through. Revoking the last entry needs a line
+with no `=` (e.g. `# no entries`) instead of a blank note.
 
 One entry per repository, each a fine-grained PAT limited to that repository,
 is unchanged and still load-bearing. That rule comes from DevPod materialising

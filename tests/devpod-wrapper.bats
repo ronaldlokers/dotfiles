@@ -23,18 +23,26 @@ setup() {
 	XDG_RUNTIME_DIR="$BATS_TEST_TMPDIR/run"
 	mkdir -p "$XDG_RUNTIME_DIR"
 
+	# Isolate from this machine's global/system git config. `git remote
+	# get-url --push` expands insteadOf/pushInsteadOf rewrites from it, and a
+	# rewrite touching the owner/repo portion would change the derived key —
+	# breaking every positive test here for a reason nowhere near the test.
+	GIT_CONFIG_GLOBAL=/dev/null
+	GIT_CONFIG_SYSTEM=/dev/null
+
 	STUB_LOG="$BATS_TEST_TMPDIR/calls.log"
 	: >"$STUB_LOG"
 
 	cat >"$HOME/.local/libexec/devpod" <<'STUB'
 #!/bin/sh
 printf 'ARGV: %s\n' "$*" >>"$STUB_LOG"
-# Copy out the workspace env file while it still exists; the wrapper removes
-# it as soon as this returns.
+# Copy out the workspace env file, and record its mode, while it still
+# exists; the wrapper removes it as soon as this returns.
 prev=""
 for a in "$@"; do
 	if [ "$prev" = "--workspace-env-file" ]; then
 		sed 's/^/ENVFILE: /' "$a" >>"$STUB_LOG"
+		printf 'MODE: %s\n' "$(stat -c %a "$a")" >>"$STUB_LOG"
 	fi
 	prev="$a"
 done
@@ -45,11 +53,12 @@ STUB
 	# project_token() keys on the push remote, not the directory name.
 	PROJ="$BATS_TEST_TMPDIR/proj"
 	mkdir -p "$PROJ"
-	git -C "$PROJ" init -q
-	git -C "$PROJ" remote add origin git@github.com:ronaldlokers/homelab.git
+	GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null git -C "$PROJ" init -q
+	GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+		git -C "$PROJ" remote add origin git@github.com:ronaldlokers/homelab.git
 
 	TOKENS="$HOME/.config/devpod/project-tokens"
-	export HOME STUB_LOG XDG_RUNTIME_DIR
+	export HOME STUB_LOG XDG_RUNTIME_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
 }
 
 # Writes $1 as the project-tokens file, interpreting backslash escapes so the
@@ -60,8 +69,12 @@ write_tokens() {
 }
 
 run_up() {
+	# Same isolation as setup(): the wrapper itself shells out to `git remote
+	# get-url --push`.
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" \
-		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" sh "$WRAPPER" up "$PROJ"
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+		GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" GIT_CONFIG_SYSTEM="$GIT_CONFIG_SYSTEM" \
+		sh "$WRAPPER" up "$PROJ"
 }
 
 # Asserts the wrapper handed DevPod a workspace env file carrying exactly $1.
@@ -125,8 +138,31 @@ assert_no_token() {
 	assert_no_token
 }
 
+# A prefix match would hand the private repo's PAT to the public repo's
+# container: ronaldlokers/homelab is a prefix of ronaldlokers/homelab-private,
+# and this fixture's project is the shorter of the two.
+@test "a key that is a prefix-superset of the repo passes no token" {
+	write_tokens 'ronaldlokers/homelab-private=tok-other\n'
+	run_up
+	assert_no_token
+}
+
 @test "an absent project-tokens file passes no token" {
 	rm -f "$TOKENS"
 	run_up
 	assert_no_token
+}
+
+@test "the workspace env file is written mode 0600" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_up
+	assert_token tok-clean
+	grep -qx -- "MODE: 600" "$STUB_LOG"
+}
+
+@test "no workspace env file is left behind in XDG_RUNTIME_DIR" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_up
+	assert_token tok-clean
+	[ -z "$(find "$XDG_RUNTIME_DIR" -name 'devpod-workspace-env.*' -print -quit)" ]
 }
