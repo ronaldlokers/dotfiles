@@ -65,10 +65,15 @@ ask_pat() {
 	# a Ctrl-C here would otherwise leave the terminal with no echo at all.
 	stty_save="$(stty -g 2>/dev/null)" || return 1
 	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
-	# A suspend (Ctrl-Z) leaves the tty echoing-off, but the interactive shell
-	# that takes the terminal back turns echo back on for itself; on `fg` that
-	# would otherwise leave the still-pending read running with echo on.
-	# Re-assert on both signals so a resume never inherits the wrong state.
+	# A suspend (Ctrl-Z) leaves the tty echo off, but the interactive shell
+	# that reclaims the terminal turns echo back on for itself. This trap
+	# does not make the prompt resume afterward: in this shell, catching
+	# TSTP or CONT aborts the blocked `read` immediately (verified: it
+	# returns nonzero right away, never with a typed value), so a suspend
+	# here always cancels this prompt attempt outright rather than pausing
+	# and continuing it on `fg`. What the trap buys is narrower but real: it
+	# re-asserts echo-off in that same instant, so the read can never be
+	# aborted (or, in principle, resumed) with echo left on.
 	trap 'stty -echo 2>/dev/null || true' TSTP CONT
 	stty -echo 2>/dev/null || true
 

@@ -75,12 +75,23 @@ run_load() {
 
 # Mirrors "leaves no temp file behind after a failed fetch" in
 # restore-secrets.bats: a write that cannot land must not leave a plaintext
-# token sitting in a *.tmp.* file forever.
+# token sitting in a *.tmp.* file forever. The temp write itself must
+# succeed here -- only the rename must fail -- so this shadows `mv` with a
+# stub that always fails, scoped to this test and removed again right after.
+# chmod 500 on the parent directory (tried first) blocks the temp file's
+# creation before it ever exists, which cannot distinguish "the cleanup ran"
+# from "there was nothing to clean up" -- it passes with the rm -f deleted.
 @test "leaves no temp file behind after a failed cache write" {
-	mkdir -p "$(dirname "$PAT_FILE")"
-	chmod 500 "$(dirname "$PAT_FILE")"
+	cat >"$BIN/mv" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+	chmod 755 "$BIN/mv"
+
 	run_load PASS_INFO_RC=1 PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_from_env
-	chmod 700 "$(dirname "$PAT_FILE")"
+
+	rm -f "$BIN/mv"
+
 	[ "$status" -eq 0 ]
 	[ ! -f "$PAT_FILE" ]
 	[ -z "$(find "$(dirname "$PAT_FILE")" -name '*.tmp.*' -print -quit 2>/dev/null)" ]
