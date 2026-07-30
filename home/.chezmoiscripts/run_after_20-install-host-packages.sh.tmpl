@@ -28,10 +28,6 @@ REPO_PACKAGES=(
 	# udev rules for the OTP/HID interface; without them ykman otp fails with a
 	# misleading "connection type not supported".
 	yubikey-personalization
-	# The age PIV plugin. Comes from pacman rather than mise because upstream's
-	# releases carry darwin and windows assets only — there is no linux binary
-	# for a release-based backend to fetch.
-	age-plugin-yubikey
 	# The login shell, and the one this repo actually configures — dot_zshrc holds
 	# the prompt, autosuggestions, fzf-tab and completion setup, while dot_bashrc
 	# is only a fallback. From pacman, not mise: a login shell must be in

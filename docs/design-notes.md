@@ -23,8 +23,7 @@ actually for: paths chezmoi *should* see but must not copy.
 One file stayed inside the source tree deliberately: `ghostty.terminfo` is read
 through `include`, which resolves relative to the source directory, so moving it
 along with the tree kept that call site correct with no edit. It is not applied —
-it is listed in `.chezmoiignore`. (`key.txt.age` was the other such file, until
-secrets moved to Proton Pass and it stopped existing.)
+it is listed in `.chezmoiignore`.
 
 `--source "$PWD"` is unaffected — chezmoi reads `.chezmoiroot` from the
 directory it is pointed at and descends — so `mise run verify`, CI's clean-HOME
@@ -260,128 +259,40 @@ Containers are outside all of this. They have no `pass-cli` and no session by
 design: git uses the forwarded ssh-agent, and the DevPod token arrives as an env
 file passed by the wrapper on the host.
 
-### Proton Pass is pinned, but not wired into apply
+### Reading Proton Pass from a template
 
-`pass-cli` is installed as a checksummed external and used by hand. It is *not*
-a secret source for chezmoi, even though it offers the same `inject`/`run` model
-a 1Password-backed setup would use, because a Proton session cannot exist inside
-a devpod container or in CI — the same failure mode `chezmoi add --encrypt` is
-banned for. This was written when secrets were `.age` blobs, which worked
-offline with no account; they have since moved to Proton Pass too, and the
-trade that involved is covered under Secrets above.
-
-It is an external rather than a mise pin because Proton publishes it from
-`proton.me`, not GitHub, and it isn't in the mise registry — so it follows
-`.chezmoiexternals/k9s.toml`: a pinned URL plus a `checksum.sha256`. Bumping
-stays manual and Renovate is deliberately not wired up, because a bump of the
-version alone would produce an external that fails its own checksum on every
-apply. The version and hash come from
-`https://proton.me/download/pass-cli/versions.json`, which has to be read as a
+`pass-cli` is a checksummed external rather than a mise pin, because Proton
+publishes it from `proton.me` and it is not in the mise registry — so it follows
+`.chezmoiexternals/k9s.toml`: a pinned URL plus a `checksum.sha256`. Bumping is
+manual and Renovate is deliberately not wired up, since a version bump without
+the matching hash produces an external that fails its own checksum on every
+apply. Both values come from
+`https://proton.me/download/pass-cli/versions.json` and have to be read as a
 pair.
 
-### SSH keys live in Proton Pass, and only in the agent
+Two rules govern calling it from chezmoi, and both were learned the hard way.
 
-The three private keys are stored as Proton Pass `ssh-key` items in a dedicated
-**Dotfiles vault**, and `~/.local/bin/proton-ssh-load` loads them into the
-running ssh-agent with `pass-cli ssh-agent load`. They are never written to
-`~/.ssh`.
+**Every call must be gated.** chezmoi's `protonPass` aborts the *entire*
+template when `pass-cli` fails, and `output` does the same on any non-zero exit.
+An unguarded call therefore breaks apply everywhere the binary or session is
+absent — every container, and CI. `.chezmoitemplates/has-proton-session` is the
+gate, and its shape is not stylistic: `lookPath` returns `""` rather than
+failing when the binary is missing, and the `sh -c … && echo true || echo false`
+wrapper keeps the exit status at 0, which is the very failure the gate exists to
+prevent.
 
-Two of them — the auth key and the AUR key — were previously backed up
-**nowhere**, existing only on this laptop while being load-bearing for container
-git and for `devpod up` (whose `DOTFILES_URL` is SSH). The signing key was an
-`.age` blob. All three now live together, and no private key sits in git
-history, where it would stay for good even after a rotation.
+**Secrets are written by scripts, never by template files.** A guarded template
+file is quietly destructive: when the gate is false it renders empty, and
+chezmoi responds by *removing the target*. One apply with a session and one
+without deletes the secret from `$HOME`. `run_after_14-restore-secrets.sh.tmpl`
+therefore writes files from a script, leaving anything it cannot fetch alone.
+The only template-side use is `.chezmoitemplates/signing-pubkey`, which yields a
+*public* key — safe to be absent, and its absence deliberately makes the next
+commit fail rather than go unsigned.
 
-Keeping them out of `~/.ssh` is what makes this simpler than a restore-to-disk
-script rather than more complicated. Nothing needs syncing, nothing can drift,
-and a stolen disk yields no keys. It works because everything this machine does
-with them goes through the agent anyway:
-
-- **git over SSH** — the agent answers.
-- **commit signing** — git signs with an agent-held key, and it is told *which*
-  key by a literal `key::ssh-ed25519 …` value rather than a path, so no `.pub`
-  file is needed. Both `user.signingkey` and `allowed_signers` take it from
-  `.chezmoitemplates/signing-pubkey`, which reads the public field of the same
-  Proton item and falls back to `ssh-add -L`. The gate matters: chezmoi's
-  `protonPass` aborts the *entire* template when pass-cli fails, so an unguarded
-  call would break every apply in a container and in CI. When neither source
-  answers, the key is omitted and `commit.gpgsign` is left on, so the failure is
-  a refused commit rather than a silently unsigned one. Verified end to end: a
-  signed commit reporting `G`, with zero key files on disk.
-- **containers** — DevPod forwards the agent, so they inherit the keys and hold
-  no secret of their own.
-
-Loading is lazy. `dot_config/shell/ssh-agent.sh` already hunts for a live agent
-on every shell start; it now also asks `ssh-add -l` whether that agent is empty
-and, if so, runs the loader. `ssh-add -l` exits 1 for "no identities" and 2 for
-"no agent", which is what distinguishes the two cases. Once loaded, every later
-shell sees a populated agent and does nothing.
-
-A **personal access token** scoped `viewer` on the Dotfiles vault handles
-authentication, so a fresh machine needs no browser. Vault scope rather than
-item scope is deliberate: a token granted only individual items cannot resolve
-`--vault-name` or `--item-title` at all — it sees no vault listing — which would
-force opaque share and item IDs into the repo. The token reaches the loader
-through `PROTON_PASS_PERSONAL_ACCESS_TOKEN` and is cached at
-`~/.config/pass-cli-bootstrap-pat` (0600) once proven, never passed as
-`--personal-access-token` whose value `ps` would expose. It lives in the vault
-it unlocks (`bootstrap PAT`), which is circular only in appearance: a fresh
-machine reads it from the Proton Pass app, not from the CLI being bootstrapped.
-
-What this trades away is the property the `.age` blobs had: they needed no
-account, no network and no session. These keys need all three, and the Proton
-account now holds both the age passphrase backup and the SSH keys — so a Proton
-lockout costs both the break-glass path and day-to-day git. An offline copy is
-what closes that, and nothing in this repo can do it for you.
-
-### If a host-only secret ever does come from Proton Pass
-
-chezmoi ships the integration already — 2.70.5 has `protonPass` and
-`protonPassJSON`, and both shell out to the `pass-cli` this repo pins, so the
-only thing between a working call and a failing one is `pass-cli login`. What
-follows is what a spike established about doing that safely; none of it is wired
-up, because no secret needs it yet.
-
-An unguarded `protonPass` in a template is a hard failure with no fallback:
-chezmoi templates have no try/catch, so a missing session aborts the entire
-apply. That kills the container bootstrap (the external is host-only, so
-`pass-cli` isn't there at all), CI's clean-HOME run (binary present, session
-impossible), and any non-TTY apply on a host whose session has expired. It is
-the same failure mode `chezmoi add --encrypt` is banned for.
-
-A gate makes it safe to call. It belongs in `.chezmoitemplates`, rendering
-`"true"`/`"false"` like `is-container`:
-
-```
-{{- if lookPath "pass-cli" -}}
-{{- output "sh" "-c" "pass-cli info >/dev/null 2>&1 && echo true || echo false" | trim -}}
-{{- else -}}false{{- end -}}
-```
-
-Both halves earn their place. `lookPath` returns `""` rather than failing when
-the binary is absent, which is the container case. The `sh -c … && echo true ||
-echo false` wrapper is not stylistic: chezmoi's `output` aborts the template on a
-non-zero exit, so probing the session with a bare `output "pass-cli" "info"`
-would trigger the very failure the gate exists to prevent. Cost is ~11ms
-unauthenticated, and whether an authenticated `pass-cli info` reaches the network
-was not measured — if it does, the gate can go false while offline, which the
-shape below tolerates.
-
-**The gate alone is not enough, and this is the part worth remembering.** Guarding
-a *template file* is quietly destructive: gate false renders an empty file, and
-chezmoi responds by **removing the target**. Applying once with a session and
-again without it deletes the secret from `$HOME` — an expired session or an
-offline laptop is enough. The `.age` blobs never behaved that way.
-
-So a Proton-sourced secret has to take the same shape the blobs do: a guarded
-block in a `run_before` script that writes the file when the session is there and
-says so and moves on when it isn't, with the target listed in `.chezmoiignore`.
-Absence then leaves an already-written secret untouched, which is the whole
-point.
-
-Even with that shape it stays a *host-only* mechanism. A container and CI can
-never have a Proton session, so anything a container needs still has to be an
-`.age` blob.
+Containers and CI never have a session, which is why nothing they need comes
+from Proton: git there uses the forwarded ssh-agent, and the DevPod token
+arrives as an env file from the host.
 
 ## Dev containers
 
@@ -519,9 +430,8 @@ is valid). It skips option tokens — including the four value-taking globals
 `--context`, `--devpod-home`, `--log-output`, `--provider` — and treats the first
 non-option token as the subcommand. A future global flag that takes a separate
 value but isn't in that list would be misread as the subcommand and silently skip
-the token file. `~/.local/libexec/devpod` runs the binary unwrapped, and a machine
-whose age identity is still locked has no token file, so the wrapper passes
-straight through and containers bootstrap exactly as they did before.
+the token file. `~/.local/libexec/devpod` runs the binary unwrapped, and a
+machine with no token file yet passes straight through.
 
 Two limits worth knowing. The token's expiry is not checked by anything local:
 `mise run secrets-restore` only proves the age blob still decrypts, not that the
