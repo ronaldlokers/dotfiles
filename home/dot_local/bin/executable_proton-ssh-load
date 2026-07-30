@@ -55,21 +55,29 @@ ask_pat() {
 	[ "$asked" = 0 ] || return 1
 	asked=1
 
+	# Echo off before anything is printed: pass-cli info above is a real
+	# network round-trip, and a paste that lands in that window must never be
+	# echoed to the screen or land in scrollback. Restored on interrupt too —
+	# a Ctrl-C here would otherwise leave the terminal with no echo at all.
+	stty_save="$(stty -g 2>/dev/null)" || return 1
+	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
+	# A suspend (Ctrl-Z) leaves the tty echoing-off, but the interactive shell
+	# that takes the terminal back turns echo back on for itself; on `fg` that
+	# would otherwise leave the still-pending read running with echo on.
+	# Re-assert on both signals so a resume never inherits the wrong state.
+	trap 'stty -echo 2>/dev/null || true' TSTP CONT
+	stty -echo 2>/dev/null || true
+
 	if [ -n "${1:-}" ]; then
 		printf '%s\n' "$1" >&2
 	fi
 	printf 'Proton Pass PAT (Dotfiles vault, item "bootstrap PAT"): ' >&2
 
-	# Echo off around the read, restored on interrupt too — a Ctrl-C here would
-	# otherwise leave the terminal with no echo at all.
-	stty_save="$(stty -g 2>/dev/null)" || return 1
-	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
-	stty -echo 2>/dev/null || true
 	pat=""
 	# read returns non-zero at EOF, which set -e would take as fatal.
 	read -r pat || true
 	stty "$stty_save" 2>/dev/null || true
-	trap - INT TERM HUP
+	trap - INT TERM HUP TSTP CONT
 	printf '\n' >&2
 
 	[ -n "$pat" ]
@@ -125,10 +133,15 @@ if ! pass-cli info >/dev/null 2>&1; then
 	# working cached one.
 	if [ "$cache_it" = 1 ]; then
 		mkdir -p "$(dirname "$pat_file")"
+		pat_tmp="$pat_file.tmp.$$"
 		(
 			umask 077
-			printf '%s\n' "$pat" >"$pat_file"
+			printf '%s\n' "$pat" >"$pat_tmp"
 		)
+		mv -f "$pat_tmp" "$pat_file"
+		# umask only governs creation; an existing file with looser modes
+		# would otherwise survive the mv unchanged.
+		chmod 600 "$pat_file"
 		say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
 	fi
 	unset pat

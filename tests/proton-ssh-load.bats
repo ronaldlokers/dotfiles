@@ -219,3 +219,23 @@ EOF
 	[ ! -f "$PAT_FILE" ]
 	! grep -q "^login" "$STUB_LOG"
 }
+
+# Pins the gate as -t 0 (stdin), not -t 1 (stdout). stdin stays on the pty
+# script(1) provides, but the script's own stdout is redirected to a plain
+# file, so -t 0 and -t 1 disagree here. stty and read are bound to fd 0
+# regardless of the gate, so a pty-stdout/null-stdin variant of this test
+# cannot distinguish the two checks: stty -g fails on a non-tty fd 0 and
+# masks a wrong `-t 1` before anything prints. This polarity is the one that
+# actually discriminates: a real terminal at the keyboard (stdin) must still
+# get prompted even when stdout happens to be piped elsewhere (a log, `| tee`,
+# a redirected devpod exec) — that has nothing to do with whether anyone can
+# answer. A future edit to `-t 1` would silently stop prompting here even
+# though the terminal is genuinely interactive.
+@test "the prompt is gated on stdin being a terminal, not stdout" {
+	cmd="env HOME=\"$HOME\" STUB_LOG=\"$STUB_LOG\" PATH=\"$BIN:$PATH\" PASS_INFO_RC=1 sh \"$SCRIPT\" --quiet --prompt 1>/dev/null"
+	run script -qec "$cmd" /dev/null <<<"pst_typed"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_typed" ]
+	grep -q "^login" "$STUB_LOG"
+}
