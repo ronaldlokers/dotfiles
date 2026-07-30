@@ -5,7 +5,22 @@
 set -eu
 
 quiet=0
-[ "${1:-}" = "--quiet" ] && quiet=1
+prompt=0
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--quiet) quiet=1 ;;
+	# Only the apply path passes this. The shell rc must not, or every new
+	# terminal with an empty agent would block on the prompt.
+	--prompt) prompt=1 ;;
+	*)
+		echo "proton-ssh-load: unknown option: $1" >&2
+		exit 2
+		;;
+	esac
+	shift
+done
+
+export quiet prompt
 
 say() {
 	[ "$quiet" = 1 ] || echo "$@"

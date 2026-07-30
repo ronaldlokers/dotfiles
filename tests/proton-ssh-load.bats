@@ -131,3 +131,20 @@ run_load() {
 	# without --quiet the failing load is not swallowed
 	[ "$status" -ne 0 ]
 }
+
+@test "rejects an unknown option" {
+	run env HOME="$HOME" PATH="$BIN:$PATH" sh "$SCRIPT" --nope
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"unknown option: --nope"* ]]
+}
+
+@test "accepts the flags in either order" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --prompt --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --quiet --prompt </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
