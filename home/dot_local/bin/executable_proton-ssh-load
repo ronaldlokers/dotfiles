@@ -20,8 +20,6 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 
-export quiet prompt
-
 say() {
 	[ "$quiet" = 1 ] || echo "$@"
 }
@@ -39,6 +37,49 @@ fi
 vault="Dotfiles"
 pat_file="$HOME/.config/pass-cli-bootstrap-pat"
 
+# ask_pat assigns here; declared up front because it is also the flow's
+# working variable.
+pat=""
+asked=0
+
+# Ask for the token on the terminal. Deliberately ignores --quiet: the apply
+# path passes it, and a hang with no visible question is worse than noise.
+# Refuses without --prompt so the shell rc never blocks a new terminal, and
+# without a tty so `chezmoi apply </dev/null` (CI, devpod) never blocks either.
+# /dev/tty is readable even when stdin is redirected, so `-t 0` is the gate and
+# stdin is what gets read.
+ask_pat() {
+	[ "$prompt" = 1 ] || return 1
+	[ -t 0 ] || return 1
+	# One prompt per run: no retry loop.
+	[ "$asked" = 0 ] || return 1
+	asked=1
+
+	if [ -n "${1:-}" ]; then
+		printf '%s\n' "$1" >&2
+	fi
+	printf 'Proton Pass PAT (Dotfiles vault, item "bootstrap PAT"): ' >&2
+
+	# Echo off around the read, restored on interrupt too — a Ctrl-C here would
+	# otherwise leave the terminal with no echo at all.
+	stty_save="$(stty -g 2>/dev/null)" || return 1
+	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
+	stty -echo 2>/dev/null || true
+	pat=""
+	# read returns non-zero at EOF, which set -e would take as fatal.
+	read -r pat || true
+	stty "$stty_save" 2>/dev/null || true
+	trap - INT TERM HUP
+	printf '\n' >&2
+
+	[ -n "$pat" ]
+}
+
+# Never as --personal-access-token: a flag value is visible in `ps`.
+try_login() {
+	PROTON_PASS_PERSONAL_ACCESS_TOKEN="$1" pass-cli login >/dev/null 2>&1
+}
+
 # Authenticate if the session lapsed. Token comes from the environment on a
 # fresh machine and is cached at $pat_file after. Passed via the environment,
 # never as --personal-access-token, whose value shows up in `ps`.
@@ -50,6 +91,13 @@ if ! pass-cli info >/dev/null 2>&1; then
 		cache_it=0
 	fi
 
+	# Nothing to go on: ask, if this caller is allowed to.
+	if [ -z "$pat" ]; then
+		if ask_pat; then
+			cache_it=1
+		fi
+	fi
+
 	if [ -z "$pat" ]; then
 		say "proton-ssh-load: no Proton Pass session."
 		say "proton-ssh-load: run 'pass-cli login', or set"
@@ -58,11 +106,23 @@ if ! pass-cli info >/dev/null 2>&1; then
 		exit 0
 	fi
 
-	if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$pat" pass-cli login >/dev/null 2>&1; then
-		say "proton-ssh-load: could not authenticate to Proton Pass"
-		exit 0
+	if ! try_login "$pat"; then
+		# The token we had was rejected. One more chance on a terminal: this is
+		# how a token rotated in the vault heals itself on the next interactive
+		# apply. ask_pat prints the notice only when it is actually going to
+		# prompt, so the shell-rc path stays silent.
+		pat=""
+		if ask_pat "proton-ssh-load: that token was rejected." &&
+			try_login "$pat"; then
+			cache_it=1
+		else
+			say "proton-ssh-load: could not authenticate to Proton Pass"
+			exit 0
+		fi
 	fi
 
+	# Only after a successful login, so a rejected token never replaces a
+	# working cached one.
 	if [ "$cache_it" = 1 ]; then
 		mkdir -p "$(dirname "$pat_file")"
 		(

@@ -165,3 +165,57 @@ EOF
 	[[ "$output" == *"harness-tty: yes"* ]]
 	[[ "$output" == *"harness-read: [typed_value]"* ]]
 }
+
+@test "prompts for the token on a terminal and caches it" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+	grep -q "^login" "$STUB_LOG"
+	grep -q "ssh-agent load" "$STUB_LOG"
+	[ "$(cat "$PAT_FILE")" = "pst_typed" ]
+	# the flag invariant, extended to the typed path
+	! grep -q -- "--personal-access-token" "$STUB_LOG"
+	! grep -q "pst_typed" "$STUB_LOG"
+}
+
+@test "the typed token is cached unreadable to anyone else" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$PAT_FILE")" = "600" ]
+}
+
+# The apply path passes --quiet. A prompt suppressed there is an unexplained
+# hang, which is worse than the noise --quiet exists to remove.
+@test "the prompt is visible even under --quiet" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --quiet --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+}
+
+@test "empty input at the prompt writes no cache" {
+	run_load_tty "" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ ! -f "$PAT_FILE" ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# This is the whole reason the flag exists: ssh-agent.sh passes bare --quiet
+# from dot_zshrc on every new shell with an empty agent.
+@test "bare --quiet never prompts, even on a terminal" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --quiet
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"Proton Pass PAT"* ]]
+	[ ! -f "$PAT_FILE" ]
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# CI, mise run verify and devpod up all apply with stdin closed.
+@test "--prompt without a terminal does not prompt" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+		sh "$SCRIPT" --quiet --prompt </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ ! -f "$PAT_FILE" ]
+	! grep -q "^login" "$STUB_LOG"
+}
