@@ -60,3 +60,18 @@ rtk proxy <cmd>       # run raw command, unfiltered (debugging)
 Name collision: if `rtk gain` fails, wrong binary installed
 (reachingforthejack/rtk = Rust Type Kit). Correct one is `rtk-ai/rtk`, pinned as
 `rtk` in `dot_config/mise/config.toml`.
+
+## Graphify
+
+Turn a codebase into a queryable knowledge graph. `/graphify .` build it, then
+`graphify query "..."`, `graphify path A B`, `graphify god-nodes`,
+`graphify affected X` against it. `graphify update <path>` re-extract after code
+change, no LLM needed. Everything land in `graphify-out/` — gitignore it.
+
+Set up code-only: local AST parsing, no API key, no token cost. Doc/PDF/image
+extraction exists but need an LLM key, deliberately not configured.
+
+CLI pinned as `pipx:graphifyy` in `dot_config/mise/config.toml`. Skill vendored
+into `dot_claude/skills/graphify/`. Do **not** run `graphify install` — it write
+straight into `$HOME`, over chezmoi. Upgrade = bump the mise pin, rerun install
+into a scratch HOME, `chezmoi add` the result.
