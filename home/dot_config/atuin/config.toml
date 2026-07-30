@@ -1,17 +1,11 @@
-# atuin runs local-only. No account, no sync key in this repo, no network call
-# when a shell starts — which also means a devpod container keeps its own
-# database and loses it when the container goes. That trade is deliberate: what
-# is being bought here is search quality and directory awareness, not history
-# that follows the machine.
+# Local-only: no account, no sync, no network call at shell start. A container
+# keeps its own database and loses it with the container.
 auto_sync = false
 
-# mise owns the version (dot_config/mise/config.toml) and Renovate bumps it. A
-# self-update prompt from atuin itself would be fighting that.
+# mise owns the version, so silence atuin's own update prompt.
 update_check = false
 
-# Up searches only this directory's history; Ctrl-R searches everything. The
-# split is the whole reason for the Up binding — reaching for the last command
-# run *here* is a different question from searching all history.
+# Up searches this directory only; Ctrl-R searches everything.
 filter_mode_shell_up_key_binding = "directory"
 
 # Enter puts the selected command on the command line instead of running it,

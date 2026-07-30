@@ -1,30 +1,18 @@
 #!/bin/sh
 # DevPod's host-side configuration: which provider runs containers, which IDE it
-# opens, and the context options every workspace inherits. The binary itself is
-# an external (.chezmoiexternals/devpod.toml); this is the setup that used to be
-# three manual commands after installing it.
+# opens, and the context options every workspace inherits. The binary comes from
+# .chezmoiexternals/devpod.toml.
 #
-# Driven through the CLI rather than by managing ~/.devpod/config.yaml as a file.
-# DevPod writes that file itself — `initialized: true` and `creationTimestamp`
-# under the provider entry are its own bookkeeping — so a managed copy would be
-# reverted on every apply and show as permanent drift in `chezmoi status`.
+# Driven through the CLI: DevPod writes ~/.devpod/config.yaml itself, so a
+# managed copy would show as permanent drift.
 #
-# run_onchange, not plain run_after: a settled rerun still costs three
-# invocations of an 82 MB static binary (measured at 2.2s) on every single
-# apply, and run_onchange only pays that when the rendered script changes —
-# not because a rerun would be unsafe (the calls below are themselves
-# idempotent). The trade-off: unlike the plain-run_after host-packages
-# script, this one does not reconverge. `rm -rf ~/.devpod` followed by
-# `chezmoi apply` restores nothing, because the rendered script is
-# unchanged; recovery needs `chezmoi state delete-bucket` or a no-op edit to
-# this file.
+# run_onchange, not run_after, because a settled rerun costs 2.2s. The cost is
+# that it does not reconverge — after `rm -rf ~/.devpod`, recovery needs
+# `chezmoi state delete-bucket` or an edit to this file.
 set -eu
 
-# Same container test as the DevPod external and the host-packages script, from
-# .chezmoitemplates/is-container so the three can't drift apart. DevPod belongs
-# on the host that starts containers; inside one the binary isn't even installed.
-# The pragmas are unavoidable — CI lints this template, not the rendered script,
-# so shellcheck sees a literal open-brace pair and an assignment it can't follow.
+# Host-only, same gate as the external. The pragmas are unavoidable: CI lints
+# this template, not the rendered script.
 # shellcheck disable=SC1083
 is_container={{ includeTemplate "is-container" . }}
 # shellcheck disable=SC2154
@@ -33,11 +21,8 @@ if [ "$is_container" = "true" ]; then
     exit 0
 fi
 
-# Same platform test as the DevPod external (.chezmoiexternals/devpod.toml),
-# from .chezmoitemplates/is-devpod-platform so the two can't drift apart.
-# The asset it downloads is linux-amd64 only, so on any other platform there
-# is deliberately no binary. Needed below to tell that apart from a binary
-# that should be there and isn't.
+# Same platform gate as the external: the asset is linux-amd64 only, so this
+# tells "no binary by design" apart from "binary missing".
 # shellcheck disable=SC1083
 supported_platform={{ includeTemplate "is-devpod-platform" . }}
 

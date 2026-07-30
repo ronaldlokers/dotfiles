@@ -1,33 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# patsub_replacement (on by default since bash 5.2) makes a bare & in the
-# replacement of ${var//pattern/replacement} stand for the matched text, the
-# same way sed's & does. Turned off so the substitution near the bottom of
-# this script is always purely literal, regardless of this bash's default.
-# The option itself only exists on bash 5.2+; older bashes don't have it,
-# but they don't need it either — & is already literal there, so a failed
-# `shopt -u` on an unknown option is fine to swallow.
+# patsub_replacement (bash 5.2+) makes a bare & in a ${var//x/y} replacement
+# expand to the match. Off, so the substitution below stays literal. Older
+# bashes lack the option and don't need it.
 shopt -u patsub_replacement 2>/dev/null || true
 
 # Scaffold a project devcontainer from the managed starter in
-# ~/.local/share/devcontainer-template. Exists because the alternative is copying
-# .devcontainer/ out of whichever project last had one and deleting its
-# project-specific parts by hand — which is how the template drifts.
+# ~/.local/share/devcontainer-template.
 
 # Hard-coded, not ${XDG_DATA_HOME:-$HOME/.local/share}: chezmoi maps
 # dot_local/share/... to $HOME/.local/share/... unconditionally, ignoring
-# XDG_DATA_HOME. Deferring to XDG_DATA_HOME here would only diverge from
-# where chezmoi actually writes — and if it ever did, the "run 'chezmoi
-# apply' first" advice below could never fix it, since apply keeps writing
-# to the other path.
+# XDG_DATA_HOME.
 template="$HOME/.local/share/devcontainer-template"
 target=".devcontainer"
 force=false
 
-# Writes to stdout: requested help (-h/--help) is not an error and belongs
-# there. The unknown-argument path below is the error case, and redirects
-# this call to stderr itself instead.
+# stdout: requested help is not an error. The unknown-argument path redirects
+# to stderr itself.
 usage() {
 	cat <<'EOF'
 usage: devcontainer-init [--force]
@@ -60,11 +50,8 @@ if [ ! -d "$template" ]; then
 	exit 1
 fi
 
-# Both files must exist and be non-empty before anything is written. This
-# catches a missing or zero-length file — the template outright absent, or
-# caught mid `chezmoi apply` before any content landed — but not a file
-# truncated partway through with some bytes already written; that case is
-# rarer and not worth a content-aware check here.
+# All template files must exist and be non-empty before anything is written,
+# so a half-applied template does not produce a half-written project.
 if [ ! -s "$template/devcontainer.json" ] || [ ! -s "$template/post-create.sh" ] ||
 	[ ! -s "$template/Dockerfile" ]; then
 	echo "incomplete template at $template — expected devcontainer.json, post-create.sh and Dockerfile" >&2
@@ -75,8 +62,8 @@ fi
 # should show up as WalkFit in `devpod list`, not walkfit.
 name="$(basename "$PWD")"
 
-# A name with a double quote, a backslash, or a control character (a newline
-# included) can't be dropped raw into the JSON "name" field below. This
+# A name with a quote, backslash or control character cannot go raw into the
+# JSON "name" field. This
 # script deliberately doesn't escape it — refusing is honest, the case is
 # rare, and renaming the directory is the real fix.
 if [[ "$name" == *'"'* || "$name" == *'\'* || "$name" =~ [[:cntrl:]] ]]; then

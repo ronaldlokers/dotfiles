@@ -90,8 +90,8 @@ stays on, so the next commit fails loudly rather than going unsigned.
 
 ## YubiKey
 
-Used only for touch-to-sudo now; the PIV age identity it used to hold is
-retired. Tooling comes from the host package list.
+Used for touch-to-sudo. Tooling comes from the host package list; PIV holds
+nothing this repo depends on.
 
 The key carries **three unrelated PINs** — PIV, FIDO2 (sudo, passkeys) and
 OpenPGP (unused). **FIDO2 has no PUK:** exhausting it forces a reset that

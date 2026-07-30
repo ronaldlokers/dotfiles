@@ -1,14 +1,7 @@
-# Shell history as a tv channel, backed by atuin's database rather than a
-# history file. This is ours, not upstream's — tv ships `bash-history` and
-# `zsh-history` channels that read the raw files, which here are a partial
-# record: `HISTCONTROL=ignorespace` keeps space-prefixed commands out, and
-# bash-preexec's rewrite of it is why dot_bashrc re-asserts the value.
-#
-# Deliberately NOT bound to Ctrl-R — that stays atuin's own TUI, which does
-# filter modes, time syntax and stats better than a channel can express. This
-# exists for the questions atuin's TUI is awkward at ("what did I run in this
-# directory", "what failed") and for reaching history without leaving the
-# picker already open on Ctrl-T.
+# Shell history as a tv channel, reading atuin's database rather than the raw
+# history files (which are partial — HISTCONTROL=ignorespace). Not bound to
+# Ctrl-R: that stays atuin's own TUI. This covers "what did I run here" and
+# "what failed", reachable from the Ctrl-T menu.
 #
 # ATUIN_SESSION is set by atuin's shell init, but a tv launched somewhere it
 # isn't (a tmux popup, say) would otherwise make every source error out, so
