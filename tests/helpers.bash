@@ -62,3 +62,40 @@ render_template() {
 	PATH="$render_path" chezmoi execute-template --source "$BATS_TEST_DIRNAME/.." \
 		<"$tmpl" >"$out"
 }
+
+# Runs $SCRIPT under a pty, feeding $1 as the typed answer, so the code behind
+# `[ -t 0 ]` is reachable. Everything up to a literal `--` is an env assignment;
+# everything after it is a flag for the script itself. run_load cannot do the
+# latter, which is why this exists alongside it.
+#
+# Caveat for anyone writing assertions: the pty echoes the piped input before
+# the script gets a chance to turn echo off, so the typed token DOES appear in
+# $output. Assert the token's absence against $STUB_LOG (the argv log), never
+# against $output.
+run_load_tty() {
+	local typed="$1"
+	shift
+
+	local envs=() flags=() past_marker=0 arg
+	for arg in "$@"; do
+		if [ "$arg" = "--" ]; then
+			past_marker=1
+			continue
+		fi
+		if [ "$past_marker" = 0 ]; then
+			envs+=("$arg")
+		else
+			flags+=("$arg")
+		fi
+	done
+
+	# script -c takes one string, so every word is quoted individually rather
+	# than relying on the caller to have got the quoting right.
+	local cmd="" word
+	for word in env "HOME=$HOME" "STUB_LOG=$STUB_LOG" "PATH=$BIN:$PATH" \
+		${envs[@]+"${envs[@]}"} sh "$SCRIPT" ${flags[@]+"${flags[@]}"}; do
+		cmd="$cmd $(printf '%q' "$word")"
+	done
+
+	run script -qec "$cmd" /dev/null <<<"$typed"
+}

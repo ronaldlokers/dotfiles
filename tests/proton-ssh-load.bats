@@ -148,3 +148,20 @@ run_load() {
 	[ "$status" -eq 0 ]
 	[ -z "$output" ]
 }
+
+# Guards the harness itself: if script(1) ever stops handing the child a pty,
+# every prompt test below would silently pass by never prompting.
+@test "the pty harness really presents a terminal" {
+	probe="$BATS_TEST_TMPDIR/probe.sh"
+	cat >"$probe" <<'EOF'
+#!/bin/sh
+[ -t 0 ] && echo "harness-tty: yes" || echo "harness-tty: no"
+read -r line || true
+echo "harness-read: [$line]"
+EOF
+	SCRIPT="$probe"
+	run_load_tty "typed_value"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"harness-tty: yes"* ]]
+	[[ "$output" == *"harness-read: [typed_value]"* ]]
+}
