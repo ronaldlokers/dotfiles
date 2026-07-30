@@ -155,3 +155,24 @@ setup_file() {
 	grep -q -- "--item-title sops age keys" "$STUB_LOG"
 	grep -q -- "--item-title devpod dotfiles-env" "$STUB_LOG"
 }
+
+# The apply path is the one caller that should prompt. ssh-agent.sh must not,
+# so this pins which flags cross the boundary.
+@test "hands the prompt flag to proton-ssh-load" {
+	PSL_LOG="$BATS_TEST_TMPDIR/psl.log"
+	cat >"$BIN/proton-ssh-load" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$PSL_LOG"
+STUB
+	chmod 755 "$BIN/proton-ssh-load"
+
+	# has-proton-session runs `pass-cli info` at render time; it has to come
+	# back non-zero here or the rendered script skips the whole branch.
+	export PASS_INFO_RC=1 PSL_LOG
+	render_template "$TMPL" "$SCRIPT" "$BIN:$PATH"
+
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		PSL_LOG="$PSL_LOG" PASS_INFO_RC=1 sh "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	grep -q -- "--quiet --prompt" "$PSL_LOG"
+}
