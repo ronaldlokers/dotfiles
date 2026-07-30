@@ -155,3 +155,39 @@ setup_file() {
 	grep -q -- "--item-title sops age keys" "$STUB_LOG"
 	grep -q -- "--item-title devpod dotfiles-env" "$STUB_LOG"
 }
+
+# The apply path is the one caller that should prompt. ssh-agent.sh must not,
+# so this pins which flags cross the boundary.
+@test "hands the prompt flag to proton-ssh-load" {
+	PSL_LOG="$BATS_TEST_TMPDIR/psl.log"
+	cat >"$BIN/proton-ssh-load" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$PSL_LOG"
+STUB
+	chmod 755 "$BIN/proton-ssh-load"
+
+	# has-proton-session runs `pass-cli info` at render time; it has to come
+	# back non-zero here or the rendered script skips the whole branch.
+	export PASS_INFO_RC=1 PSL_LOG
+	render_template "$TMPL" "$SCRIPT" "$BIN:$PATH"
+
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		PSL_LOG="$PSL_LOG" PASS_INFO_RC=1 sh "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	grep -q -- "--quiet --prompt" "$PSL_LOG"
+}
+
+# The other half of the boundary above, and the higher-consequence one: this
+# runs on every new terminal with an empty agent, so --prompt here would block
+# every shell startup on a hung read. Only a comment enforced this before —
+# nothing failed if someone added the flag. A static check on the invocation
+# is enough; sourcing the whole rc would need a live shell and a real or faked
+# agent, for no more coverage than reading the line it calls proton-ssh-load
+# from.
+@test "ssh-agent.sh never passes --prompt to proton-ssh-load" {
+	rc="$BATS_TEST_DIRNAME/../home/dot_config/shell/ssh-agent.sh"
+	line="$(grep -n 'proton-ssh-load' "$rc")"
+	[ -n "$line" ]
+	[[ "$line" == *"--quiet"* ]]
+	[[ "$line" != *"--prompt"* ]]
+}

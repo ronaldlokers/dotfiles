@@ -229,10 +229,15 @@ TTY**. Every non-interactive apply, meaning every timer, script and agent-driven
 run, skipped every secret and printed "run this again from an interactive
 shell". A machine could sit for weeks with stale secrets and a green apply.
 
-A scoped access token has no TTY requirement, so unattended applies now derive
-exactly what interactive ones do. `run_after_14-restore-secrets.sh.tmpl` fetches
-each item on every apply and rewrites the target only when it differs, which
-also means rotating a secret in the vault propagates without touching this repo.
+A scoped access token has no TTY requirement, so unattended applies derive
+secrets exactly like interactive ones do wherever a token is already reachable —
+from the environment or the on-disk cache. `run_after_14-restore-secrets.sh.tmpl`
+fetches each item on every apply and rewrites the target only when it differs,
+which also means rotating a secret in the vault propagates without touching this
+repo. The one case that still splits the two: a machine with no token anywhere.
+There, `proton-ssh-load --prompt` lets an interactive apply ask for it on the
+terminal and derive secrets anyway, while an unattended apply — which must never
+block on a prompt — still cannot.
 
 **What the change costs, stated plainly:** the token is cached at
 `~/.config/pass-cli-bootstrap-pat`, mode 0600. Disk access alone is now enough to

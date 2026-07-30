@@ -73,6 +73,30 @@ run_load() {
 	[ "$(stat -c %a "$PAT_FILE")" = "600" ]
 }
 
+# Mirrors "leaves no temp file behind after a failed fetch" in
+# restore-secrets.bats: a write that cannot land must not leave a plaintext
+# token sitting in a *.tmp.* file forever. The temp write itself must
+# succeed here -- only the rename must fail -- so this shadows `mv` with a
+# stub that always fails, scoped to this test and removed again right after.
+# chmod 500 on the parent directory (tried first) blocks the temp file's
+# creation before it ever exists, which cannot distinguish "the cleanup ran"
+# from "there was nothing to clean up" -- it passes with the rm -f deleted.
+@test "leaves no temp file behind after a failed cache write" {
+	cat >"$BIN/mv" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+	chmod 755 "$BIN/mv"
+
+	run_load PASS_INFO_RC=1 PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_from_env
+
+	rm -f "$BIN/mv"
+
+	[ "$status" -eq 0 ]
+	[ ! -f "$PAT_FILE" ]
+	[ -z "$(find "$(dirname "$PAT_FILE")" -name '*.tmp.*' -print -quit 2>/dev/null)" ]
+}
+
 @test "falls back to the cached token when the environment has none" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_cached\n' >"$PAT_FILE"
@@ -130,4 +154,230 @@ run_load() {
 		sh "$SCRIPT"
 	# without --quiet the failing load is not swallowed
 	[ "$status" -ne 0 ]
+}
+
+@test "rejects an unknown option" {
+	run env HOME="$HOME" PATH="$BIN:$PATH" sh "$SCRIPT" --nope
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"unknown option: --nope"* ]]
+}
+
+@test "accepts the flags in either order" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --prompt --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --quiet --prompt </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+# Guards the harness itself: if script(1) ever stops handing the child a pty,
+# every prompt test below would silently pass by never prompting.
+@test "the pty harness really presents a terminal" {
+	probe="$BATS_TEST_TMPDIR/probe.sh"
+	cat >"$probe" <<'EOF'
+#!/bin/sh
+[ -t 0 ] && echo "harness-tty: yes" || echo "harness-tty: no"
+read -r line || true
+echo "harness-read: [$line]"
+EOF
+	SCRIPT="$probe"
+	run_load_tty "typed_value"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"harness-tty: yes"* ]]
+	[[ "$output" == *"harness-read: [typed_value]"* ]]
+}
+
+@test "prompts for the token on a terminal and caches it" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+	grep -q "^login" "$STUB_LOG"
+	grep -q "ssh-agent load" "$STUB_LOG"
+	[ "$(cat "$PAT_FILE")" = "pst_typed" ]
+	# the flag invariant, extended to the typed path
+	! grep -q -- "--personal-access-token" "$STUB_LOG"
+	! grep -q "pst_typed" "$STUB_LOG"
+}
+
+@test "the typed token is cached unreadable to anyone else" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$PAT_FILE")" = "600" ]
+}
+
+# The apply path passes --quiet. A prompt suppressed there is an unexplained
+# hang, which is worse than the noise --quiet exists to remove.
+@test "the prompt is visible even under --quiet" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --quiet --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+}
+
+@test "empty input at the prompt writes no cache" {
+	run_load_tty "" PASS_INFO_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ ! -f "$PAT_FILE" ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# This is the whole reason the flag exists: ssh-agent.sh passes bare --quiet
+# from dot_zshrc on every new shell with an empty agent.
+@test "bare --quiet never prompts, even on a terminal" {
+	run_load_tty "pst_typed" PASS_INFO_RC=1 -- --quiet
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"Proton Pass PAT"* ]]
+	[ ! -f "$PAT_FILE" ]
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# CI, mise run verify and devpod up all apply with stdin closed.
+@test "--prompt without a terminal does not prompt" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+		sh "$SCRIPT" --quiet --prompt </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ ! -f "$PAT_FILE" ]
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# Pins the gate as -t 0 (stdin), not -t 1 (stdout). stdin stays on the pty
+# script(1) provides, but the script's own stdout is redirected to a plain
+# file, so -t 0 and -t 1 disagree here. stty and read are bound to fd 0
+# regardless of the gate, so a pty-stdout/null-stdin variant of this test
+# cannot distinguish the two checks: stty -g fails on a non-tty fd 0 and
+# masks a wrong `-t 1` before anything prints. This polarity is the one that
+# actually discriminates: a real terminal at the keyboard (stdin) must still
+# get prompted even when stdout happens to be piped elsewhere (a log, `| tee`,
+# a redirected devpod exec) — that has nothing to do with whether anyone can
+# answer. A future edit to `-t 1` would silently stop prompting here even
+# though the terminal is genuinely interactive.
+@test "the prompt is gated on stdin being a terminal, not stdout" {
+	cmd="env HOME=\"$HOME\" STUB_LOG=\"$STUB_LOG\" PATH=\"$BIN:$PATH\" PASS_INFO_RC=1 sh \"$SCRIPT\" --quiet --prompt 1>/dev/null"
+	run script -qec "$cmd" /dev/null <<<"pst_typed"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Proton Pass PAT"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_typed" ]
+	grep -q "^login" "$STUB_LOG"
+}
+
+# No existing test pins that echo is actually off while the token is typed:
+# replacing the `stty -echo` line with a no-op still passed every test in this
+# file. The reason is run_load_tty (and the herestring shape used two tests
+# above): both feed the typed answer through a bash herestring at process
+# start, so the bytes are already sitting in the pty's input queue before the
+# script has even forked, let alone reached `stty -echo` -- echo state cannot
+# affect what those harnesses observe. helpers.bash documents the token
+# showing up in $output as an expected artifact of exactly that timing.
+#
+# This test deliberately does NOT use run_load_tty: it needs the typed answer
+# to arrive strictly *after* the prompt is printed and echo has been turned
+# off, not before the script even starts. `sleep 1` clears process startup
+# comfortably -- the stub `pass-cli info` returns instantly, so a fork and
+# exec is the only thing that has to happen before the delayed write lands.
+@test "the typed token is never echoed to the terminal" {
+	cmd="env HOME=\"$HOME\" STUB_LOG=\"$STUB_LOG\" PATH=\"$BIN:$PATH\" PASS_INFO_RC=1 sh \"$SCRIPT\" --quiet --prompt"
+	run script -qec "$cmd" /dev/null < <(sleep 1; printf '%s\n' "pst_typed_secret")
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"pst_typed_secret"* ]]
+}
+
+@test "a rejected cached token re-prompts and the new one replaces it" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "pst_fresh" PASS_INFO_RC=1 PASS_LOGIN_BAD_TOKEN=pst_stale -- --prompt
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"was rejected"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_fresh" ]
+	grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# Stale beats truncated, the same rule restore() follows. The two extra
+# assertions (rejection notice, two distinct login attempts) exist because
+# without them this test kept passing even when the retry branch itself was
+# deleted outright: the cache-unchanged and final-message checks alone cannot
+# tell "never retried" apart from "retried and failed again" — both leave the
+# cache untouched and print the same final message.
+@test "a rejected cached token survives a rejected replacement" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "pst_also_bad" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	[[ "$output" == *"could not authenticate"* ]]
+	! grep -q "ssh-agent load" "$STUB_LOG"
+	# The retry actually happened: the rejection notice was printed, and a
+	# second login was attempted (the rejected typed replacement), not just
+	# the first (the rejected cached token).
+	[[ "$output" == *"was rejected"* ]]
+	[ "$(grep -c '^login' "$STUB_LOG")" -eq 2 ]
+}
+
+# The "prompted already?" guard is what bounds this, not the token's source.
+@test "a rejected environment token re-prompts too" {
+	run_load_tty "pst_fresh" PASS_INFO_RC=1 \
+		PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_env_bad \
+		PASS_LOGIN_BAD_TOKEN=pst_env_bad -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_fresh" ]
+}
+
+# Counted through the stub log rather than the prompt text, because the prompt
+# is printed without a trailing newline and does not grep by line.
+#
+# Feeds TWO lines, not one: a single line hits EOF on the (hypothetical)
+# second ask_pat call regardless of whether the "asked already?" guard
+# exists, so a one-line feed cannot tell "guarded" apart from "unguarded" —
+# both end up with exactly one login attempt. A second line only gets
+# consumed, and a second login only gets attempted, if the guard is missing.
+@test "prompts at most once" {
+	run_load_tty $'pst_first_bad\npst_second' PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
+	[ "$status" -eq 0 ]
+	[ "$(grep -c '^login' "$STUB_LOG")" -eq 1 ]
+	[ ! -f "$PAT_FILE" ]
+	[[ "$output" == *"could not authenticate"* ]]
+}
+
+# A rejected cached token must not nag on every new shell. This is the real
+# shell-startup shape: dot_zshrc's ssh-agent.sh calls `proton-ssh-load --quiet`
+# on every new terminal with an empty agent, and stdin there is a real tty.
+#
+# Cannot assert `[ -z "$output" ]` here: run_load_tty's pty echoes the fed
+# answer back into $output as soon as it is written, whether or not the
+# script ever reads it (see the "Caveat" note on run_load_tty in
+# helpers.bash) — and this path never reads stdin at all, since --prompt is
+# not passed. Asserting exact emptiness would fail on that echo alone, for a
+# reason that has nothing to do with the script's own output. Assert the
+# absence of the script's own messages instead, the same way the sibling test
+# "bare --quiet never prompts, even on a terminal" (above) already does.
+@test "a rejected token is silent without --prompt" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run_load_tty "unused" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --quiet
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"Proton Pass PAT"* ]]
+	[[ "$output" != *"was rejected"* ]]
+	# --quiet suppresses the final "could not authenticate" too, not just the
+	# prompt; the non-tty sibling below already pins this via [ -z "$output" ],
+	# but this shape needs its own check since it can't assert exact emptiness.
+	[[ "$output" != *"could not authenticate"* ]]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	! grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# The CI / chezmoi-apply shape: stdin is closed, not a tty, so there is no pty
+# to echo anything and $output really must be empty. Kept alongside the tty
+# version above rather than replacing it — each pins a different invocation
+# shape, and neither's coverage substitutes for the other's.
+@test "a rejected token is silent without --prompt and without a tty" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_stale\n' >"$PAT_FILE"
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+		PASS_LOGIN_RC=1 sh "$SCRIPT" --quiet
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
 }

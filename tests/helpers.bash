@@ -10,6 +10,8 @@
 #
 #   PASS_INFO_RC   exit code for `pass-cli info`      (default 0 — session live)
 #   PASS_LOGIN_RC  exit code for `pass-cli login`     (default 0)
+#   PASS_LOGIN_BAD_TOKEN  a token value that `pass-cli login` rejects; any
+#                         other token falls through to PASS_LOGIN_RC
 #   PASS_VIEW_RC   exit code for `pass-cli item view` (default 0)
 #   PASS_SSH_RC    exit code for `pass-cli ssh-agent` (default 0)
 #   PASS_ITEM_DIR  directory of files named after item titles; the matching
@@ -28,6 +30,13 @@ info)
 	exit "${PASS_INFO_RC:-0}"
 	;;
 login)
+	# Lets a test reject one specific token and accept the next, which
+	# PASS_LOGIN_RC cannot express. The token arrives in the environment, so
+	# this is also the only place the stub can see it at all.
+	if [ -n "${PASS_LOGIN_BAD_TOKEN:-}" ] &&
+		[ "${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}" = "$PASS_LOGIN_BAD_TOKEN" ]; then
+		exit 1
+	fi
 	exit "${PASS_LOGIN_RC:-0}"
 	;;
 ssh-agent)
@@ -61,4 +70,41 @@ render_template() {
 	local tmpl="$1" out="$2" render_path="$3"
 	PATH="$render_path" chezmoi execute-template --source "$BATS_TEST_DIRNAME/.." \
 		<"$tmpl" >"$out"
+}
+
+# Runs $SCRIPT under a pty, feeding $1 as the typed answer, so the code behind
+# `[ -t 0 ]` is reachable. Everything up to a literal `--` is an env assignment;
+# everything after it is a flag for the script itself. run_load cannot do the
+# latter, which is why this exists alongside it.
+#
+# Caveat for anyone writing assertions: the pty echoes the piped input before
+# the script gets a chance to turn echo off, so the typed token DOES appear in
+# $output. Assert the token's absence against $STUB_LOG (the argv log), never
+# against $output.
+run_load_tty() {
+	local typed="$1"
+	shift
+
+	local envs=() flags=() past_marker=0 arg
+	for arg in "$@"; do
+		if [ "$arg" = "--" ]; then
+			past_marker=1
+			continue
+		fi
+		if [ "$past_marker" = 0 ]; then
+			envs+=("$arg")
+		else
+			flags+=("$arg")
+		fi
+	done
+
+	# script -c takes one string, so every word is quoted individually rather
+	# than relying on the caller to have got the quoting right.
+	local cmd="" word
+	for word in env "HOME=$HOME" "STUB_LOG=$STUB_LOG" "PATH=$BIN:$PATH" \
+		${envs[@]+"${envs[@]}"} sh "$SCRIPT" ${flags[@]+"${flags[@]}"}; do
+		cmd="$cmd $(printf '%q' "$word")"
+	done
+
+	run script -qec "$cmd" /dev/null <<<"$typed"
 }

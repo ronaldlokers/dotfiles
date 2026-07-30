@@ -5,7 +5,20 @@
 set -eu
 
 quiet=0
-[ "${1:-}" = "--quiet" ] && quiet=1
+prompt=0
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--quiet) quiet=1 ;;
+	# Only the apply path passes this. The shell rc must not, or every new
+	# terminal with an empty agent would block on the prompt.
+	--prompt) prompt=1 ;;
+	*)
+		echo "proton-ssh-load: unknown option: $1" >&2
+		exit 2
+		;;
+	esac
+	shift
+done
 
 say() {
 	[ "$quiet" = 1 ] || echo "$@"
@@ -24,6 +37,72 @@ fi
 vault="Dotfiles"
 pat_file="$HOME/.config/pass-cli-bootstrap-pat"
 
+# ask_pat assigns here; declared up front because it is also the flow's
+# working variable.
+pat=""
+asked=0
+
+# Ask for the token on the terminal. Deliberately ignores --quiet: the apply
+# path passes it, and a hang with no visible question is worse than noise.
+# Refuses without --prompt so the shell rc never blocks a new terminal, and
+# without a tty so `chezmoi apply </dev/null` (CI, devpod) never blocks either.
+# /dev/tty is readable even when stdin is redirected, so `-t 0` is the gate and
+# stdin is what gets read.
+ask_pat() {
+	[ "$prompt" = 1 ] || return 1
+	[ -t 0 ] || return 1
+	# One prompt per run: no retry loop.
+	[ "$asked" = 0 ] || return 1
+	asked=1
+
+	# Echo off before anything is printed: the stty -g failure path just below
+	# can therefore never leave a dangling prompt, and there is no window
+	# between printing the prompt and disabling echo. Known limitation, left
+	# open deliberately: both callers of ask_pat are preceded by a network
+	# round trip to Proton — pass-cli info before the first call, pass-cli
+	# login (in try_login) before the retry below — and each one runs before
+	# ask_pat is even entered, so a paste that lands during either round trip
+	# is echoed by the tty driver like any other typing before this point —
+	# closing that window is out of scope here. Restored on interrupt too —
+	# a Ctrl-C here would otherwise leave the terminal with no echo at all.
+	stty_save="$(stty -g 2>/dev/null)" || return 1
+	trap 'stty "$stty_save" 2>/dev/null; printf "\n" >&2' INT TERM HUP
+	# A suspend (Ctrl-Z) leaves the tty echo off, but the interactive shell
+	# that reclaims the terminal turns echo back on for itself. This trap
+	# does not make the prompt resume afterward: in this shell, catching
+	# TSTP or CONT aborts the blocked `read` immediately (verified: it
+	# returns nonzero right away, never with a typed value), so a suspend
+	# here always cancels this prompt attempt outright rather than pausing
+	# and continuing it on `fg`. What the trap buys is narrower but real: it
+	# re-asserts echo-off in that same instant, so the read can never be
+	# aborted (or, in principle, resumed) with echo left on.
+	trap 'stty -echo 2>/dev/null || true' TSTP CONT
+	stty -echo 2>/dev/null || true
+
+	if [ -n "${1:-}" ]; then
+		printf '%s\n' "$1" >&2
+	fi
+	printf 'Proton Pass PAT (Dotfiles vault, item "bootstrap PAT"): ' >&2
+
+	pat=""
+	# read returns non-zero at EOF, which set -e would take as fatal.
+	read -r pat || true
+	# Clear the TSTP/CONT trap before restoring stty: otherwise a suspend or
+	# resume signal landing in the gap between the two would re-assert
+	# echo-off with nothing left to undo it, leaving the terminal echo-less
+	# after this function — and the script — has already exited.
+	trap - INT TERM HUP TSTP CONT
+	stty "$stty_save" 2>/dev/null || true
+	printf '\n' >&2
+
+	[ -n "$pat" ]
+}
+
+# Never as --personal-access-token: a flag value is visible in `ps`.
+try_login() {
+	PROTON_PASS_PERSONAL_ACCESS_TOKEN="$1" pass-cli login >/dev/null 2>&1
+}
+
 # Authenticate if the session lapsed. Token comes from the environment on a
 # fresh machine and is cached at $pat_file after. Passed via the environment,
 # never as --personal-access-token, whose value shows up in `ps`.
@@ -35,6 +114,13 @@ if ! pass-cli info >/dev/null 2>&1; then
 		cache_it=0
 	fi
 
+	# Nothing to go on: ask, if this caller is allowed to.
+	if [ -z "$pat" ]; then
+		if ask_pat; then
+			cache_it=1
+		fi
+	fi
+
 	if [ -z "$pat" ]; then
 		say "proton-ssh-load: no Proton Pass session."
 		say "proton-ssh-load: run 'pass-cli login', or set"
@@ -43,18 +129,41 @@ if ! pass-cli info >/dev/null 2>&1; then
 		exit 0
 	fi
 
-	if ! PROTON_PASS_PERSONAL_ACCESS_TOKEN="$pat" pass-cli login >/dev/null 2>&1; then
-		say "proton-ssh-load: could not authenticate to Proton Pass"
-		exit 0
+	if ! try_login "$pat"; then
+		# The token we had was rejected. One more chance on a terminal: this is
+		# how a token rotated in the vault heals itself on the next interactive
+		# apply. ask_pat prints the notice only when it is actually going to
+		# prompt, so the shell-rc path stays silent.
+		pat=""
+		if ask_pat "proton-ssh-load: that token was rejected." &&
+			try_login "$pat"; then
+			cache_it=1
+		else
+			say "proton-ssh-load: could not authenticate to Proton Pass"
+			exit 0
+		fi
 	fi
 
+	# Only after a successful login, so a rejected token never replaces a
+	# working cached one.
 	if [ "$cache_it" = 1 ]; then
 		mkdir -p "$(dirname "$pat_file")"
-		(
+		pat_tmp="$pat_file.tmp.$$"
+		if (
 			umask 077
-			printf '%s\n' "$pat" >"$pat_file"
-		)
-		say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
+			printf '%s\n' "$pat" >"$pat_tmp"
+		) && mv -f "$pat_tmp" "$pat_file"; then
+			# mv within one directory is rename(2): it replaces the inode
+			# outright, so a pre-existing file's mode cannot survive it. Kept
+			# anyway as an explicit, self-documenting guarantee that this
+			# file is 600 regardless of how it got written.
+			chmod 600 "$pat_file"
+			say "proton-ssh-load: cached the token at ${pat_file#"$HOME"/}"
+		else
+			# A partial write or a failed rename must not leave a plaintext
+			# token sitting in a *.tmp.* file forever.
+			rm -f "$pat_tmp"
+		fi
 	fi
 	unset pat
 fi

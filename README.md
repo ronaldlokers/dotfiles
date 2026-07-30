@@ -13,7 +13,8 @@ are relative to it — `dot_zshrc` is `home/dot_zshrc` on disk.
 
 ```sh
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
-PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply   # secrets + ssh keys
+chezmoi apply                                             # asks for the PAT if needed
+PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply   # or supply it up front
 ```
 
 Or run [`setup`](setup), which does the same and makes zsh the login shell. Both
