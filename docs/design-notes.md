@@ -404,6 +404,14 @@ PATs there need the org to permit them and usually an admin to approve each one;
 where that is refused, a per-repo deploy key in the host agent gets pushes
 working with no token at all.
 
+The lookup tolerates surrounding whitespace, which strictness would not have
+bought anything. Once the file comes from a vault note it is authored in a web
+textarea, where a leading space is invisible — and the resulting failure is
+silent, because `devpod up` succeeds, the container comes up, and only `gh`
+fails inside it with a credentials error pointing at GitHub rather than at a
+space in a note. The parse splits on the first `=` so a value containing one
+survives, and skips lines without an `=`, which drops blank lines.
+
 Two things the forwarding does cost. Every key in the agent is usable from
 inside the container while it is connected — the GitHub key, the AUR key and the
 signing key — so a container can sign commits as you, though it cannot steal the

@@ -70,7 +70,23 @@ project_token() {
 			-e 's|\.git$||')"
 	[ -n "$key" ] || return 1
 
-	awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$tokens"
+	# Tolerate the spacing a web-edited vault note invites. Splitting on the
+	# first `=` by hand keeps a value containing `=` intact, and the fields are
+	# never assigned to: assigning to $1 rebuilds $0 joined by OFS, which would
+	# turn the separators into spaces and corrupt the value.
+	awk -v k="$key" '
+	{
+		line = $0
+		sub(/^[[:space:]]+/, "", line)
+		sub(/[[:space:]]+$/, "", line)
+		eq = index(line, "=")
+		if (eq == 0) next
+		lk = substr(line, 1, eq - 1)
+		val = substr(line, eq + 1)
+		sub(/[[:space:]]+$/, "", lk)
+		sub(/^[[:space:]]+/, "", val)
+		if (lk == k && val != "") { print val; exit }
+	}' "$tokens"
 }
 
 if [ "$sub" = "up" ]; then
