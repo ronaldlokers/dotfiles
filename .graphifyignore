@@ -1,0 +1,12 @@
+# Keeps the knowledge graph about this repo rather than its vendored contents.
+# Merged on top of .gitignore, and it can only ever exclude more.
+
+# Vendored LazyVim starter — upstream's structure, not ours.
+home/dot_config/nvim/
+
+# Graphify's own skill documentation, vendored so a fresh machine gets it from
+# an apply. Graphing it describes graphify, not these dotfiles.
+home/dot_claude/skills/
+
+# Source artwork and its README; nothing here is logic.
+assets/

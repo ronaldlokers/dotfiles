@@ -75,3 +75,23 @@ CLI pinned as `pipx:graphifyy` in `dot_config/mise/config.toml`. Skill vendored
 into `dot_claude/skills/graphify/`. Do **not** run `graphify install` — it write
 straight into `$HOME`, over chezmoi. Upgrade = bump the mise pin, rerun install
 into a scratch HOME, `chezmoi add` the result.
+
+**Interpreter:** the skill's own Python detection fail here. It read the shebang
+of `which graphify`, but that is a mise shim — a binary, no shebang. Point it at
+the venv directly:
+`~/.local/share/mise/installs/pipx-graphifyy/<version>/graphifyy/bin/python3`.
+
+**Evaluated on the dotfiles repo, 2026-07-30 — kept installed but not used
+here.** Three reasons, so nobody redo the experiment:
+
+- `.sh.tmpl` is not a detected extension, so every chezmoi script template —
+  where the real logic live — is invisible to it.
+- Shell get no cross-file AST edges (no imports), so each script become its own
+  2-3 node island. 13 of 26 communities were exactly that.
+- All real structure came from an LLM reading the 11 markdown files (110k
+  tokens), and the "surprising connections" it surfaced were pairs of docs
+  saying the same thing.
+
+It earn its keep on a big Python/TypeScript codebase, not on 26 files of shell.
+One true finding worth acting on: secrets are documented in four places (this
+file, root `CLAUDE.md`, `README.md`, `docs/design-notes.md`).
