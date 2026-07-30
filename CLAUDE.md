@@ -5,31 +5,29 @@ full layout. This file cover one thing easy get wrong: secrets.
 
 ## Secrets
 
-Secrets live in the **Dotfiles vault in Proton Pass**, not in this repo. There
-are no `.age` blobs, no age identity, no `encrypted_` files. Two scripts derive
-everything:
+Secrets live in the **Dotfiles vault in Proton Pass**, never in this repo. No
+`.age` blobs, no age identity, no `encrypted_` files — there is no ciphertext in
+the tree, so nothing about secrets belongs in `.chezmoiignore`.
 
-- `run_after_13`-era `~/.local/bin/proton-ssh-load` — loads the three SSH keys
-  into the ssh-agent. They never touch disk.
-- `.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl` — writes the file-shaped
-  secrets (`sops age keys`, `gh hosts.yml`, `sugarrush config`,
-  `devpod dotfiles-env`) to their targets at `0600`, fetching every apply and
-  rewriting only on change so a rotation in the vault propagates.
+The rules, which is all this file is for:
 
-**Adding a secret:** create a note item in the Dotfiles vault whose body is the
-file content, then add one `restore "<item title>" "<target>" 600` line to
-`run_after_14`. Nothing goes in `.chezmoiignore` — there is no ciphertext in the
-tree to hide.
+- **Never pass the token as a flag.** `PROTON_PASS_PERSONAL_ACCESS_TOKEN` goes
+  through the environment, never as `--personal-access-token` — a flag value
+  show up in `ps`. `tests/proton-ssh-load.bats` enforce this; do not weaken it.
+- **Adding a secret:** note item in the Dotfiles vault whose body is the file
+  content, then one `restore "<title>" "<target>" 600` line in
+  `run_after_14-restore-secrets.sh.tmpl`.
+- **A failed or empty fetch must leave the existing file alone.** Stale beats
+  truncated — writing an empty fetch through destroy the only copy on the
+  machine, and exit 0 doing it. `tests/restore-secrets.bats` pin both paths.
+- **Containers get nothing from Proton by design** — no `pass-cli`, no session.
+  Git there use the forwarded ssh-agent; the DevPod token arrive as an env file.
+  Do not "fix" a container by reaching for the vault.
 
-**Auth is a scoped token.** `PROTON_PASS_PERSONAL_ACCESS_TOKEN` (viewer on the
-Dotfiles vault only) reaches the scripts through the environment and is cached at
-`~/.config/pass-cli-bootstrap-pat`, `0600`. Pass it through the environment,
-never as `--personal-access-token` — a flag value shows up in `ps`. This is what
-makes non-interactive apply work, and it is also why disk access alone now reads
-the vault: state it plainly, do not paper over it.
-
-Containers get nothing from Proton by design — no `pass-cli`, no session. Git
-there uses the forwarded ssh-agent; the DevPod token arrives as an env file.
+Where the detail live, so it is not restated here: `README.md` for which secret
+maps to which vault item and target, `docs/design-notes.md` for why it works
+this way — including the cost that disk access alone now read the vault, which
+was accepted deliberately and should not be papered over.
 
 ## Rules
 
