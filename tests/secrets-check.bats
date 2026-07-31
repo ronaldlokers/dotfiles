@@ -119,6 +119,27 @@ run_check() {
 	[[ "$output" != *"unrelated"* ]]
 }
 
+# An empty render half must not look like a passing one: if the protonPass
+# marker ever gets renamed, or the templates directory moves, or a future
+# repo genuinely has none, the for loop over `grep -rl` matches nothing and
+# silently checks zero templates. Every other test's fixture always contains
+# at least one protonPass template, so this is the one case where "checked
+# everything, all fine" and "checked nothing" must not print the same thing.
+@test "reports zero templates, distinguishably, when none match" {
+	rm "$SRC/.chezmoitemplates/fake-pubkey"
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"0 proton template"* ]]
+}
+
+@test "the template count reflects how many actually rendered" {
+	printf '{{- /* protonPass */ -}}second-fake\n' \
+		>"$SRC/.chezmoitemplates/fake-second"
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"2 proton template"* ]]
+}
+
 # Ordinary states, not faults. A non-zero here would alarm every container.
 @test "exits 0 and silent without pass-cli" {
 	# Restricted PATH rather than deleting the stub: this machine has a real
