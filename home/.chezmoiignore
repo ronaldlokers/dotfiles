@@ -21,4 +21,8 @@ ghostty.terminfo
 # The Proton Pass key loader is host-only for the same reason: no pass-cli and
 # no session inside a container, which gets the keys from the forwarded agent.
 .local/bin/proton-ssh-load
+# The health check is host-only for exactly that reason too. It probes for a
+# container at runtime as well, because the source-tree copy is reachable from
+# a devcontainer working on this repo.
+.local/bin/dotfiles-secrets-check
 {{ end -}}

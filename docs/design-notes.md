@@ -264,6 +264,25 @@ Containers are outside all of this. They have no `pass-cli` and no session by
 design: git uses the forwarded ssh-agent, and the DevPod token arrives as an env
 file passed by the wrapper on the host.
 
+### Why the check has two halves
+
+`dotfiles-secrets-check` verifies item readability and template rendering
+separately because they are different code paths, and only checking one has
+already hidden a real fault. The first instance: `secrets-check` reported all
+eight vault items readable at the same moment `chezmoi apply` was failing on a
+stale `pass://` share id — the item existed and could be fetched by title, but
+the template referencing it by share id could not resolve. Item readability
+said nothing about whether a template could render.
+
+The second instance is narrower and still live: `secrets-check` tests
+`git signing key` by reading its `private_key` field, while
+`.chezmoitemplates/signing-pubkey` reads `public_key` from that same item. The
+two fields are independent — deleting `public_key` alone would leave the item
+check green (the item is still readable, on the field the check happens to
+use) while `allowed_signers` quietly stopped being generated. Checking a field
+is not the same as checking the field a consumer actually reads, which is why
+the render half exists rather than stopping at "the item is there."
+
 ### Reading Proton Pass from a template
 
 `pass-cli` is a checksummed external rather than a mise pin, because Proton
