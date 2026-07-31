@@ -543,8 +543,23 @@ reach it. The repo's existing answer to this is
 `tests/restore-secrets.bats:46-50`, which *skips* when it detects a container
 rather than simulating one. This plan follows that precedent and leaves the
 branch uncovered. It is two `[ -f … ]` tests with no logic behind them; the
-`.chezmoiignore` gate added in Task 2 Step 4 is the load-bearing half, and that
-one is exercised by CI's `container-gates` job.
+`.chezmoiignore` gate added in Task 2 Step 4 is the load-bearing half.
+
+**Correction (final review, 2026-08-01):** this section originally claimed the
+`.chezmoiignore` gate "is exercised by CI's `container-gates` job." It was not
+— that job rendered the devpod external and two scripts and never touched
+`.chezmoiignore`, so both the gate and the script's runtime `/.dockerenv` probe
+were untested everywhere. The review closed the `.chezmoiignore` half of the
+gap instead of just fixing the sentence: `container-gates` now has a
+".chezmoiignore excludes dotfiles-secrets-check inside a container" step that
+renders `home/.chezmoiignore` inside the Arch container and asserts
+`.local/bin/dotfiles-secrets-check` appears in it verbatim.
+
+The script's own runtime `/.dockerenv` probe is still not covered anywhere,
+and stays that way on purpose — same precedent as this section already
+describes (`tests/restore-secrets.bats:46-50` skips rather than fakes the
+marker; faking it needs root). That half of "untested everywhere" is now
+accurate rather than papered over, not fixed.
 
 ## Known limits, carried from the spec
 

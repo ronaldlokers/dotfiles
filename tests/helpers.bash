@@ -62,6 +62,23 @@ STUB
 	chmod 755 "$bin/pass-cli"
 }
 
+# Writes a fake notify-send into $1 (a directory placed first on PATH) and
+# records every invocation's argv, one per line, to $NOTIFY_LOG. Without this,
+# a test that drives a script's failure path pops a real desktop notification
+# (real notify-send, real session bus) on any host that has one — and because
+# notify-send prints nothing, the alarm text never reaches bats' $output, so
+# nothing ever asserts on what the notification actually says.
+make_notify_send_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/notify-send" <<'STUB'
+#!/bin/sh
+[ -n "${NOTIFY_LOG:-}" ] && printf '%s\n' "$*" >>"$NOTIFY_LOG"
+exit 0
+STUB
+	chmod 755 "$bin/notify-send"
+}
+
 # Renders a chezmoi script template to a runnable sh file. $2 is the PATH the
 # render runs under: has-proton-session calls `pass-cli info` at render time, so
 # the stub has to be visible here for the rendered script to take the
