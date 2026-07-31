@@ -3,9 +3,15 @@
        and config.tmpl then omits user.signingkey so commits fail loudly.
 
        Both calls must stay guarded: protonPass aborts the entire template when
-       pass-cli fails, and `output` does the same on a non-zero exit. */ -}}
+       pass-cli fails, and `output` does the same on a non-zero exit.
+
+       Addressed by vault name and item title, not by share/item id. A PAT
+       session's vault access is a share, so re-authenticating mints a new
+       share id and any id pinned here goes stale — which fails as a 422 that
+       aborts the whole apply, not just this file. Titles survive that, and
+       are how the restore script and secrets-check already name items. */ -}}
 {{- if eq (includeTemplate "has-proton-session" .) "true" -}}
-{{- protonPass "pass://HKQ0vUtADZgZYVg9bUWhhCWiTtGr3BN2EthtEvJIc_odo0SO-m8j2pQ3sHDqQqZ3XMo6q5E6KuybcW0LmLbm8Q==/oeoBEx8LHV1-NOk3sJuaYe56ocAn1DWxArqQKMYHdWqkkHm31pV4ZYCU2prvp-jdiVD_5oAOBBR8F4kE1BfoDA==/public_key" | trim -}}
+{{- protonPass "pass://Dotfiles/git signing key/public_key" | trim -}}
 {{- else -}}
 {{- output "sh" "-c" "ssh-add -L 2>/dev/null | awk '/git-signing/{print $1\" \"$2; exit}'" | trim -}}
 {{- end -}}
