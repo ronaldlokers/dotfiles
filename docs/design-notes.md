@@ -391,11 +391,17 @@ the helper already works and is what `gh repo clone` produces.
 
 What forwarding does *not* cover is the GitHub API: SSH cannot authenticate it,
 so `gh pr create`, `gh api` and the MCP server still need a token. That is what
-`~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600, absent
-by default, and consulted by the wrapper for the workspace being started. Each
-entry should be a fine-grained PAT limited to that one repository. The 0644
-exposure still applies to whatever is passed, which is exactly why it is one
-repo's worth rather than the whole account's.
+`~/.config/devpod/project-tokens` is for — `owner/repo=token`, mode 0600,
+restored from a single shared vault note and consulted by the wrapper for the
+workspace being started. "Single shared note" is a cost, not a detail: every
+machine that applies with a Proton session receives *every* entry in it, not
+just the ones it minted, so a token scoped to one host's project now sits at
+0600 on every other host too. That spread was accepted deliberately, in
+exchange for the property a per-machine file cannot offer — a revoked token
+disappears from every machine on its next apply instead of lingering wherever
+it was typed in by hand. Each entry should be a fine-grained PAT limited to
+that one repository. The 0644 exposure still applies to whatever is passed,
+which is exactly why it is one repo's worth rather than the whole account's.
 
 Keying is on the **push** remote, not the directory name: a Home Assistant
 checkout pushes to your fork, and the fork is what you can mint a token for
@@ -403,6 +409,14 @@ without anyone's approval. Org-owned repos are the awkward case — fine-grained
 PATs there need the org to permit them and usually an admin to approve each one;
 where that is refused, a per-repo deploy key in the host agent gets pushes
 working with no token at all.
+
+The lookup tolerates surrounding whitespace, which strictness would not have
+bought anything. Once the file comes from a vault note it is authored in a web
+textarea, where a leading space is invisible — and the resulting failure is
+silent, because `devpod up` succeeds, the container comes up, and only `gh`
+fails inside it with a credentials error pointing at GitHub rather than at a
+space in a note. The parse splits on the first `=` so a value containing one
+survives, and skips lines without an `=`, which drops blank lines.
 
 Two things the forwarding does cost. Every key in the agent is usable from
 inside the container while it is connected — the GitHub key, the AUR key and the

@@ -49,8 +49,9 @@ cleanup() {
 
 # Opt-in per-project GitHub token, for projects whose workflow needs the GitHub
 # API (`gh pr create`). Git itself needs none — containers use the forwarded
-# agent. ~/.config/devpod/project-tokens is `owner/repo=token`, 0600, absent by
-# default; each entry should be fine-grained and limited to that one repo.
+# agent. ~/.config/devpod/project-tokens is `owner/repo=token`, 0600, restored
+# from the Proton Pass vault and empty on a machine with no entries yet; each
+# entry should be fine-grained and limited to that one repo.
 project_token() {
 	tokens="$HOME/.config/devpod/project-tokens"
 	[ -r "$tokens" ] || return 1
@@ -70,7 +71,23 @@ project_token() {
 			-e 's|\.git$||')"
 	[ -n "$key" ] || return 1
 
-	awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$tokens"
+	# Tolerate the spacing a web-edited vault note invites. Splitting on the
+	# first `=` by hand keeps a value containing `=` intact, and the fields are
+	# never assigned to: assigning to $1 rebuilds $0 joined by OFS, which would
+	# turn the separators into spaces and corrupt the value.
+	awk -v k="$key" '
+	{
+		line = $0
+		sub(/^[[:space:]]+/, "", line)
+		sub(/[[:space:]]+$/, "", line)
+		eq = index(line, "=")
+		if (eq == 0) next
+		lk = substr(line, 1, eq - 1)
+		val = substr(line, eq + 1)
+		sub(/[[:space:]]+$/, "", lk)
+		sub(/^[[:space:]]+/, "", val)
+		if (lk == k && val != "") { print val; exit }
+	}' "$tokens"
 }
 
 if [ "$sub" = "up" ]; then
