@@ -6,9 +6,21 @@
 {{ $devpodVersion := "v0.6.15" }}
 # Pinned to an immutable release asset. Lands in libexec, not on PATH:
 # ~/.local/bin/devpod is a wrapper that execs this.
+#
+# The checksum is weaker than mise's next door, and knowing why matters: loft-sh
+# publishes no checksum file with this release — devpod-linux-amd64 is the only
+# asset — so this hash was taken from the served binary and cross-checked
+# against the copy already installed here. That buys tamper-evidence going
+# forward (a silently swapped asset at the same tag now fails the apply) but
+# proves nothing about provenance at the moment it was recorded. If loft-sh ever
+# starts publishing checksums, take it from there instead.
+#
+# Renovate cannot update this line, so a version bump that leaves it stale fails
+# the apply loudly. Bump both together.
 [".local/libexec/devpod"]
 type = "file"
 executable = true
 url = "https://github.com/loft-sh/devpod/releases/download/{{ $devpodVersion }}/devpod-linux-amd64"
+checksum.sha256 = "cc50bce09229d5a6d448ac1d4494327f4b8f7a20321e5fcee3bfec1aef0d20c5"
 refreshPeriod = "168h"
 {{- end -}}
