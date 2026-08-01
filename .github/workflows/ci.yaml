@@ -199,8 +199,9 @@ jobs:
 
   container-gates:
     # The bootstrap job runs on a bare runner, so the container branch of the
-    # devpod external and the host-packages script is never exercised — a broken
-    # gate would ship green. Run those two gates for real inside a container.
+    # devpod external, the host-packages script, and the .chezmoiignore block
+    # that keeps dotfiles-secrets-check out of a container is never exercised —
+    # a broken gate would ship green. Run those for real inside a container.
     #
     # Arch on purpose, not Ubuntu: pacman exists here, so a skip can only come
     # from the container gate. On a distro without pacman the script's
@@ -232,6 +233,20 @@ jobs:
             exit 1
           fi
           echo "devpod external correctly empty"
+      - name: .chezmoiignore excludes dotfiles-secrets-check inside a container
+        run: |
+          # The script also probes /.dockerenv itself at runtime (belt and
+          # braces, since the source-tree copy is reachable from a devcontainer
+          # working on this repo) — that runtime probe is exercised by
+          # tests/secrets-check.bats. This step is what covers the
+          # .chezmoiignore half: the applied copy must never land at all.
+          out="$(chezmoi execute-template --source "$PWD" < home/.chezmoiignore)"
+          if ! printf '%s\n' "$out" | grep -qx '.local/bin/dotfiles-secrets-check'; then
+            echo "::error::.local/bin/dotfiles-secrets-check missing from rendered .chezmoiignore inside a container:"
+            printf '%s\n' "$out"
+            exit 1
+          fi
+          echo ".chezmoiignore correctly excludes dotfiles-secrets-check inside a container"
       - name: host-packages script detects the container and skips
         run: |
           chezmoi execute-template --source "$PWD" \

@@ -65,6 +65,12 @@ propagates. A failed or empty fetch leaves the existing file alone.
 **Adding one:** create a note item whose body is the file content, then add a
 `restore "<item title>" "<target>" 600` line to the script.
 
+**Checking it still works:** `mise run secrets-check` verifies every item is
+readable *and* that every template calling `protonPass` still renders — two
+different code paths, and a stale vault reference breaks the second while the
+first stays green. `dotfiles-secrets-check.timer` runs it weekly and notifies
+on failure.
+
 The token is cached at `~/.config/pass-cli-bootstrap-pat` (0600), which is what
 makes unattended applies work — and what means disk access alone now reads the
 vault. Pass it via the environment, never as `--personal-access-token`.
