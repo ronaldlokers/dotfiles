@@ -35,7 +35,7 @@ setup() {
 	# sentinels: any test that finds one in the output has found a leak.
 	ITEMS="$BATS_TEST_TMPDIR/items"
 	mkdir -p "$ITEMS"
-	for title in "ssh auth key" "git signing key" "aur ssh key" \
+	for title in "git signing key" \
 		"sops age keys" "gh hosts.yml" "fixture signing key"; do
 		printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/$title"
 	done
@@ -92,7 +92,7 @@ run_check() {
 @test "reports every item it checked" {
 	run_check
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"ssh auth key"* ]]
+	[[ "$output" == *"gh hosts.yml"* ]]
 	[[ "$output" == *"sops age keys"* ]]
 }
 
@@ -202,9 +202,9 @@ TMPL
 	printf 'this is not valid toml [[[\n' >"$HOME/.config/chezmoi/chezmoi.toml"
 	run_check
 	[ "$status" -ne 0 ]
-	# Half one still ran and was reported — proof the script did not die
-	# before reaching the render half, it handled the render half's failure.
-	[[ "$output" == *"ssh auth key"* ]]
+	# The ssh half still ran and was reported — proof the script did not die
+	# before reaching it, it handled the render half's failure instead.
+	[[ "$output" == *"ssh keys"* ]]
 	[ -s "$NOTIFY_LOG" ]
 }
 
@@ -328,4 +328,61 @@ TMPL
 	[ "$status" -eq 2 ]
 	[[ "$output" == *"usage:"* ]]
 	[[ "$output" != *"shift count"* ]]
+}
+
+# proton-ssh-load loads by item type, never by title, so the count is what it
+# actually depends on. Checking titles tested something no code relies on.
+@test "reports the ssh key count" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"ssh keys"* ]]
+	[[ "$output" == *"3"* ]]
+}
+
+@test "no valid ssh keys is a fault" {
+	run_check PASS_SSH_VALID=0
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"ssh"* ]]
+}
+
+@test "an invalid ssh item fails and reports the reason" {
+	run_check PASS_SSH_INVALID="unsupported key type"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"unsupported key type"* ]]
+}
+
+# Fails closed: an upgrade that changes pass-cli's wording must not read as a
+# healthy zero.
+@test "an unparsable ssh debug summary is a fault" {
+	run_check PASS_SSH_DEBUG_RC=1
+	[ "$status" -ne 0 ]
+}
+
+# The ssh half handles key material; it must only ever count.
+@test "the ssh half emits no key material" {
+	run_check
+	[[ "$output" != *"SENTINEL-SECRET-BODY"* ]]
+	[[ "$output" != *"PRIVATE KEY"* ]]
+}
+
+# The titles are gone: nothing names them, so nothing should look them up.
+@test "no longer looks up ssh keys by title" {
+	run_check
+	! grep -q -- "--item-title aur ssh key" "$STUB_LOG"
+	! grep -q -- "--item-title ssh auth key" "$STUB_LOG"
+}
+
+# Regression guard for a real false positive found running against the live
+# vault: the Dotfiles vault holds the ssh keys alongside every other secret,
+# so `ssh-agent debug` reports every non-ssh item (and any trashed item) as
+# "invalid" on every ordinary run. Neither is this check's business — only a
+# reason outside those two shapes is.
+@test "the ordinary non-ssh-item noise in the debug summary is not a fault" {
+	run_check PASS_SSH_INVALID="Not an SSH key item (type: Note)"
+	[ "$status" -eq 0 ]
+}
+
+@test "a trashed item's reason is not a fault" {
+	run_check PASS_SSH_INVALID="Item is trashed"
+	[ "$status" -eq 0 ]
 }

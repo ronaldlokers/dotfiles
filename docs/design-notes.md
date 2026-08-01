@@ -283,6 +283,30 @@ use) while `allowed_signers` quietly stopped being generated. Checking a field
 is not the same as checking the field a consumer actually reads, which is why
 the render half exists rather than stopping at "the item is there."
 
+### Why SSH keys are counted, not named
+
+`secrets-check` used to assert three SSH item titles by name, the same way it
+checks every other vault item. That tested something no code relies on:
+`proton-ssh-load` runs `pass-cli ssh-agent load --vault-name Dotfiles`, which
+selects items by *type*, never by title, so a title list was an independent
+assertion about vault contents rather than something derived from a consumer.
+It raised a false alarm whenever a key was renamed in the vault while
+`proton-ssh-load` carried on working unaffected.
+
+`pass-cli ssh-agent debug --vault-name Dotfiles` answers the question
+`proton-ssh-load` actually depends on — how many usable SSH keys are there —
+without touching the agent, which matters because this script must never
+mutate anything. Its report also lists every other item in the vault as an
+"invalid" SSH key (a Note is not an SSH key item, a trashed item is trashed)
+purely because the vault holds every secret this repo has, not just the SSH
+keys; `secrets-check` treats that as expected noise and only escalates a
+`Reason:` outside those two shapes.
+
+The accepted cost: a key swapped for a different one keeps the count at 3 and
+passes. That is right, not a gap — `ssh-agent load` would load the
+replacement exactly as well, so a title-based check would have reported a
+failure `proton-ssh-load` never had.
+
 ### Reading Proton Pass from a template
 
 `pass-cli` is a checksummed external rather than a mise pin, because Proton

@@ -14,6 +14,10 @@
 #                         other token falls through to PASS_LOGIN_RC
 #   PASS_VIEW_RC   exit code for `pass-cli item view` (default 0)
 #   PASS_SSH_RC    exit code for `pass-cli ssh-agent` (default 0)
+#   PASS_SSH_TOTAL        `ssh-agent debug` total items checked (default 3)
+#   PASS_SSH_VALID        `ssh-agent debug` valid SSH keys      (default 3)
+#   PASS_SSH_INVALID      a reason string; when set, debug reports an invalid item
+#   PASS_SSH_DEBUG_RC     exit code for `ssh-agent debug`       (default 0)
 #   PASS_ITEM_DIR  directory of files named after item titles; the matching
 #                  file's contents are what `item view` prints. A title with no
 #                  file prints nothing, which is the "came back empty" case.
@@ -40,6 +44,17 @@ login)
 	exit "${PASS_LOGIN_RC:-0}"
 	;;
 ssh-agent)
+	# `ssh-agent debug` reports what `ssh-agent load` would load, without
+	# touching the agent. The check parses its summary, so the stub has to
+	# produce that shape. PASS_SSH_RC still covers the non-debug forms.
+	if [ "${2:-}" = "debug" ]; then
+		if [ -n "${PASS_SSH_INVALID:-}" ]; then
+			printf '  Invalid items:\n    Reason: %s\n' "$PASS_SSH_INVALID"
+		fi
+		printf 'Summary:\n  Total items checked: %s\n  Valid SSH keys: %s\n' \
+			"${PASS_SSH_TOTAL:-3}" "${PASS_SSH_VALID:-3}"
+		exit "${PASS_SSH_DEBUG_RC:-0}"
+	fi
 	exit "${PASS_SSH_RC:-0}"
 	;;
 item)
