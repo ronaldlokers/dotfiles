@@ -39,6 +39,16 @@ make_pass_cli_stub() {
 	mkdir -p "$bin"
 	cat >"$bin/pass-cli" <<'STUB'
 #!/bin/sh
+# The UTF-8 marks below (✓, •, ✗) are written as octal escapes
+# (\NNN), never \xHH: this script's own shebang is #!/bin/sh, and on
+# Ubuntu (the CI runner) that's dash, whose printf builtin has no \xHH —
+# it prints the four characters literally instead of the byte. \NNN
+# octal is POSIX and dash honours it; \xHH only ever worked here because
+# this developer's /bin/sh happens to be bash. Confirmed by hand: dash
+# turned '\xe2\x9c\x93' into the literal text "\xe2\x9c\x93", which is
+# exactly why the real pass-cli output this stub imitates never carried
+# the marker in CI, and everything downstream that keyed off it silently
+# saw nothing to match.
 # Record the full argv. The token-never-in-argv assertion reads this.
 [ -n "${STUB_LOG:-}" ] && printf '%s\n' "$*" >>"$STUB_LOG"
 
@@ -84,18 +94,18 @@ ssh-agent)
 		printf 'SSH Agent Debug Report\n'
 		printf 'Vault: Dotfiles (FAKE-SHARE-ID)\n\n'
 
-		printf '\xe2\x9c\x93 Valid SSH Keys (%s):\n' "$header_valid_n"
+		printf '\342\234\223 Valid SSH Keys (%s):\n' "$header_valid_n"
 		i=1
 		while [ "$i" -le "$valid_n" ]; do
-			printf '  \xe2\x80\xa2 ssh key %s\n' "$i"
+			printf '  \342\200\242 ssh key %s\n' "$i"
 			printf '    Algorithm: Ed25519\n'
 			printf '    Fingerprint: SHA256:SENTINEL-FINGERPRINT-%s\n\n' "$i"
 			i=$((i + 1))
 		done
 
-		printf '\xe2\x9c\x97 Invalid Items (%s):\n' "$invalid_n"
+		printf '\342\234\227 Invalid Items (%s):\n' "$invalid_n"
 		if [ -n "${PASS_SSH_INVALID:-}" ]; then
-			printf '  \xe2\x80\xa2 invalid item (%s)\n' "$invalid_type"
+			printf '  \342\200\242 invalid item (%s)\n' "$invalid_type"
 			printf '    Reason: %s\n\n' "$PASS_SSH_INVALID"
 		fi
 
