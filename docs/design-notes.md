@@ -274,14 +274,19 @@ stale `pass://` share id — the item existed and could be fetched by title, but
 the template referencing it by share id could not resolve. Item readability
 said nothing about whether a template could render.
 
-The second instance is narrower and still live: `secrets-check` tests
+The second instance was narrower, and is what this repo's item list being
+*derived* rather than hand-kept now fixes: `secrets-check` used to test
 `git signing key` by reading its `private_key` field, while
 `.chezmoitemplates/signing-pubkey` reads `public_key` from that same item. The
-two fields are independent — deleting `public_key` alone would leave the item
-check green (the item is still readable, on the field the check happens to
-use) while `allowed_signers` quietly stopped being generated. Checking a field
-is not the same as checking the field a consumer actually reads, which is why
-the render half exists rather than stopping at "the item is there."
+two fields are independent — deleting `public_key` alone would have left the
+item check green (the item is still readable, on the field the check happened
+to use) while `allowed_signers` quietly stopped being generated. Checking a
+field is not the same as checking the field a consumer actually reads, which
+is why the render half exists rather than stopping at "the item is there" —
+and why the item list is now derived from the `pass://<vault>/<title>/<field>`
+URIs the templates themselves use: `secrets-check` reads `public_key` for
+`git signing key` today because that is the field `signing-pubkey` actually
+calls, not a hand-kept guess that can drift from it.
 
 ### Why SSH keys are counted, not named
 
@@ -300,7 +305,14 @@ mutate anything. Its report also lists every other item in the vault as an
 "invalid" SSH key (a Note is not an SSH key item, a trashed item is trashed)
 purely because the vault holds every secret this repo has, not just the SSH
 keys; `secrets-check` treats that as expected noise and only escalates a
-`Reason:` outside those two shapes.
+`Reason:` outside those two shapes — with one exception: a trashed item whose
+type *is* SSH Key still faults. Trashing an item is one click, and is the
+likeliest way a key actually gets lost, so the one case where "trashed" and
+"was a key" coincide is exactly the signal the general allowance would
+otherwise bury. `secrets-check` reads the item's type off the same "•
+title (Type)" line the report prints above each `Reason:`, not off the
+reason text itself, since "Item is trashed" alone can't tell an ssh key apart
+from any other trashed item.
 
 The accepted cost: a key swapped for a different one keeps the count at 3 and
 passes. That is right, not a gap — `ssh-agent load` would load the

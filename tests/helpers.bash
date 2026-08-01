@@ -14,9 +14,22 @@
 #                         other token falls through to PASS_LOGIN_RC
 #   PASS_VIEW_RC   exit code for `pass-cli item view` (default 0)
 #   PASS_SSH_RC    exit code for `pass-cli ssh-agent` (default 0)
-#   PASS_SSH_TOTAL        `ssh-agent debug` total items checked (default 3)
-#   PASS_SSH_VALID        `ssh-agent debug` valid SSH keys      (default 3)
-#   PASS_SSH_INVALID      a reason string; when set, debug reports an invalid item
+#   PASS_SSH_VALID        `ssh-agent debug` valid SSH keys, both the header
+#                         count and the Summary count unless overridden by
+#                         PASS_SSH_HEADER_VALID              (default 3)
+#   PASS_SSH_HEADER_VALID overrides just the "✓ Valid SSH Keys (N):" header
+#                         count, independently of the Summary count — lets a
+#                         test prove the parser reads the Summary line, not
+#                         the header (default: same as PASS_SSH_VALID)
+#   PASS_SSH_INVALID      a reason string; when set, debug reports one invalid
+#                         item with that reason
+#   PASS_SSH_INVALID_TYPE the invalid item's type, shown as "title (Type)"
+#                         above its Reason line                (default Note)
+#   PASS_SSH_BAD_WORDING  when set, the Summary block's valid-count line uses
+#                         different wording ("Valid keys (ssh): N" instead of
+#                         "Valid SSH keys: N"), simulating a pass-cli release
+#                         that changes the string the check parses, while
+#                         still exiting 0 — the hazard is silent, not loud
 #   PASS_SSH_DEBUG_RC     exit code for `ssh-agent debug`       (default 0)
 #   PASS_ITEM_DIR  directory of files named after item titles; the matching
 #                  file's contents are what `item view` prints. A title with no
@@ -46,13 +59,54 @@ login)
 ssh-agent)
 	# `ssh-agent debug` reports what `ssh-agent load` would load, without
 	# touching the agent. The check parses its summary, so the stub has to
-	# produce that shape. PASS_SSH_RC still covers the non-debug forms.
+	# produce the real report shape byte-for-byte — verified against a live
+	# `pass-cli ssh-agent debug --vault-name Dotfiles` run: a "✓ Valid SSH
+	# Keys (N):" block (one "• title" / "Algorithm:" / "Fingerprint:" group
+	# per key, no "(Type)" suffix on a valid key's bullet line), a
+	# "✗ Invalid Items (N):" block (one "• title (Type)" / "Reason:" group
+	# per invalid item), then a trailing "Summary:" block — in that order,
+	# Valid then Invalid then Total. Earlier versions of this stub only ever
+	# emitted the Summary block, so a parser reading the wrong line (the
+	# header's "Valid SSH Keys" instead of the summary's "Valid SSH keys")
+	# had nothing here to catch it. PASS_SSH_RC still covers the non-debug
+	# forms.
 	if [ "${2:-}" = "debug" ]; then
+		valid_n="${PASS_SSH_VALID:-3}"
+		header_valid_n="${PASS_SSH_HEADER_VALID:-$valid_n}"
+		invalid_type="${PASS_SSH_INVALID_TYPE:-Note}"
 		if [ -n "${PASS_SSH_INVALID:-}" ]; then
-			printf '  Invalid items:\n    Reason: %s\n' "$PASS_SSH_INVALID"
+			invalid_n=1
+		else
+			invalid_n=0
 		fi
-		printf 'Summary:\n  Total items checked: %s\n  Valid SSH keys: %s\n' \
-			"${PASS_SSH_TOTAL:-3}" "${PASS_SSH_VALID:-3}"
+		total_n=$((valid_n + invalid_n))
+
+		printf 'SSH Agent Debug Report\n'
+		printf 'Vault: Dotfiles (FAKE-SHARE-ID)\n\n'
+
+		printf '\xe2\x9c\x93 Valid SSH Keys (%s):\n' "$header_valid_n"
+		i=1
+		while [ "$i" -le "$valid_n" ]; do
+			printf '  \xe2\x80\xa2 ssh key %s\n' "$i"
+			printf '    Algorithm: Ed25519\n'
+			printf '    Fingerprint: SHA256:SENTINEL-FINGERPRINT-%s\n\n' "$i"
+			i=$((i + 1))
+		done
+
+		printf '\xe2\x9c\x97 Invalid Items (%s):\n' "$invalid_n"
+		if [ -n "${PASS_SSH_INVALID:-}" ]; then
+			printf '  \xe2\x80\xa2 invalid item (%s)\n' "$invalid_type"
+			printf '    Reason: %s\n\n' "$PASS_SSH_INVALID"
+		fi
+
+		printf 'Summary:\n'
+		if [ -n "${PASS_SSH_BAD_WORDING:-}" ]; then
+			printf '  Valid keys (ssh): %s\n' "$valid_n"
+		else
+			printf '  Valid SSH keys: %s\n' "$valid_n"
+		fi
+		printf '  Invalid items: %s\n' "$invalid_n"
+		printf '  Total items checked: %s\n' "$total_n"
 		exit "${PASS_SSH_DEBUG_RC:-0}"
 	fi
 	exit "${PASS_SSH_RC:-0}"

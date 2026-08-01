@@ -145,6 +145,20 @@ run_check() {
 	grep -q -- "--field public_key" "$STUB_LOG"
 }
 
+# MINOR 7: `[a-z_]+` alone rejected digits and uppercase, silently truncating
+# a field like `api_key2` to `api_key` — a confusing "unreadable" against a
+# field nothing consumes, rather than a loud failure. The class now covers
+# whatever a field can actually be named.
+@test "a URI field containing a digit or an uppercase letter is captured in full, not truncated" {
+	cat >"$SRC/.chezmoitemplates/fake-field" <<'TMPL'
+{{- /* protonPass */ -}}
+{{- protonPass "pass://Dotfiles/fixture signing key/Api_Key2" | trim -}}
+TMPL
+	run_check
+	grep -q -- "--field Api_Key2" "$STUB_LOG"
+	! grep -q -- "--field Api_Key " "$STUB_LOG"
+}
+
 # Regression guard for a real false positive: the script's own comment about a
 # "stale pass:// share id" matches a bare-scheme grep, and the check would then
 # try to fetch an item named "share id".
@@ -168,6 +182,34 @@ run_check() {
 	run_check
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"no vault items"* ]]
+}
+
+# IMPORTANT 1, part 1: the union check above only fires when *both* sources
+# come back empty. Renaming the `restore` helper (rather than removing the
+# scripts directory) leaves .chezmoiscripts in place but makes its own scan
+# yield nothing — while the URI source still yields "fixture signing key",
+# keeping the union non-empty and silent. That is the exact bug: a whole
+# derivation source failing without a word.
+@test "a restore scripts directory that names no titles is a fault" {
+	sed -i 's/^restore /reestore /' \
+		"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no restore titles"* ]]
+}
+
+# IMPORTANT 1, part 2: symmetric case. Removing only the one file that names a
+# pass:// URI leaves .chezmoitemplates in place (fake-pubkey is still there,
+# so half two's template count stays non-zero) but the URI scan itself yields
+# nothing, while the restore titles keep the union non-empty. This reproduces
+# the exact bug this branch exists to fix: deleting
+# `.chezmoitemplates/signing-pubkey` made the public_key check disappear with
+# no fault at all.
+@test "a templates directory that names no pass:// URIs is a fault" {
+	rm "$SRC/.chezmoitemplates/fake-signing"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no pass:// URIs"* ]]
 }
 
 # Parsing a vault out of a URI and then querying a different one would check the
@@ -289,6 +331,16 @@ TMPL
 	[[ "$output" == *"3 proton template"* ]]
 }
 
+# IMPORTANT 1, part 3: half two counted and reported n_tmpl; half one had no
+# count anywhere in the summary, which is what let a whole source vanish
+# silently ("ok" for six items and "ok" for one item printed the same
+# summary). The fixture derives 3 items (2 restore titles, 1 URI title).
+@test "the summary reports how many vault items were checked" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"3 vault item(s) checked"* ]]
+}
+
 # The spec lists this case and nothing implemented it: notify-send prints
 # nothing, so without a stub capturing its argv, nothing ever proved alarm()
 # was reached at all — only that the script's own stdout/stderr stayed clean.
@@ -335,8 +387,20 @@ TMPL
 @test "reports the ssh key count" {
 	run_check
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"ssh keys"* ]]
-	[[ "$output" == *"3"* ]]
+	# Anchored to the ssh line itself (MINOR 5): an unanchored `*"3"*` passes
+	# today only because nothing else in the output happens to contain a 3.
+	[[ "$output" == *"ssh keys"*"3 valid ssh keys"* ]]
+}
+
+# IMPORTANT 3 / MINOR 8: the report has two count-like lines differing only in
+# capitalisation — the header "✓ Valid SSH Keys (N):" and the summary's
+# "Valid SSH keys: N". A parser that reads whichever comes first, rather than
+# the trailing Summary: block specifically, would report the header's count.
+@test "the ssh parser reads the summary count, not a mismatched header count" {
+	run_check PASS_SSH_VALID=3 PASS_SSH_HEADER_VALID=99
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"ssh keys"*"3 valid ssh keys"* ]]
+	[[ "$output" != *"99"* ]]
 }
 
 @test "no valid ssh keys is a fault" {
@@ -351,18 +415,33 @@ TMPL
 	[[ "$output" == *"unsupported key type"* ]]
 }
 
-# Fails closed: an upgrade that changes pass-cli's wording must not read as a
-# healthy zero.
-@test "an unparsable ssh debug summary is a fault" {
+# Renamed from "an unparsable ssh debug summary is a fault" (MINOR 4): this
+# tests the nonzero-exit branch specifically. It is not the spec's real
+# upgrade hazard — see the wording-change test below for that.
+@test "a nonzero ssh-agent debug exit is a fault" {
 	run_check PASS_SSH_DEBUG_RC=1
 	[ "$status" -ne 0 ]
 }
 
-# The ssh half handles key material; it must only ever count.
+# MINOR 4: the real upgrade hazard is not a nonzero exit — it is pass-cli
+# changing its wording while still exiting 0, which silently stops matching
+# the sed pattern. The stub expresses this with an empty/renamed valid-count
+# line rather than the usual "Valid SSH keys: N".
+@test "an ssh debug summary with changed wording is a fault, even though pass-cli itself exits 0" {
+	run_check PASS_SSH_BAD_WORDING=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"ssh keys"* ]]
+}
+
+# The ssh half handles key material; it must only ever count. Regression guard
+# for a stub that could not previously prove this (MINOR 3): the old stub only
+# ever emitted the Summary block, never a header line or a fingerprint, so a
+# script that echoed the raw debug output verbatim would still have passed.
+# Now that the stub emits a fingerprint-shaped sentinel, this test can fail.
 @test "the ssh half emits no key material" {
 	run_check
 	[[ "$output" != *"SENTINEL-SECRET-BODY"* ]]
-	[[ "$output" != *"PRIVATE KEY"* ]]
+	[[ "$output" != *"SENTINEL-FINGERPRINT"* ]]
 }
 
 # The titles are gone: nothing names them, so nothing should look them up.
@@ -382,7 +461,19 @@ TMPL
 	[ "$status" -eq 0 ]
 }
 
-@test "a trashed item's reason is not a fault" {
-	run_check PASS_SSH_INVALID="Item is trashed"
+@test "a trashed non-ssh-key item is ignored" {
+	run_check PASS_SSH_INVALID="Item is trashed" PASS_SSH_INVALID_TYPE="Custom"
 	[ "$status" -eq 0 ]
+}
+
+# The human-chosen resolution to IMPORTANT 2: trashing an item is one click
+# and the likeliest way a key is actually lost, and the general "Item is
+# trashed" allowance above would otherwise hide exactly that. Only a trashed
+# item whose type is SSH Key is this check's business; a trashed item of any
+# other type stays ignored (the test above).
+@test "a trashed ssh-key item is a fault and says so" {
+	run_check PASS_SSH_INVALID="Item is trashed" PASS_SSH_INVALID_TYPE="SSH Key"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"trashed"* ]]
+	[[ "$output" == *"ssh"* ]]
 }
