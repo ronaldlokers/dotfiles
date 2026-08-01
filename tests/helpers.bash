@@ -45,10 +45,23 @@ ssh-agent)
 item)
 	rc="${PASS_VIEW_RC:-0}"
 	[ "$rc" -ne 0 ] && exit "$rc"
-	# Pull --item-title out of the argument list.
+	# Pull the title out of the argument list. Real pass-cli accepts either
+	# --item-title, or a positional pass://<vault>/<title>/<field> URI — and
+	# chezmoi's own protonPass template function uses the latter, so the stub
+	# has to understand both shapes, not just the one dotfiles-secrets-check
+	# itself happens to use.
 	title=""
 	while [ $# -gt 0 ]; do
-		[ "$1" = "--item-title" ] && title="$2"
+		case "$1" in
+		--item-title)
+			title="$2"
+			;;
+		pass://*)
+			rest="${1#pass://}"
+			rest="${rest#*/}"
+			title="${rest%/*}"
+			;;
+		esac
 		shift
 	done
 	if [ -n "${PASS_ITEM_DIR:-}" ] && [ -f "$PASS_ITEM_DIR/$title" ]; then

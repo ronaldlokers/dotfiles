@@ -36,8 +36,7 @@ setup() {
 	ITEMS="$BATS_TEST_TMPDIR/items"
 	mkdir -p "$ITEMS"
 	for title in "ssh auth key" "git signing key" "aur ssh key" \
-		"sops age keys" "gh hosts.yml" "sugarrush config" \
-		"devpod dotfiles-env" "devpod project-tokens"; do
+		"sops age keys" "gh hosts.yml" "fixture signing key"; do
 		printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/$title"
 	done
 
@@ -48,6 +47,23 @@ setup() {
 	mkdir -p "$SRC/.chezmoitemplates"
 	printf '{{- /* protonPass */ -}}ssh-ed25519 AAAAFAKE\n' \
 		>"$SRC/.chezmoitemplates/fake-pubkey"
+
+	# Derivation source A: restore "<title>" lines, exactly the shape of
+	# run_after_14-restore-secrets.sh.tmpl. Only the lines matter, not the rest.
+	mkdir -p "$SRC/.chezmoiscripts"
+	cat >"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl" <<'RESTORE'
+#!/bin/sh
+restore "sops age keys" "$HOME/.config/sops/age/keys.txt" 600
+restore "gh hosts.yml" "$HOME/.config/gh/hosts.yml" 600
+RESTORE
+
+	# Derivation source B: a pass:// URI naming both title and field. The
+	# comment line is the regression guard for the false positive found while
+	# writing the spec — grepping for the bare scheme matches prose.
+	cat >"$SRC/.chezmoitemplates/fake-signing" <<'TMPL'
+{{- /* protonPass — a stale pass:// share id once broke this */ -}}
+{{- protonPass "pass://Dotfiles/fixture signing key/public_key" | trim -}}
+TMPL
 
 	export HOME STUB_LOG NOTIFY_LOG
 }
@@ -77,7 +93,7 @@ run_check() {
 	run_check
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"ssh auth key"* ]]
-	[[ "$output" == *"devpod project-tokens"* ]]
+	[[ "$output" == *"sops age keys"* ]]
 }
 
 @test "reports the templates it rendered" {
@@ -108,10 +124,62 @@ run_check() {
 # An empty fetch is a failure that exited 0 — the same trap the restore script
 # guards against.
 @test "an item that comes back empty fails" {
-	: >"$ITEMS/sugarrush config"
+	: >"$ITEMS/sops age keys"
 	run_check
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"sugarrush config"* ]]
+	[[ "$output" == *"sops age keys"* ]]
+}
+
+@test "checks every title named by a restore line" {
+	run_check
+	grep -q -- "--item-title sops age keys" "$STUB_LOG"
+	grep -q -- "--item-title gh hosts.yml" "$STUB_LOG"
+}
+
+# The whole point: the field comes from the URI, not from a guess. A hand-kept
+# list said `private_key` for the signing key while the template reads
+# `public_key`, so the check passed on a field nothing consumed.
+@test "checks a URI-named title on the field the URI names" {
+	run_check
+	grep -q -- "--item-title fixture signing key" "$STUB_LOG"
+	grep -q -- "--field public_key" "$STUB_LOG"
+}
+
+# Regression guard for a real false positive: the script's own comment about a
+# "stale pass:// share id" matches a bare-scheme grep, and the check would then
+# try to fetch an item named "share id".
+@test "a pass:// mention in prose is not treated as an item" {
+	run_check
+	! grep -q -- "--item-title share id" "$STUB_LOG"
+}
+
+@test "a derived title missing from the vault fails and names it" {
+	rm "$ITEMS/sops age keys"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"sops age keys"* ]]
+	[[ "$output" == *"unreadable"* ]]
+}
+
+# The general rule: derived-and-empty must not look like checked-and-fine.
+@test "deriving zero titles is a fault" {
+	rm -rf "$SRC/.chezmoiscripts"
+	rm -f "$SRC/.chezmoitemplates/fake-signing"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no vault items"* ]]
+}
+
+# Parsing a vault out of a URI and then querying a different one would check the
+# wrong thing and report success.
+@test "a URI naming another vault is a fault, not a silent wrong-vault query" {
+	cat >"$SRC/.chezmoitemplates/fake-other" <<'TMPL'
+{{- /* protonPass */ -}}
+{{- protonPass "pass://Elsewhere/some item/note" | trim -}}
+TMPL
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"Elsewhere"* ]]
 }
 
 # The fault that hid for a whole session: every restore skips and apply exits 0.
@@ -163,7 +231,11 @@ run_check() {
 # tree reproduces this exact case — a zero count must be a fault, not a
 # lookalike for "checked everything, all fine".
 @test "a zero template count is a fault, not a silent pass" {
+	# fake-signing (added in setup for URI derivation) also lives under
+	# .chezmoitemplates and also calls protonPass, so it has to go too for the
+	# template count to reach zero.
 	rm "$SRC/.chezmoitemplates/fake-pubkey"
+	rm "$SRC/.chezmoitemplates/fake-signing"
 	run_check
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"0 proton template"* ]]
@@ -192,7 +264,7 @@ run_check() {
 	run_check
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"nested/deep"* ]]
-	[[ "$output" == *"2 proton template"* ]]
+	[[ "$output" == *"3 proton template"* ]]
 }
 
 # .chezmoitemplates only holds partials reached through includeTemplate. A
@@ -206,7 +278,7 @@ run_check() {
 	run_check
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"dot_config/fake-secret.conf.tmpl"* ]]
-	[[ "$output" == *"2 proton template"* ]]
+	[[ "$output" == *"3 proton template"* ]]
 }
 
 @test "the template count reflects how many actually rendered" {
@@ -214,14 +286,14 @@ run_check() {
 		>"$SRC/.chezmoitemplates/fake-second"
 	run_check
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"2 proton template"* ]]
+	[[ "$output" == *"3 proton template"* ]]
 }
 
 # The spec lists this case and nothing implemented it: notify-send prints
 # nothing, so without a stub capturing its argv, nothing ever proved alarm()
 # was reached at all — only that the script's own stdout/stderr stayed clean.
 @test "a failure alarms, and the alarm text carries no secret content" {
-	: >"$ITEMS/sugarrush config"
+	: >"$ITEMS/sops age keys"
 	run_check
 	[ "$status" -ne 0 ]
 	[ -s "$NOTIFY_LOG" ]
