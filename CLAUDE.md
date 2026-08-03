@@ -50,3 +50,10 @@ was accepted deliberately and should not be papered over.
 - Script under test are not executable in the source tree — chezmoi run them
   itself. Invoke through `sh`/`bash` in a test, not directly.
 - `mise run check` is all of it: lint, test, gitleaks, verify, shells.
+- **Spec and plan pairs under `docs/superpowers/` are working documents, not
+  records.** Prune both halves once the work ships — precedent is 22af1cd, which
+  dropped eight plans and seven specs in one go. They describe the tree as it
+  was going to be, so once it is, they can only be wrong; the design *reasoning*
+  worth keeping belongs in `docs/design-notes.md`, and what actually happened is
+  in the commit. Leaving them is how `.chezmoitemplates/signing-pubkey` ended up
+  with three files describing a `protonPass` call it no longer makes.
