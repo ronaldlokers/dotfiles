@@ -332,14 +332,34 @@ pair.
 
 Two rules govern calling it from chezmoi, and both were learned the hard way.
 
-**Every call must be gated.** chezmoi's `protonPass` aborts the *entire*
-template when `pass-cli` fails, and `output` does the same on any non-zero exit.
-An unguarded call therefore breaks apply everywhere the binary or session is
-absent — every container, and CI. `.chezmoitemplates/has-proton-session` is the
-gate, and its shape is not stylistic: `lookPath` returns `""` rather than
-failing when the binary is missing, and the `sh -c … && echo true || echo false`
-wrapper keeps the exit status at 0, which is the very failure the gate exists to
-prevent.
+**Every call must be able to fail.** chezmoi's `output` aborts the *entire*
+template on any non-zero exit, and `protonPass` does the same on any `pass-cli`
+failure. An unguarded call therefore breaks apply everywhere the binary or
+session is absent — every container, and CI. The `sh -c … || true` wrapper is
+what keeps the exit status at 0, which is the very failure the gate exists to
+prevent; `.chezmoitemplates/has-proton-session` uses the `&& echo true || echo
+false` form of the same trick, and `lookPath` returns `""` rather than failing
+when the binary is missing.
+
+A gate on *whether a session exists* was not enough, and
+`.chezmoitemplates/signing-pubkey` is where that showed. It gated `protonPass`
+on `has-proton-session`, but a live session says nothing about one particular
+item: a renamed item, a renamed field, a lapsed share or a transient 422 each
+still aborted the whole apply over a git config file that has a perfectly good
+fallback in the agent. `protonPass` offers no escape hatch — there is no way to
+catch its failure in a template — so that template now reads the vault through
+`pass-cli` inside a guarded `output` call instead, and an unreadable signing key
+costs the signing key and nothing else.
+
+That has a knock-on worth knowing: `dotfiles-secrets-check` used to find
+Proton-backed templates by grepping for the literal string `protonPass`, which
+stops being a marker the moment a template reads the vault another way. It now
+greps for the `pass://` URI shape, which is also where half one derives the item
+list from — one definition of "this reads Proton Pass", serving both halves. So
+a template referencing the vault must keep naming a `pass://` URI even when it
+does not call `protonPass`; `signing-pubkey` splits its vault, title and field
+back out of that URI rather than spelling them out as flags, which is what keeps
+it inside the health check.
 
 **Secrets are written by scripts, never by template files.** A guarded template
 file is quietly destructive: when the gate is false it renders empty, and

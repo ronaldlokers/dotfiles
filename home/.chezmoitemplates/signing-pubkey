@@ -2,16 +2,45 @@
        Proton Pass, falling back to the agent. Renders empty if neither answers,
        and config.tmpl then omits user.signingkey so commits fail loudly.
 
-       Both calls must stay guarded: protonPass aborts the entire template when
-       pass-cli fails, and `output` does the same on a non-zero exit.
+       Every call here must stay guarded, because chezmoi's `output` aborts the
+       whole template — and with it the whole apply — on a non-zero exit. The
+       `|| true` in the sh wrapper is what keeps a bad day from taking the
+       apply down with it.
+
+       This used to call chezmoi's `protonPass`, which offers no such escape:
+       it aborts on any pass-cli failure. Guarding it on "a session exists" was
+       not enough, because a live session says nothing about *this item* — a
+       renamed item, a renamed field, a lapsed share or a transient 422 each
+       still aborted the entire apply over a git config file that has a
+       perfectly good fallback sitting in the agent. An unreadable signing key
+       should cost the signing key, nothing more.
+
+       The pass:// URI stays the single literal the vault reference is written
+       as, and the vault, title and field are split out of it rather than
+       restated: dotfiles-secrets-check derives both what to read and what to
+       render by scanning the tree for exactly that shape, so spelling them out
+       as pass-cli flags instead would quietly drop this file out of the health
+       check.
+
+       Arguments reach sh positionally rather than interpolated into the
+       command string, so a title containing a quote character cannot break out
+       of it.
 
        Addressed by vault name and item title, not by share/item id. A PAT
        session's vault access is a share, so re-authenticating mints a new
-       share id and any id pinned here goes stale — which fails as a 422 that
-       aborts the whole apply, not just this file. Titles survive that, and
-       are how the restore script and secrets-check already name items. */ -}}
-{{- if eq (includeTemplate "has-proton-session" .) "true" -}}
-{{- protonPass "pass://Dotfiles/git signing key/public_key" | trim -}}
+       share id and any id pinned here goes stale — which fails as a 422.
+       Titles survive that, and are how the restore script and secrets-check
+       already name items.
+
+       No is-container or has-proton-session guard: pass-cli missing, no
+       session and an unreadable item all arrive here as empty output and take
+       the agent fallback, which is the right answer in a container
+       anyway. */ -}}
+{{- $uri := "pass://Dotfiles/git signing key/public_key" -}}
+{{- $p := splitList "/" (trimPrefix "pass://" $uri) -}}
+{{- $key := output "sh" "-c" `pass-cli item view --vault-name "$1" --item-title "$2" --field "$3" 2>/dev/null || true` "sh" (index $p 0) (index $p 1) (index $p 2) | trim -}}
+{{- if $key -}}
+{{- $key -}}
 {{- else -}}
 {{- output "sh" "-c" "ssh-add -L 2>/dev/null | awk '/git-signing/{print $1\" \"$2; exit}'" | trim -}}
 {{- end -}}
