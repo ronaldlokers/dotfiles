@@ -94,17 +94,56 @@ jobs:
           # a network blip or upstream rename can leave empty external dirs;
           # the shells source them behind `[ -f ]` guards and stay silent, so
           # assert the real files exist rather than trusting apply's exit code.
+          #
+          # Two passes, because they fail differently and neither subsumes the
+          # other. Every target, derived — catches an external nobody thought
+          # to assert. Then the specific file each consumer opens — catches an
+          # upstream rename or a stripComponents change that leaves a
+          # perfectly non-empty directory with the file moved out from under
+          # the guard.
           missing=0
+
+          # Derived from .chezmoiexternals, not restated here. The list this
+          # step used to carry by hand had drifted to 7 of 12 targets, and the
+          # five it had stopped covering included pass-cli and devpod — the
+          # two fetched executables, the ones most worth asserting. Rendering
+          # the templates under $TESTHOME resolves the same host/container and
+          # platform gates the apply just resolved, so the set matches what
+          # was actually fetched rather than what a reader assumed.
+          targets="$(for t in home/.chezmoiexternals/*.toml; do
+            HOME="$TESTHOME" chezmoi execute-template --source "$PWD" <"$t"
+            echo
+          done | sed -n 's/^\["\(.*\)"\]$/\1/p')"
+          if [ -z "$targets" ]; then
+            echo "::error::derived no external targets — the parse broke, not the externals"
+            exit 1
+          fi
+          echo "asserting $(printf '%s\n' "$targets" | wc -l) external targets"
+          while IFS= read -r rel; do
+            [ -n "$rel" ] || continue
+            path="$TESTHOME/$rel"
+            if [ -d "$path" ]; then
+              # an archive whose include list matches nothing still creates the
+              # directory, so emptiness is the failure, not absence
+              if [ -z "$(find "$path" -type f -print -quit)" ]; then
+                echo "::error::external directory is empty: $path"
+                missing=1
+              fi
+            elif [ ! -s "$path" ]; then
+              echo "::error::missing or empty external: $path"
+              missing=1
+            fi
+          done < <(printf '%s\n' "$targets")
+
           for f in \
-            "$TESTHOME/.local/bin/mise" \
             "$TESTHOME/.zsh/pure/pure.zsh" \
             "$TESTHOME/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" \
             "$TESTHOME/.zsh/fzf-tab/fzf-tab.plugin.zsh" \
             "$TESTHOME/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" \
             "$TESTHOME/.tmux/plugins/tmux-resurrect/resurrect.tmux" \
-            "$TESTHOME/.config/k9s/skins/catppuccin-mocha.yaml"; do
+            "$TESTHOME/.tmux/plugins/tmux-continuum/continuum.tmux"; do
             if [ ! -s "$f" ]; then
-              echo "::error::missing or empty external: $f"
+              echo "::error::external landed but the file it is sourced by is not there: $f"
               missing=1
             fi
           done
