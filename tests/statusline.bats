@@ -9,6 +9,16 @@
 setup() {
 	SCRIPT="$BATS_TEST_DIRNAME/../home/dot_claude/executable_statusline.sh"
 	REPO="$BATS_TEST_DIRNAME/.."
+
+	# The git segment shells out to git, which reads this machine's global and
+	# system config. A `core.hooksPath`, an `insteadOf` rewrite, a
+	# `status.short` — any of them changes what git answers, so the suite was
+	# quietly measuring this developer's git configuration alongside the
+	# script. The fixture repos built below set the identity they need
+	# themselves, so there is nothing to inherit.
+	GIT_CONFIG_GLOBAL=/dev/null
+	GIT_CONFIG_SYSTEM=/dev/null
+	export GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
 }
 
 # Feeds the script one status JSON payload and strips the SGR escapes, so
