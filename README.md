@@ -48,8 +48,18 @@ Everything hinges on Proton Pass, so a fresh machine needs only the bootstrap
 token above. `pass-cli login` works instead if you would rather type a password.
 
 ```sh
-mise run secrets-check     # assert every vault item is still readable
+dotfiles-status            # what is recorded: last check, last backup. Instant.
+mise run secrets-check     # the live answer: every vault item still readable
 ```
+
+`dotfiles-status` reads local state only — no network, no vault — and answers
+the question nothing else on the machine can. A failing check marks its unit
+failed, which `systemctl --user --failed` shows. A check that has *stopped
+running* is, from there, indistinguishable from one that runs and passes: both
+are absent. A timer disabled by a botched apply, a unit whose ExecStart moved,
+a laptop shut for a month — every one looks like health. `dotfiles-status` says
+when the check last actually ran, and calls it a fault past ten days. The daily
+update-check timer runs it too, so a stale check notifies without being asked.
 
 > [!WARNING]
 > Proton is the only copy unless you make another. No account, no secrets —
@@ -65,9 +75,24 @@ can all be revoked and re-minted; SSH keys can too, painfully.
 So the offline copy is one small file:
 
 ```sh
-dotfiles-secrets-export /run/media/you/STICK   # asks for a passphrase
-age -d /run/media/you/STICK/dotfiles-age-key.age   # verify you can read it back
+dotfiles-secrets-export /run/media/you/STICK                    # asks for a passphrase
+dotfiles-secrets-restore /run/media/you/STICK/dotfiles-age-key.age   # read it back
 ```
+
+The second line is not optional, and it used to be `age -d`, which prints the
+private key into your scrollback — and your terminal's buffer, and quite
+possibly your multiplexer's save file. `dotfiles-secrets-restore` decrypts it,
+confirms it is a usable age identity, compares it against the recorded
+fingerprint and prints only the *public* half. It writes nothing unless asked:
+
+```sh
+dotfiles-secrets-restore --write <file>   # put the key back, on the bad day
+```
+
+Run the verify occasionally. The weekly check confirms a *record* exists and
+that the vault's key has not rotated since — it never opens the backup, so it
+cannot tell you the passphrase is the one you think it is, or that the medium
+is still readable. Those are the questions that matter on the day it is needed.
 
 Keep the passphrase somewhere that is **not** Proton Pass — in your head, or
 wherever you keep things you cannot look up. A passphrase stored in the vault

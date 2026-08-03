@@ -52,6 +52,34 @@ upstream="$(git -C "$source_dir" rev-parse --abbrev-ref --symbolic-full-name "@{
 # --quiet so a routine fetch stays silent in the journal; failure is fine.
 git -C "$source_dir" fetch --quiet --no-tags 2>/dev/null || exit 0
 
+# --- is the weekly secrets check still running at all? -----------------------
+#
+# This lives here rather than in a fourth timer because it needs exactly what
+# this one already is: something that fires daily and knows how to reach you.
+#
+# It is answering a question nothing else on the machine can. The weekly check
+# marks its unit failed when it fails, which `systemctl --user --failed`
+# surfaces — but a unit that has *stopped running* is, from there, identical to
+# one that runs and passes: both are simply absent. A timer disabled by a
+# botched apply, a unit whose ExecStart moved, a machine off for a month; all
+# of them look like health.
+#
+# dotfiles-status --quiet is silent and exits 0 when the recorded state is
+# fine, so the common case costs one exec and says nothing. Never fatal: this
+# script's own job is the git comparison below, and a missing helper must not
+# stop it.
+if command -v dotfiles-status >/dev/null 2>&1; then
+	if ! stale="$(dotfiles-status --quiet 2>&1)"; then
+		if command -v notify-send >/dev/null 2>&1 && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+			notify-send --app-name=dotfiles --icon=dialog-warning --urgency=normal \
+				"Dotfiles secrets need attention" \
+				"$(printf '%s' "$stale" | head -2)"
+		else
+			printf 'dotfiles: %s\n' "$stale" >&2
+		fi
+	fi
+fi
+
 behind="$(git -C "$source_dir" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)"
 [ "$behind" -gt 0 ] || exit 0
 
