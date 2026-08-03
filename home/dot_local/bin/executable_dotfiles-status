@@ -1,0 +1,155 @@
+#!/bin/sh
+# One command that answers "is anything wrong with this machine's secrets?".
+#
+# The pieces existed; the answer did not. A failing weekly check raises a
+# desktop toast, which is gone the moment you look away and never appears at all
+# when the timer fires outside a graphical login. It marks the unit failed,
+# which is durable but only answers "did the last run fail" — and a unit that
+# has stopped running altogether is, from `systemctl --user --failed`, exactly
+# indistinguishable from one that runs and passes. Both are absent.
+#
+# That is the gap this closes: not "did the check fail" but "when did the check
+# last actually run, and what did it say". A timer that was disabled by a
+# botched apply, a machine that has been off for a month, a unit whose
+# ExecStart moved — all of them look like health until someone asks.
+#
+# Reads recorded state only. It never contacts Proton, never reads a secret and
+# never writes anything, so it is instant and safe to put in a prompt or run in
+# a loop. Run `dotfiles-secrets-check` for the live answer.
+set -eu
+
+usage() {
+	cat <<'USAGE'
+usage: dotfiles-status [--quiet]
+
+Reports what is recorded about this machine's secrets health: when the weekly
+check last ran and what it found, and when the offline backup was last made.
+
+Reads local state only — no network, no vault, no secrets. Run
+`dotfiles-secrets-check` for a live answer.
+
+  --quiet   print nothing when everything is fine; exit status is the answer
+
+Exits 0 when everything recorded is healthy, 1 otherwise.
+USAGE
+}
+
+quiet=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-h | --help)
+		usage
+		exit 0
+		;;
+	--quiet) quiet=1 ;;
+	*)
+		echo "dotfiles-status: unknown argument: $1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+	shift
+done
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+check_status="$state_dir/last-check"
+backup_manifest="$state_dir/secrets-backup"
+
+# The weekly timer plus its 12h randomised delay means a healthy machine can
+# legitimately be eight days between runs. Ten is the threshold: late enough
+# not to cry wolf over a laptop that was shut for a long weekend, early enough
+# that a timer which has stopped firing is noticed within a fortnight.
+stale_days=10
+
+rc=0
+out=""
+
+# Collected rather than printed directly, so --quiet can decide at the end
+# whether any of it was worth saying.
+say() {
+	out="$out$1
+"
+}
+
+now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
+
+# Whole days between an ISO-8601 UTC timestamp and now. Prints nothing if the
+# date cannot be parsed, which the caller treats as "unknown" rather than 0 —
+# an unparsable date must not read as "checked today".
+days_since() {
+	_ds_epoch="$(date -u -d "$1" +%s 2>/dev/null || true)"
+	[ -n "$_ds_epoch" ] || return 1
+	[ "$now_epoch" -gt 0 ] || return 1
+	echo $(((now_epoch - _ds_epoch) / 86400))
+}
+
+# --- the weekly check --------------------------------------------------------
+
+if [ ! -f "$check_status" ]; then
+	say "FAIL  secrets check     has never recorded a run on this machine"
+	say "      Either it has never run, or the timer was never enabled."
+	say "      Check with: systemctl --user status dotfiles-secrets-check.timer"
+	rc=1
+else
+	when="$(sed -n 's/^date=//p' "$check_status" | head -1)"
+	result="$(sed -n 's/^result=//p' "$check_status" | head -1)"
+	detail="$(sed -n 's/^detail=//p' "$check_status" | head -1)"
+	age_days="$(days_since "$when" || true)"
+
+	if [ -z "$age_days" ]; then
+		say "FAIL  secrets check     the recorded date is unreadable ($when)"
+		rc=1
+	elif [ "$age_days" -gt "$stale_days" ]; then
+		# The finding this exists for. Not "the check failed" — the check has
+		# not run, which nothing else on the machine would ever tell you.
+		say "FAIL  secrets check     last ran $age_days days ago; the weekly timer is not firing"
+		say "      Check with: systemctl --user status dotfiles-secrets-check.timer"
+		rc=1
+	else
+		case "$result" in
+		ok)
+			say "ok    secrets check     $age_days day(s) ago: $detail"
+			;;
+		warn)
+			say "warn  secrets check     $age_days day(s) ago: $detail"
+			say "      Run 'mise run secrets-check' for the detail."
+			;;
+		*)
+			say "FAIL  secrets check     $age_days day(s) ago: ${detail:-failed}"
+			say "      Run 'mise run secrets-check' for the detail."
+			rc=1
+			;;
+		esac
+	fi
+fi
+
+# --- the offline copy --------------------------------------------------------
+#
+# No staleness threshold here on purpose, and it is the same reasoning the check
+# itself uses: an untouched key means a two-year-old copy is still a perfectly
+# good copy, and nagging about its age would only teach you to ignore the line.
+# What matters is whether one exists at all.
+if [ ! -f "$backup_manifest" ]; then
+	say "FAIL  offline backup    none has ever been recorded"
+	say "      Proton is otherwise the only copy. Run: dotfiles-secrets-export <destination>"
+	rc=1
+else
+	backup_when="$(sed -n 's/^date=//p' "$backup_manifest" | head -1)"
+	backup_dest="$(sed -n 's/^destination=//p' "$backup_manifest" | head -1)"
+	backup_age="$(days_since "$backup_when" || true)"
+	if [ -n "$backup_age" ]; then
+		say "ok    offline backup    made $backup_age day(s) ago: ${backup_dest:-unknown destination}"
+	else
+		say "ok    offline backup    recorded: ${backup_dest:-unknown destination}"
+	fi
+	# Whether it still *reads back* is a question only the passphrase can
+	# answer, so this points at the command rather than pretending to know.
+	say "      Verify it reads back: dotfiles-secrets-restore ${backup_dest:-<file>}"
+fi
+
+if [ "$quiet" = 1 ] && [ "$rc" -eq 0 ]; then
+	exit 0
+fi
+
+printf '%s' "$out"
+exit "$rc"

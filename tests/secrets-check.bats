@@ -939,3 +939,65 @@ STUB
 	grep -q -- "--item-title tmpl \* item" "$STUB_LOG"
 	! grep -q -- "--item-title tmpl SURPRISE item" "$STUB_LOG"
 }
+
+# --- the durable record (N10/N11) --------------------------------------------
+#
+# Everything else this script reports is ephemeral. The toast is gone when you
+# look away and never appears at all outside a graphical login; the unit's
+# failed state is durable but answers only "did the last run fail" — and a unit
+# that has stopped running is, from `systemctl --user --failed`, identical to
+# one that runs and passes. Both are absent. The record is what
+# dotfiles-status reads to tell those apart, so the two must not drift.
+
+@test "a successful run records that it happened" {
+	run_check
+	[ "$status" -eq 0 ]
+	rec="$HOME/.local/state/dotfiles/last-check"
+	[ -f "$rec" ]
+	grep -q '^result=ok$' "$rec"
+	grep -qE '^date=[0-9]{4}-[0-9]{2}-[0-9]{2}T' "$rec"
+}
+
+@test "a failing run records the failure rather than nothing" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	[ "$status" -ne 0 ]
+	grep -q '^result=fail$' "$HOME/.local/state/dotfiles/last-check"
+}
+
+# The distinction dotfiles-status leans on: a warning is a real run that found
+# something pending, not a failure and not silence.
+@test "a warning run records warn, not ok and not fail" {
+	run_check NOW_EPOCH=1814227200
+	[ "$status" -eq 0 ]
+	grep -q '^result=warn$' "$HOME/.local/state/dotfiles/last-check"
+}
+
+# The dead-session path exits early, before every other check — and it is the
+# one most worth recording, because it is the state where nothing else on the
+# machine works either.
+@test "a dead session is recorded too" {
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	rec="$HOME/.local/state/dotfiles/last-check"
+	[ -f "$rec" ]
+	grep -q '^result=fail$' "$rec"
+	grep -q 'no Proton Pass session' "$rec"
+}
+
+@test "the record carries no secret material" {
+	run_check
+	rec="$HOME/.local/state/dotfiles/last-check"
+	! grep -q "SENTINEL" "$rec"
+}
+
+# Best effort by design: a machine that cannot write its own state directory
+# has a larger problem than this record, and failing the check over it would
+# report the wrong fault entirely.
+@test "an unwritable state directory does not fail the check" {
+	mkdir -p "$HOME/.local/state"
+	chmod 500 "$HOME/.local/state"
+	run_check
+	chmod 700 "$HOME/.local/state"
+	[ "$status" -eq 0 ]
+}

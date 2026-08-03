@@ -48,8 +48,18 @@ Everything hinges on Proton Pass, so a fresh machine needs only the bootstrap
 token above. `pass-cli login` works instead if you would rather type a password.
 
 ```sh
-mise run secrets-check     # assert every vault item is still readable
+dotfiles-status            # what is recorded: last check, last backup. Instant.
+mise run secrets-check     # the live answer: every vault item still readable
 ```
+
+`dotfiles-status` reads local state only — no network, no vault — and answers
+the question nothing else on the machine can. A failing check marks its unit
+failed, which `systemctl --user --failed` shows. A check that has *stopped
+running* is, from there, indistinguishable from one that runs and passes: both
+are absent. A timer disabled by a botched apply, a unit whose ExecStart moved,
+a laptop shut for a month — every one looks like health. `dotfiles-status` says
+when the check last actually ran, and calls it a fault past ten days. The daily
+update-check timer runs it too, so a stale check notifies without being asked.
 
 > [!WARNING]
 > Proton is the only copy unless you make another. No account, no secrets —
