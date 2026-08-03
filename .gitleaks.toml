@@ -65,7 +65,11 @@ keywords = ["BEGIN AGE ENCRYPTED FILE"]
 # design, and it would evaporate the moment anything scanned trees instead.
 [rules.allowlist]
 paths = [
-  '''tests/secrets-export\.bats''',
+  # Any bats file. A fixture that proves ciphertext was written has to contain
+  # the armour header to be a fixture at all, and naming them one at a time
+  # meant the rule fired on the *next* such test rather than on a leak — which
+  # is how a rule ends up being turned off.
+  '''tests/.*\.bats''',
   '''CLAUDE\.md''',
   '''docs/superpowers/.*\.md''',
   '''^(home/)?dot_config/.*\.age$''',
