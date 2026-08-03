@@ -53,18 +53,24 @@ keywords = ["BEGIN AGE ENCRYPTED FILE"]
 # and they are still in the history of a public repository: the sops age key,
 # the gh token, the ssh signing key, the DevPod env, the sugarrush config. They
 # are listed here by their exact historical paths, every one of which is a file
-# that no longer exists and cannot come back — `.chezmoiroot` moved the whole
-# tree under `home/`, so nothing new can ever land at these paths. That is what
-# makes the allowlist safe: it exempts named history, not a pattern that a
-# future mistake could match.
+# that no longer exists and cannot come back. That is what makes the allowlist
+# safe: it exempts named history, not a pattern that a future mistake could
+# match.
+#
+# The `home/` prefix is optional in each pattern because `.chezmoiroot` moved
+# the whole tree, so every one of these paths exists in history twice — once
+# before the move and once after. Only the pre-move spellings were listed at
+# first, and it passed anyway: `gitleaks git` reads diffs, and the move was
+# recorded as a pure rename with no content to scan. That is luck, not a
+# design, and it would evaporate the moment anything scanned trees instead.
 [rules.allowlist]
 paths = [
   '''tests/secrets-export\.bats''',
   '''CLAUDE\.md''',
   '''docs/superpowers/.*\.md''',
-  '''^dot_config/.*\.age$''',
-  '''^private_dot_ssh/.*\.age$''',
-  '''^key\.txt\.age$''',
+  '''^(home/)?dot_config/.*\.age$''',
+  '''^(home/)?private_dot_ssh/.*\.age$''',
+  '''^(home/)?key\.txt\.age$''',
 ]
 
 [[rules]]

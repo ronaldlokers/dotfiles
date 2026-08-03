@@ -91,8 +91,16 @@ make_tracked_clone() {
 	rm -rf "$root"
 	mkdir -p "$root"
 
-	git init -q --bare "$root/origin.git"
+	# -b main, explicitly. A bare init takes its default branch name from
+	# init.defaultBranch, which is `main` on this machine and `master` on the
+	# runner — so `push origin main` below found no such local branch and the
+	# whole fixture came up empty in CI while passing locally. Nothing about
+	# these tests should depend on a git default that varies by host.
+	git init -q --bare -b main "$root/origin.git"
+	# Same reasoning: name the branch rather than inheriting one. A clone of an
+	# empty bare repo takes its branch name from the *local* default too.
 	git clone -q "$root/origin.git" "$root/seed"
+	git -C "$root/seed" checkout -q -b main
 	git -C "$root/seed" config user.email t@example.com
 	git -C "$root/seed" config user.name t
 	printf 'base\n' >"$root/seed/f"
@@ -108,7 +116,7 @@ make_tracked_clone() {
 		printf 'c%s\n' "$i" >>"$root/seed/f"
 		git -C "$root/seed" commit -qam "c$i"
 	done
-	[ "$behind" -eq 0 ] || git -C "$root/seed" push -q origin main
+	[ "$behind" -eq 0 ] || git -C "$root/seed" push -q origin HEAD:refs/heads/main
 
 	printf '%s\n' "$root/work"
 }
