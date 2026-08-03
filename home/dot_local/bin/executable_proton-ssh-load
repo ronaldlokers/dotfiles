@@ -61,11 +61,19 @@ say() {
 # rc and are not on a per-prompt path.
 #
 # stderr, so it stays out of anything capturing this script's output.
+# $1 is a marker name, and it is not decoration. One marker for every message
+# meant that whichever fault happened first silenced the others for the rest of
+# the boot: a terminal that reported "no session" left a later, different
+# failure — a rejected token, keys that would not load — with nothing to say.
+# They are separate conditions with separate fixes, so they get separate
+# markers and each is allowed to speak once.
 warn_once() {
+	_warn_key="$1"
+	shift
 	_warn_dir="${XDG_RUNTIME_DIR:-}"
 	if [ -n "$_warn_dir" ] && [ -d "$_warn_dir" ]; then
-		_warn_marker="$_warn_dir/proton-ssh-load.warned"
-		# Already told you this boot. Say nothing.
+		_warn_marker="$_warn_dir/proton-ssh-load.warned.$_warn_key"
+		# Already told you this one this boot. Say nothing.
 		[ -e "$_warn_marker" ] && return 0
 		# Best effort: a marker we cannot write means the message repeats,
 		# which is the safe direction to fail in.
@@ -178,7 +186,7 @@ if ! pass-cli info >/dev/null 2>&1; then
 	fi
 
 	if [ -z "$pat" ]; then
-		warn_once \
+		warn_once no-session \
 			"proton-ssh-load: no Proton Pass session — your SSH keys are not loaded." \
 			"proton-ssh-load: run 'pass-cli login', or set" \
 			"proton-ssh-load: PROTON_PASS_PERSONAL_ACCESS_TOKEN (Dotfiles vault," \
@@ -196,7 +204,7 @@ if ! pass-cli info >/dev/null 2>&1; then
 			try_login "$pat"; then
 			cache_it=1
 		else
-			warn_once "proton-ssh-load: could not authenticate to Proton Pass — your SSH keys are not loaded."
+			warn_once rejected "proton-ssh-load: could not authenticate to Proton Pass — your SSH keys are not loaded."
 			exit 0
 		fi
 	fi
@@ -225,8 +233,28 @@ if ! pass-cli info >/dev/null 2>&1; then
 	unset pat
 fi
 
+# --quiet means "say nothing on success", and this line read it as "say nothing".
+# Every path above earns its way to a warn_once when it cannot deliver keys;
+# this one — the call that actually loads them — sent its failure to /dev/null
+# and exited 0. So the single most direct way to end up with an empty agent,
+# a session that is alive and a load that fails, was the one failure the shell
+# rc could never report. That is the state where you go and debug a git push.
+#
+# Same rule as the rest: once per boot, on stderr, and the successful case stays
+# silent so a working terminal prints nothing.
 if [ "$quiet" = 1 ]; then
-	pass-cli ssh-agent load --vault-name "$vault" >/dev/null 2>&1 || exit 0
+	if ! load_err="$(pass-cli ssh-agent load --vault-name "$vault" 2>&1 >/dev/null)"; then
+		warn_once load-failed \
+			"proton-ssh-load: the Proton Pass session is alive but loading the SSH keys failed." \
+			"proton-ssh-load: run 'proton-ssh-load' by hand to see why."
+		# The error text itself is not printed here. It is pass-cli's, arbitrary
+		# in length, and this runs at every new prompt — the one-line pointer to
+		# a command that shows it in full is what belongs on a shell startup
+		# path. Kept in a variable rather than discarded so a future caller can
+		# use it without re-running the load.
+		: "${load_err:-}"
+		exit 0
+	fi
 else
 	pass-cli ssh-agent load --vault-name "$vault"
 fi
