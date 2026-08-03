@@ -28,4 +28,7 @@ ghostty.terminfo
 # And the offline export, which reads the same vault to write the copy. A
 # container has nothing to export and nowhere to export it to.
 .local/bin/dotfiles-secrets-export
+# And its counterpart, for the same reason: a container has no vault to restore
+# into and no removable medium to read the copy from.
+.local/bin/dotfiles-secrets-restore
 {{ end -}}

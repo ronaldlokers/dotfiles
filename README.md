@@ -65,9 +65,24 @@ can all be revoked and re-minted; SSH keys can too, painfully.
 So the offline copy is one small file:
 
 ```sh
-dotfiles-secrets-export /run/media/you/STICK   # asks for a passphrase
-age -d /run/media/you/STICK/dotfiles-age-key.age   # verify you can read it back
+dotfiles-secrets-export /run/media/you/STICK                    # asks for a passphrase
+dotfiles-secrets-restore /run/media/you/STICK/dotfiles-age-key.age   # read it back
 ```
+
+The second line is not optional, and it used to be `age -d`, which prints the
+private key into your scrollback — and your terminal's buffer, and quite
+possibly your multiplexer's save file. `dotfiles-secrets-restore` decrypts it,
+confirms it is a usable age identity, compares it against the recorded
+fingerprint and prints only the *public* half. It writes nothing unless asked:
+
+```sh
+dotfiles-secrets-restore --write <file>   # put the key back, on the bad day
+```
+
+Run the verify occasionally. The weekly check confirms a *record* exists and
+that the vault's key has not rotated since — it never opens the backup, so it
+cannot tell you the passphrase is the one you think it is, or that the medium
+is still readable. Those are the questions that matter on the day it is needed.
 
 Keep the passphrase somewhere that is **not** Proton Pass — in your head, or
 wherever you keep things you cannot look up. A passphrase stored in the vault
