@@ -225,6 +225,25 @@ setup_file() {
 	grep -q -- "--item-title devpod project-tokens" "$STUB_LOG"
 }
 
+# B11. The three lines are one message: the problem, and what to do about it.
+# The first used to go to stdout and the other two to stderr, so anything
+# reading them separately — a log, a pipe, a CI step — got the problem without
+# the fix, or the fix with no idea what it was for.
+@test "the no-session message goes to one stream, not two" {
+	export PASS_INFO_RC=1
+	render_template "$TMPL" "$SCRIPT" "$BIN:$PATH"
+
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" PASS_INFO_RC=1 sh "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$stderr" == *"no Proton Pass session"* ]]
+	[[ "$stderr" == *"pass-cli login"* ]]
+	[[ "$stderr" == *"chezmoi apply"* ]]
+	# and none of it went to stdout
+	[[ "$output" != *"no Proton Pass session"* ]]
+	[[ "$output" != *"pass-cli login"* ]]
+}
+
 # The apply path is the one caller that should prompt. ssh-agent.sh must not,
 # so this pins which flags cross the boundary.
 @test "hands the prompt flag to proton-ssh-load" {
