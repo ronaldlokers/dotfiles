@@ -115,50 +115,10 @@ echo "clean-HOME apply succeeded, all configured tools present"
 
 [tasks.shells]
 description = "start each interactive shell and fail on startup noise or errors"
-# Neither rc file is in the shellcheck list (they are sourced, not executed, and
-# full of shell-specific syntax) and the clean-HOME bootstrap never starts a
-# shell — so a typo in an init line ships silently and only shows up the next
-# time a terminal is opened. `-i` is the point: the tool integrations this
-# guards all live in the interactive path. This reads the *applied* files in
-# $HOME, not the source tree, so run `chezmoi apply` first.
-run = '''
-set -eu
-rc=0
-# Giving the checked shell a real pty (below, via `script`) has a side effect
-# beyond the tty noise it's there to fix: mise's own shell hooks (`eval "$(mise
-# activate ...)"` in both rc files) detect that stdout is now a terminal and
-# emit an OSC 9;4 progress escape on startup. That's mise reacting to the pty
-# this task handed it, not an rc-file regression, so it's silenced the same
-# way as the tty noise below — by not producing it in the first place.
-export MISE_TERMINAL_PROGRESS=false
-for shell in zsh bash; do
-	if ! command -v "$shell" >/dev/null 2>&1; then
-		echo "skip  $shell (not installed)"
-		continue
-	fi
-	# Both streams captured: a failing init line prints to stderr, a noisy but
-	# successful one to stdout. Either is a finding.
-	if command -v script >/dev/null 2>&1; then
-		out="$(script -qec "$shell -ic true" /dev/null 2>&1 </dev/null)" && status=0 || status=$?
-	else
-		out="$("$shell" -ic true 2>&1 </dev/null)" && status=0 || status=$?
-	fi
-	if [ "$status" -eq 0 ]; then
-		if [ -n "$out" ]; then
-			echo "FAIL  $shell started but printed output:" >&2
-			printf '%s\n' "$out" >&2
-			rc=1
-		else
-			echo "ok    $shell"
-		fi
-	else
-		echo "FAIL  $shell exited non-zero:" >&2
-		printf '%s\n' "$out" >&2
-		rc=1
-	fi
-done
-exit "$rc"
-'''
+# The check itself is scripts/check-shells.sh, so CI's bootstrap job can run the
+# same one against its throwaway HOME. It reads the *applied* files in $HOME,
+# not the source tree, so run `chezmoi apply` first.
+run = "sh scripts/check-shells.sh"
 
 [tasks.secrets-check]
 description = "check every secret in Proton Pass is still readable"
@@ -192,6 +152,9 @@ esac
 
 [tasks.check]
 description = "everything CI runs, in one command"
-# `shells` is not part of CI — CI has no applied $HOME to start a shell in — but
-# it is cheap and catches the one class of breakage the other three miss.
+# `shells` runs in CI too now, against the bootstrap job's throwaway HOME —
+# which is a *better* subject than this machine's, because it is what a fresh
+# install actually produces rather than a HOME with years of accumulated state.
+# It stays here as well: this is the copy that catches a change before it is
+# pushed.
 depends = ["lint", "test", "secrets", "verify", "shells"]

@@ -418,15 +418,27 @@ of the README is a date nobody reads). `scripts/check-agreement.sh`, run by
 drives each check against a tree with the drift deliberately introduced —
 because a checker nobody has watched fail is not a checker.
 
-`check` overlaps CI without matching it, in both directions. It also runs
-`shells`, which CI cannot — there is no applied `$HOME` on a runner to start an
-interactive shell in. And CI runs two jobs `check` has no way to: `host-ssh-agent`
+`check` overlaps CI without matching it, in both directions. CI runs two jobs
+`check` has no way to: `host-ssh-agent`
 brings up a real systemd user session, and `container-gates` runs inside an Arch
 container to prove the host-only gates skip. A green `check` is the strongest
 signal available locally, not a guarantee the pipeline will pass.
 
 `verify` is the one that matters before pushing: it redirects `/dev/null` into
 the apply, reproducing the no-TTY conditions of `devpod up` and CI.
+
+`shells` starts each interactive shell and fails on any output at all, because
+neither rc file is shellcheck'd — they are sourced, not executed — and a
+clean-HOME apply never opens a terminal. It runs in CI now too, against the
+bootstrap job's throwaway `$HOME`, which is a better subject than a developer's
+own: it is what a fresh install actually produces, with no accumulated state to
+paper over a missing file. It had been left out on the belief that an
+interactive shell in a fresh `$HOME` hangs. It does — but not for the reason
+assumed. mise merges a config from every ancestor of the working directory, so a
+shell started inside this checkout finds the repo's own `mise.toml`, and an
+untrusted config makes `mise activate` draw an interactive *Trust them?* widget
+and wait for a keypress that never comes. The check runs from `$HOME`, which is
+where a terminal opens anyway.
 
 `test` covers what `verify` structurally cannot. A clean-HOME apply only ever
 walks the empty-machine path, so it never sees an `~/.ssh/config` that already
@@ -468,6 +480,11 @@ mise run prune             # needs a human: shows a dry run, then asks
   `~/.devpod/config.yaml` are deliberately unmanaged for the same reason.
 - **Aliases don't apply in scripts.** `du`, `df`, `top` are aliased to `dust`,
   `duf`, `btop` in interactive shells only.
+- **A completion that never appears may be a permissions problem.** `compinit`
+  runs with `-i`, so a group-writable directory in `$fpath` is skipped rather
+  than trusted — silently, because the alternative is zsh stopping to ask a
+  question that hangs any shell nothing can type into. `compaudit` lists what
+  is being skipped; `chmod g-w` on the directory brings its completions back.
 - **Never run `omarchy-setup-zsh`.** It replaces `~/.zshrc` and `~/.bashrc`,
   which chezmoi owns.
 - **A lapsed DevPod PAT fails a long way from the cause.** `devpod up` dies

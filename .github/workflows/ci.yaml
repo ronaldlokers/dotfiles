@@ -152,9 +152,49 @@ jobs:
             fi
           done
           [ "$missing" -eq 0 ]
-      - name: smoke-test zsh startup
+      - name: smoke-test both interactive shells
+        # This was `zsh -ic 'echo "zsh startup OK"'`, which asserts an exit code
+        # and nothing about output — an rc file printing a warning on every new
+        # terminal passed it — and never started bash at all, despite dot_bashrc
+        # being hand-mirrored from dot_zshrc and therefore the file most likely
+        # to have fallen behind.
+        #
+        # It was left out of CI on the belief that an interactive shell in a
+        # freshly-applied HOME hangs: it did, locally, for over ten minutes,
+        # while `mise activate` resolved the whole tool list on first start. But
+        # that cost is paid by the tool-install step above, which has already
+        # run by the time this does — and the old zsh line proves the shape is
+        # fine, since it has been starting an interactive zsh here all along.
+        #
+        # The throwaway HOME is a better subject than a developer's own: it is
+        # what a fresh install actually produces, with no accumulated state to
+        # paper over a missing file.
+        # timeout-minutes as well as the script's own per-shell timeout: the
+        # script bounds each shell, this bounds the step. A job's default is
+        # six hours, and a deadlocked interactive shell would spend all of it.
+        timeout-minutes: 5
         run: |
-          HOME="$TESTHOME" zsh -ic 'echo "zsh startup OK"'
+          # ubuntu-latest ships /usr/share/zsh and its vendor-completions
+          # group-writable, which zsh's completion audit — correctly — calls
+          # insecure. That is the runner image's own doing, not this repo's: on
+          # an Arch host those are root:root 755, and nothing here installs into
+          # them.
+          #
+          # Fix the environment rather than relax the assertion. Skipping
+          # insecure directories (compinit -i, which dot_zshrc now uses so an rc
+          # file can never hang a login on a prompt) is the right behaviour for
+          # a real machine, but if this step also tolerated them it would stop
+          # noticing the case that matters — a directory *this repo* installs
+          # ending up writable by more than its owner.
+          #
+          # Derived from compaudit, not hardcoded: the runner image's list is
+          # the runner image's business and may change.
+          insecure="$(zsh -fc 'autoload -Uz compaudit; compaudit' 2>/dev/null | grep '^/' || true)"
+          if [ -n "$insecure" ]; then
+            echo "securing runner-owned completion directories:"
+            printf '%s\n' "$insecure" | sort -u | tee /dev/stderr | sudo xargs -r chmod g-w,o-w
+          fi
+          HOME="$TESTHOME" sh scripts/check-shells.sh
       - name: smoke-test installed tools
         run: |
           export PATH="$TESTHOME/.local/bin:$PATH"
