@@ -166,3 +166,84 @@ assert_no_token() {
 	assert_token tok-clean
 	[ -z "$(find "$XDG_RUNTIME_DIR" -name 'devpod-workspace-env.*' -print -quit)" ]
 }
+
+# --- which project the token is chosen for (N2) ------------------------------
+#
+# Every test above uses the bare `devpod up <dir>` form, which meant the
+# argument walk — the code that decides *which* project's token to inject — had
+# no coverage at all. It knew four global flags and nothing else, so any of the
+# twenty-odd flags that take a value shifted the walk by one and it read the
+# flag's value as the workspace source. That value is not a directory, the
+# lookup fell back to $PWD, and the container being built for one repo got a
+# different repo's fine-grained PAT.
+
+# Same isolation as run_up, with the arguments under test instead of a fixed
+# `up <proj>`. cwd is the fixture project, so a $PWD fallback would succeed —
+# which is precisely what several of these have to prove does not happen.
+run_args() {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+		GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" GIT_CONFIG_SYSTEM="$GIT_CONFIG_SYSTEM" \
+		sh -c 'cd "$1" && shift && sh "$@"' _ "$PROJ" "$WRAPPER" "$@"
+}
+
+# Run from somewhere that is *not* the project being built, so a $PWD fallback
+# cannot rescue a walk that lost its place. Standing in the project would make
+# this pass against the broken parse too: it read `vscode` as the source, found
+# it was not a directory, and fell back to $PWD — which happened to be right.
+@test "a value-taking flag before the source does not shift the walk" {
+	elsewhere="$BATS_TEST_TMPDIR/elsewhere"
+	mkdir -p "$elsewhere"
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+		GIT_CONFIG_GLOBAL="$GIT_CONFIG_GLOBAL" GIT_CONFIG_SYSTEM="$GIT_CONFIG_SYSTEM" \
+		sh -c 'cd "$1" && shift && sh "$@"' _ "$elsewhere" \
+		"$WRAPPER" up --ide vscode "$PROJ"
+	assert_token tok-clean
+}
+
+@test "the attached --flag=value form still finds the source" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_args up --ide=vscode "$PROJ"
+	assert_token tok-clean
+}
+
+@test "no source argument at all still resolves through the working directory" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_args up
+	assert_token tok-clean
+}
+
+# The bug itself. Building a workspace for a *different* checkout must never
+# pick up the token belonging to the directory the command happened to be typed
+# in — that is one repo's credential inside another repo's container.
+@test "building another project does not hand it this project's token" {
+	other="$BATS_TEST_TMPDIR/other"
+	mkdir -p "$other"
+	git -C "$other" init -q
+	git -C "$other" remote add origin git@github.com:ronaldlokers/somethingelse.git
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_args up --ide vscode "$other"
+	assert_no_token
+}
+
+# Fails closed. A flag this walk has never heard of shifts it by one again, and
+# the recovery is to notice that the "source" is not a directory and decline —
+# not to quietly substitute $PWD, which is the wrong project by definition
+# whenever the walk has gone wrong.
+@test "an unrecognised value-taking flag refuses rather than falling back to PWD" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_args up --some-future-flag its-value "$PROJ"
+	assert_no_token
+	[[ "$output" == *"not injecting a project token"* ]]
+}
+
+# A workspace addressed by the name DevPod gave it, rather than by path. Not an
+# error and not this wrapper's business — but $PWD is not that workspace's
+# project either, so it declines the same way.
+@test "an existing workspace addressed by name gets no token" {
+	write_tokens 'ronaldlokers/homelab=tok-clean\n'
+	run_args up my-existing-workspace
+	assert_no_token
+}
