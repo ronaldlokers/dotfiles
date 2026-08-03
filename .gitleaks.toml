@@ -1,0 +1,34 @@
+# Gitleaks ran on stock rules only, which is a reasonable default and misses the
+# two secret shapes this repo is actually built around. Neither is in gitleaks'
+# upstream ruleset, because neither is a widely-known token format: one is age's
+# private key, the other is Proton Pass's personal access token.
+#
+# These are the two credentials whose loss or exposure is unrecoverable in the
+# specific way this repo cares about — the age key cannot be re-issued at all,
+# and the Proton PAT is the single thing that reaches every other secret. If
+# either ever lands in a commit, stock rules would have said nothing.
+#
+# Read by `mise run secrets` and by the gitleaks CI job, both of which pick up
+# this file from the repo root without being told to.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "age-secret-key"
+description = "age private key"
+# Bech32 body, always uppercase in age's own output, always exactly this length.
+# Anchored on the full shape rather than the prefix so the fixtures that use
+# AGE-SECRET-KEY-FAKE and AGE-SECRET-KEY-SENTINEL-PLAINTEXT to prove a secret
+# did *not* leak are not themselves reported as leaks.
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
+keywords = ["AGE-SECRET-KEY-1"]
+
+[[rules]]
+id = "proton-pass-pat"
+description = "Proton Pass personal access token"
+# `pst_` prefix, as shown in the README's bootstrap example. The length floor
+# keeps the README's own `pst_…` placeholder from matching, since a rule that
+# fires on the documentation is a rule someone turns off.
+regex = '''pst_[A-Za-z0-9_-]{24,}'''
+keywords = ["pst_"]
