@@ -504,12 +504,30 @@ TMPL
 	[[ "$output" != *"pass-cli pat renew"* ]]
 }
 
-@test "an expiry inside the warning window fails and says how to fix it" {
+# The warning window is 60 days wide and this runs weekly, so a warning that
+# marked the unit failed would mark it failed about eight times in a row over a
+# token that still works — and the value of `systemctl --failed` is entirely in
+# it being empty when nothing is wrong. Exit 0 is the assertion here, and the
+# rest of the file's FAIL cases are what stop that turning into "warnings are
+# invisible".
+@test "an expiry inside the warning window warns without failing the run" {
 	# 30 days before 2027-07-29
 	run_check NOW_EPOCH=1814227200
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"warn"* ]]
 	[[ "$output" == *"expires in 30 days"* ]]
-	[[ "$output" == *"pass-cli pat renew"* ]]
+	[[ "$output" != *"FAIL  bootstrap PAT"* ]]
+}
+
+# Exiting 0 is only defensible if the warning still reaches a person. The
+# failure alarm would not fire on a zero exit, so the warning gets its own
+# notification.
+@test "a warning still notifies, and the summary does not read as all-clear" {
+	run_check NOW_EPOCH=1814227200
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"with warnings"* ]]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"expires in 30 days"* ]]
 }
 
 @test "an expiry already passed fails" {
@@ -517,7 +535,35 @@ TMPL
 	run_check NOW_EPOCH=1816905600
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"expired on 2027-07-29"* ]]
-	[[ "$output" == *"pass-cli pat renew"* ]]
+}
+
+# The one epoch the previous test used — midnight exactly — is the single point
+# in the day where truncating toward zero and flooring agree, so it passed while
+# the arithmetic was wrong. Shell division truncates, so `(expiry - now)/86400`
+# gave 0 for the whole 24 hours *after* the deadline as well as the 24 before
+# it: the token was expired and the check said "expires in 0 days", on the one
+# day the difference is the entire point. Half past the day, deliberately.
+@test "half a day past the expiry already reads as expired, not as 0 days left" {
+	# 2027-07-30T12:00:00Z
+	run_check NOW_EPOCH=1816948800
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"expired on 2027-07-29"* ]]
+	[[ "$output" != *"expires in"* ]]
+}
+
+# `pass-cli pat renew` on its own does not run: renew requires --expiration and
+# a token to name, and pass-cli refuses every `pat` subcommand while the session
+# came from a PAT — which is always the case on this machine, because the cached
+# bootstrap PAT is how it has a session at all. The instruction printed at the
+# moment of failure has to be one that works.
+@test "the renewal instruction is one that actually runs" {
+	run_check NOW_EPOCH=1816948800
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"pass-cli login"* ]]
+	[[ "$output" == *"--expiration"* ]]
+	# The date lives in two places that lint asserts agree; renewing without
+	# moving both leaves a warning that never fires again.
+	[[ "$output" == *"bootstrap_pat_expiry"* ]]
 }
 
 # The reason the expiry is computed before the session probe rather than after:
@@ -529,7 +575,7 @@ TMPL
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"no Proton Pass session"* ]]
 	[[ "$output" == *"bootstrap PAT expired on 2027-07-29"* ]]
-	[[ "$output" == *"pass-cli pat renew"* ]]
+	[[ "$output" == *"pass-cli login"* ]]
 	notify_text="$(cat "$NOTIFY_LOG")"
 	[[ "$notify_text" == *"expired"* ]]
 }
@@ -604,6 +650,35 @@ TMPL
 	! grep "^argv:" "$CURL_LOG" | grep -q "SENTINEL-DEVPOD-TOKEN"
 	# and it did travel, on stdin, or the probe proved nothing
 	grep -q "^stdin:.*SENTINEL-DEVPOD-TOKEN" "$CURL_LOG"
+}
+
+# Keeping the header off argv is only half of it. curl reads ~/.curlrc before it
+# reads a single argument, and a `trace-ascii <path>` line in that file writes
+# every request header — Authorization included — to disk with default
+# permissions. That file is outside chezmoi's control by definition, so the only
+# defence is to tell curl not to read it, and -q has to come first to work.
+@test "the liveness probe refuses to read ~/.curlrc, and does so first" {
+	run_check
+	[ "$status" -eq 0 ]
+	argv="$(grep -m1 '^argv:' "$CURL_LOG")"
+	[[ "$argv" == "argv: -q "* ]]
+}
+
+# The mechanism itself, against the real binary rather than the stub: a stub
+# that ignores ~/.curlrc would let the assertion above pass over a curl that
+# does not support -q at all.
+@test "curl -q really does suppress a trace-ascii line in ~/.curlrc" {
+	command -v curl >/dev/null 2>&1 || skip "curl not installed"
+	tmphome="$(mktemp -d)"
+	printf 'trace-ascii %s/trace.txt\n' "$tmphome" >"$tmphome/.curlrc"
+	# Nothing is dialled: an unroutable address fails to connect, and the point
+	# is only whether the config file was honoured before that.
+	HOME="$tmphome" curl -q -sS -m 2 -o /dev/null http://127.0.0.1:9/ 2>/dev/null || true
+	[ ! -e "$tmphome/trace.txt" ]
+	# ...and without -q it is honoured, or the test above proves nothing.
+	HOME="$tmphome" curl -sS -m 2 -o /dev/null http://127.0.0.1:9/ 2>/dev/null || true
+	[ -e "$tmphome/trace.txt" ]
+	rm -rf "$tmphome"
 }
 
 @test "the liveness probe emits no token" {
