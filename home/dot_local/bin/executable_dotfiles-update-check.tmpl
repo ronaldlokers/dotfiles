@@ -34,6 +34,67 @@ done
 
 source_dir="{{ .chezmoi.sourceDir }}"
 
+# --- is the weekly secrets check still running at all? -----------------------
+#
+# Above the git work below, and that placement is the fix rather than a detail.
+# This used to sit after five unconditional `exit 0`s — no git, not a work
+# tree, detached HEAD, no upstream, and a failed `git fetch`. So an offline
+# laptop, a captive portal, or a checkout parked on a topic branch silently
+# disabled the only automated report that the weekly check had stopped running,
+# while both timers kept firing and both units kept passing. The two jobs are
+# independent; the important one must not be gated on the trivial one's
+# prerequisites.
+#
+# It lives in this file rather than a fourth timer because it needs exactly
+# what this one already is: something that fires daily and knows how to reach
+# you. dotfiles-status --quiet is silent and exits 0 unless something is
+# *broken* — warnings are deliberately not faults, so a backup that has never
+# been made says its piece to a human who asks and never interrupts.
+if command -v dotfiles-status >/dev/null 2>&1; then
+	if ! broken="$(dotfiles-status --quiet 2>&1)"; then
+		# Debounce. A fault that persists is still a fault, but repeating an
+		# identical notification every day is how the channel stops being read
+		# — and this is the same channel that carries the ones that matter. So:
+		# a *changed* message notifies at once, an unchanged one waits a week.
+		#
+		# Keyed on the message rather than a timestamp alone, because "a
+		# different thing is broken now" is exactly the event worth
+		# interrupting for.
+		notify_state="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles/last-notified"
+		fingerprint="$(printf '%s' "$broken" | cksum)"
+		say_it=1
+		if [ -r "$notify_state" ]; then
+			was="$(sed -n 's/^fingerprint=//p' "$notify_state" | head -1)"
+			when="$(sed -n 's/^epoch=//p' "$notify_state" | head -1)"
+			now="$(date -u +%s 2>/dev/null || echo 0)"
+			if [ "$was" = "$fingerprint" ] && [ -n "$when" ] &&
+				[ "$((now - when))" -lt 604800 ]; then
+				say_it=0
+			fi
+		fi
+
+		if [ "$say_it" = 1 ]; then
+			# Only the FAIL lines: the body used to be `head -2` of arbitrary
+			# output, so a toast titled "needs attention" could open with an
+			# `ok` line and truncate the actual fault away.
+			body="$(printf '%s\n' "$broken" | grep '^FAIL' | head -3)"
+			[ -n "$body" ] || body="$broken"
+			if command -v notify-send >/dev/null 2>&1 && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+				notify-send --app-name=dotfiles --icon=dialog-warning --urgency=normal \
+					"Dotfiles secrets need attention" "$body"
+			else
+				printf 'dotfiles: %s\n' "$body" >&2
+			fi
+			mkdir -p "$(dirname "$notify_state")" 2>/dev/null || true
+			{
+				printf 'fingerprint=%s\n' "$fingerprint"
+				printf 'epoch=%s\n' "$(date -u +%s 2>/dev/null || echo 0)"
+			} >"$notify_state" 2>/dev/null || true
+		fi
+	fi
+fi
+
+
 # Every early exit is 0. This runs unattended on a timer, and "no network" or
 # "not a git checkout" are ordinary states, not failures worth logging as such.
 #
@@ -51,34 +112,6 @@ upstream="$(git -C "$source_dir" rev-parse --abbrev-ref --symbolic-full-name "@{
 
 # --quiet so a routine fetch stays silent in the journal; failure is fine.
 git -C "$source_dir" fetch --quiet --no-tags 2>/dev/null || exit 0
-
-# --- is the weekly secrets check still running at all? -----------------------
-#
-# This lives here rather than in a fourth timer because it needs exactly what
-# this one already is: something that fires daily and knows how to reach you.
-#
-# It is answering a question nothing else on the machine can. The weekly check
-# marks its unit failed when it fails, which `systemctl --user --failed`
-# surfaces — but a unit that has *stopped running* is, from there, identical to
-# one that runs and passes: both are simply absent. A timer disabled by a
-# botched apply, a unit whose ExecStart moved, a machine off for a month; all
-# of them look like health.
-#
-# dotfiles-status --quiet is silent and exits 0 when the recorded state is
-# fine, so the common case costs one exec and says nothing. Never fatal: this
-# script's own job is the git comparison below, and a missing helper must not
-# stop it.
-if command -v dotfiles-status >/dev/null 2>&1; then
-	if ! stale="$(dotfiles-status --quiet 2>&1)"; then
-		if command -v notify-send >/dev/null 2>&1 && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-			notify-send --app-name=dotfiles --icon=dialog-warning --urgency=normal \
-				"Dotfiles secrets need attention" \
-				"$(printf '%s' "$stale" | head -2)"
-		else
-			printf 'dotfiles: %s\n' "$stale" >&2
-		fi
-	fi
-fi
 
 behind="$(git -C "$source_dir" rev-list --count "HEAD..$upstream" 2>/dev/null || echo 0)"
 [ "$behind" -gt 0 ] || exit 0

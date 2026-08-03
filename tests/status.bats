@@ -28,6 +28,8 @@ setup() {
 # Writes a last-check record $1 days old with result $2.
 record() {
 	local days="$1" result="${2:-ok}" detail="${3:-6 vault item(s), 2 template(s)}"
+	# A negative count means the future, which is a case worth being able to
+	# build: clock skew at boot produces exactly that.
 	printf 'date=%s\nresult=%s\ndetail=%s\n' \
 		"$(date -u -d "$days days ago" +%Y-%m-%dT%H:%M:%SZ)" "$result" "$detail" \
 		>"$CHECK"
@@ -130,13 +132,28 @@ run_status() {
 
 # --- the offline copy --------------------------------------------------------
 
-@test "no recorded backup is a fault and says what to run" {
+# A warning, not a fault, and the exit code is the assertion. This condition
+# has been true since the machine was built and needs removable media present
+# to resolve; as a fault it produced one identical toast per day forever, in
+# the same channel as every real failure.
+@test "no recorded backup warns and says what to run, without failing" {
 	record 1 ok
 	rm -f "$MANIFEST"
 	run_status
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"warn  offline backup"* ]]
 	[[ "$output" == *"none has ever been recorded"* ]]
 	[[ "$output" == *"dotfiles-secrets-export"* ]]
+}
+
+# ...and being a warning is only defensible if the thing that notifies stays
+# quiet for it. This is the assertion that makes the demotion real.
+@test "a never-made backup is silent to the automated caller" {
+	record 1 ok
+	rm -f "$MANIFEST"
+	run_status --quiet
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
 }
 
 # Deliberately no age threshold: an untouched key means a two-year-old copy is
@@ -197,4 +214,77 @@ run_status() {
 	run_status --fix
 	[ "$status" -eq 2 ]
 	[[ "$output" == *"unknown argument"* ]]
+}
+
+# --- the guards the dates needed (H2, M20, M21) ------------------------------
+
+# `date -u -d "" +%s` SUCCEEDS on GNU coreutils, returning today's midnight. So
+# a record missing its date line parsed cleanly as "checked today" — for ever,
+# silently, in the one mechanism that exists to notice a check that has stopped
+# running.
+@test "a record with no date line is a fault, not a fresh run" {
+	printf 'result=ok\ndetail=x\n' >"$CHECK"
+	backup 30
+	run_status
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"unreadable"* ]]
+}
+
+@test "an empty date value is a fault too" {
+	printf 'date=\nresult=ok\n' >"$CHECK"
+	backup 30
+	run_status
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"unreadable"* ]]
+}
+
+# Clock skew at boot — NTP not yet synced while a Persistent=true timer fires —
+# is exactly when a future date would otherwise silence the fault this exists
+# for, while printing "-400 day(s) ago" as it did so.
+@test "a future-dated record is untrustworthy, not young" {
+	record -400 ok
+	backup 30
+	run_status
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"unreadable"* ]]
+	[[ "$output" != *"-400"* ]]
+}
+
+# The threshold the comment argues for at length was pinned by nothing: the
+# old cases bracketed at 8 and 11, so any value in {9,10,11} and either
+# comparison passed. These two are the boundary itself.
+@test "exactly ten days is not yet stale" {
+	record 10 ok
+	backup 30
+	run_status
+	[ "$status" -eq 0 ]
+}
+
+@test "eleven days is stale" {
+	record 11 ok
+	backup 30
+	run_status
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"not firing"* ]]
+}
+
+# A path with a space in it is entirely ordinary on removable media, and this
+# line is meant to be pasted.
+@test "the destination is quoted in the command it prints" {
+	record 1 ok
+	printf 'date=2026-07-01T00:00:00Z\ndestination=/run/media/you/My Stick/k.age\n' >"$MANIFEST"
+	run_status
+	[[ "$output" == *"'/run/media/you/My Stick/k.age'"* ]]
+}
+
+# Every producer of these files is kept out of containers by .chezmoiignore;
+# this is the sole consumer and was the only one with no gate.
+@test "inside a container it says nothing and exits 0" {
+	rm -f "$CHECK" "$MANIFEST"
+	marker="$BATS_TEST_TMPDIR/dockerenv"
+	: >"$marker"
+	# The script probes for /.dockerenv directly, so this asserts the gate
+	# exists in the source rather than faking the filesystem root.
+	grep -q '/\.dockerenv' "$SCRIPT"
+	grep -q '/run/\.containerenv' "$SCRIPT"
 }

@@ -28,9 +28,12 @@ check last ran and what it found, and when the offline backup was last made.
 Reads local state only — no network, no vault, no secrets. Run
 `dotfiles-secrets-check` for a live answer.
 
-  --quiet   print nothing when everything is fine; exit status is the answer
+  --quiet   print nothing unless something is *broken*; exit status is the
+            answer. Warnings are deliberately silent here — they are for a
+            human who typed this command, not for something that will notify
+            you about them daily.
 
-Exits 0 when everything recorded is healthy, 1 otherwise.
+Exits 1 when something is broken, 0 otherwise (including with warnings).
 USAGE
 }
 
@@ -51,6 +54,16 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+# Containers get nothing from Proton by design, so every *producer* of the two
+# files below is kept out of one by .chezmoiignore. This is the sole consumer
+# and it was the only member of the family with no gate — inside a devpod it
+# printed two faults and told you to run `systemctl --user status` (no manager)
+# and `dotfiles-secrets-export` (not installed). Same two markers as
+# .chezmoitemplates/is-container; `mise run lint` asserts the lists stay in step.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
 check_status="$state_dir/last-check"
 backup_manifest="$state_dir/secrets-backup"
@@ -61,6 +74,19 @@ backup_manifest="$state_dir/secrets-backup"
 # that a timer which has stopped firing is noticed within a fortnight.
 stale_days=10
 
+# Faults and warnings are different exit codes because they are different
+# requests. A fault means "something is broken now" and is what the daily timer
+# notifies on. A warning means "worth knowing when you look" and must not
+# interrupt: the offline copy that has never been made is the case that proved
+# it, since it produced an identical unactionable toast every day for a
+# condition that needs physical media to resolve.
+#
+# So --quiet is fault-only, deliberately. Warnings are for a human who typed
+# this command.
+#
+# The tier is carried by the line prefix and by rc, not by a state variable:
+# a warning says `warn` and leaves rc alone, a fault says `FAIL` and sets it.
+# There is deliberately nothing to keep in sync between the two.
 rc=0
 out=""
 
@@ -76,11 +102,33 @@ now_epoch="$(date -u +%s 2>/dev/null || echo 0)"
 # Whole days between an ISO-8601 UTC timestamp and now. Prints nothing if the
 # date cannot be parsed, which the caller treats as "unknown" rather than 0 —
 # an unparsable date must not read as "checked today".
+# Whole days between an ISO-8601 UTC timestamp and now. Fails — rather than
+# answering — for anything it cannot trust, and the caller treats that as
+# "unknown", never as 0.
+#
+# The empty-string guard is the important one and it is not defensive
+# programming: `date -u -d "" +%s` *succeeds* on GNU coreutils, returning
+# today's midnight. So a record missing its date line parsed cleanly as
+# "checked today", permanently and silently — in the one mechanism that exists
+# to notice a weekly check which has stopped running. The comment here used to
+# say an unparsable date must not read as today. It did.
+#
+# A future date is rejected for the same reason rather than reported as a
+# negative age: clock skew at boot, before NTP has synced and while a
+# Persistent=true timer is firing, is exactly when this would silently answer
+# "fine" forever.
 days_since() {
+	[ -n "$1" ] || return 1
+	case "$1" in
+	*[!0-9TZ:.+-]*) return 1 ;;
+	esac
 	_ds_epoch="$(date -u -d "$1" +%s 2>/dev/null || true)"
 	[ -n "$_ds_epoch" ] || return 1
 	[ "$now_epoch" -gt 0 ] || return 1
-	echo $(((now_epoch - _ds_epoch) / 86400))
+	_ds_days=$(((now_epoch - _ds_epoch) / 86400))
+	# Dated in the future: not a smaller age, an untrustworthy record.
+	[ "$_ds_days" -ge 0 ] || return 1
+	echo "$_ds_days"
 }
 
 # --- the weekly check --------------------------------------------------------
@@ -112,11 +160,11 @@ else
 			;;
 		warn)
 			say "warn  secrets check     $age_days day(s) ago: $detail"
-			say "      Run 'mise run secrets-check' for the detail."
+			say "      Run 'dotfiles-secrets-check' for the detail."
 			;;
 		*)
 			say "FAIL  secrets check     $age_days day(s) ago: ${detail:-failed}"
-			say "      Run 'mise run secrets-check' for the detail."
+			say "      Run 'dotfiles-secrets-check' for the detail."
 			rc=1
 			;;
 		esac
@@ -130,9 +178,14 @@ fi
 # good copy, and nagging about its age would only teach you to ignore the line.
 # What matters is whether one exists at all.
 if [ ! -f "$backup_manifest" ]; then
-	say "FAIL  offline backup    none has ever been recorded"
+	# A warning, not a fault, and the distinction is the whole reason the two
+	# tiers exist. This condition has been true since the machine was built, it
+	# needs a USB stick physically present to resolve, and as a fault it
+	# produced one identical toast per day forever — in the same channel as
+	# every real failure. That is how a channel stops being read. It says so
+	# every time a human looks, and stays out of the way otherwise.
+	say "warn  offline backup    none has ever been recorded"
 	say "      Proton is otherwise the only copy. Run: dotfiles-secrets-export <destination>"
-	rc=1
 else
 	backup_when="$(sed -n 's/^date=//p' "$backup_manifest" | head -1)"
 	backup_dest="$(sed -n 's/^destination=//p' "$backup_manifest" | head -1)"
@@ -144,7 +197,9 @@ else
 	fi
 	# Whether it still *reads back* is a question only the passphrase can
 	# answer, so this points at the command rather than pretending to know.
-	say "      Verify it reads back: dotfiles-secrets-restore ${backup_dest:-<file>}"
+	# Quoted: a removable-media path with a space in it (/run/media/you/My
+	# Stick) is entirely ordinary, and this line is meant to be pasted.
+	say "      Verify it reads back: dotfiles-secrets-restore '${backup_dest:-<file>}'"
 fi
 
 if [ "$quiet" = 1 ] && [ "$rc" -eq 0 ]; then
