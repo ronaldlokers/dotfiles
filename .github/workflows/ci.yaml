@@ -169,6 +169,10 @@ jobs:
         # The throwaway HOME is a better subject than a developer's own: it is
         # what a fresh install actually produces, with no accumulated state to
         # paper over a missing file.
+        # timeout-minutes as well as the script's own per-shell timeout: the
+        # script bounds each shell, this bounds the step. A job's default is
+        # six hours, and a deadlocked interactive shell would spend all of it.
+        timeout-minutes: 5
         run: |
           HOME="$TESTHOME" sh scripts/check-shells.sh
       - name: smoke-test installed tools

@@ -67,6 +67,19 @@ cd "$HOME" || {
 	exit 1
 }
 
+# A hang has to become a failure with evidence, not a stalled job.
+#
+# An interactive shell that blocks on a prompt nobody can answer waits forever,
+# and forever on a CI runner is six hours of the default job timeout burnt
+# before anyone learns anything. Worse, output captured into a shell variable is
+# lost entirely when the process is killed — so the one thing that would explain
+# the hang, whatever the shell had already printed, never surfaces.
+#
+# So: a hard timeout, and the output goes to a file that survives the kill.
+: "${CHECK_SHELLS_TIMEOUT:=90}"
+outfile="$(mktemp)"
+trap 'rm -f "$outfile"' EXIT
+
 for shell in zsh bash; do
 	if ! command -v "$shell" >/dev/null 2>&1; then
 		echo "skip  $shell (not installed)"
@@ -74,11 +87,15 @@ for shell in zsh bash; do
 	fi
 	# Both streams captured: a failing init line prints to stderr, a noisy but
 	# successful one to stdout. Either is a finding.
+	: >"$outfile"
 	if command -v script >/dev/null 2>&1; then
-		out="$(script -qec "$shell -ic true" /dev/null 2>&1 </dev/null)" && status=0 || status=$?
+		timeout -k 5 "$CHECK_SHELLS_TIMEOUT" \
+			script -qec "$shell -ic true" /dev/null >"$outfile" 2>&1 </dev/null && status=0 || status=$?
 	else
-		out="$("$shell" -ic true 2>&1 </dev/null)" && status=0 || status=$?
+		timeout -k 5 "$CHECK_SHELLS_TIMEOUT" \
+			"$shell" -ic true >"$outfile" 2>&1 </dev/null && status=0 || status=$?
 	fi
+	out="$(cat "$outfile")"
 	if [ "$status" -eq 0 ]; then
 		if [ -n "$out" ]; then
 			echo "FAIL  $shell started but printed output:" >&2
@@ -87,6 +104,16 @@ for shell in zsh bash; do
 		else
 			echo "ok    $shell"
 		fi
+	elif [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+		# 124 is timeout's own signal that it fired; 137 is the follow-up KILL.
+		echo "FAIL  $shell did not finish starting within ${CHECK_SHELLS_TIMEOUT}s." >&2
+		echo "      Almost always a prompt waiting on a keypress. What it printed first:" >&2
+		if [ -n "$out" ]; then
+			printf '%s\n' "$out" >&2
+		else
+			echo "      (nothing — it blocked before writing anything)" >&2
+		fi
+		rc=1
 	else
 		echo "FAIL  $shell exited non-zero:" >&2
 		printf '%s\n' "$out" >&2
