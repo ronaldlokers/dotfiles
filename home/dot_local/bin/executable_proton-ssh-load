@@ -173,9 +173,13 @@ try_login() {
 if ! pass-cli info >/dev/null 2>&1; then
 	pat="${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}"
 	cache_it=1
+	# Whether the token under test came out of the cache, which is the only
+	# case where this script has anything to retire on rejection.
+	from_cache=0
 	if [ -z "$pat" ] && [ -r "$pat_file" ]; then
 		pat="$(cat "$pat_file")"
 		cache_it=0
+		from_cache=1
 	fi
 
 	# Nothing to go on: ask, if this caller is allowed to.
@@ -195,6 +199,28 @@ if ! pass-cli info >/dev/null 2>&1; then
 	fi
 
 	if ! try_login "$pat"; then
+		# A cached token Proton has refused is not going to start working, and
+		# leaving it in place means every new terminal for the rest of time
+		# presents the same dead credential and gets the same answer. Retire it.
+		#
+		# Renamed, not deleted, and the difference is the whole reason this is
+		# safe to do at all. `pass-cli login` failing does not distinguish "this
+		# token is revoked" from "Proton was unreachable for ten seconds", and
+		# deleting on the second would destroy the one thing that makes
+		# unattended applies work — on a machine that, by construction, cannot
+		# read the vault to get another copy. Moving it aside stops the retry
+		# loop while keeping the value recoverable by hand.
+		#
+		# Only when it came from the cache: a token supplied through the
+		# environment is the caller's to manage, and the cache may hold a
+		# perfectly good one that this run never even looked at.
+		if [ "$from_cache" = 1 ]; then
+			if mv -f "$pat_file" "$pat_file.rejected" 2>/dev/null; then
+				chmod 600 "$pat_file.rejected" 2>/dev/null || true
+				say "proton-ssh-load: retired the cached token to ${pat_file#"$HOME"/}.rejected"
+			fi
+		fi
+
 		# The token we had was rejected. One more chance on a terminal: this is
 		# how a token rotated in the vault heals itself on the next interactive
 		# apply. ask_pat prints the notice only when it is actually going to

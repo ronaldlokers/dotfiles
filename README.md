@@ -148,6 +148,14 @@ The token is cached at `~/.config/pass-cli-bootstrap-pat` (0600), which is what
 makes unattended applies work — and what means disk access alone now reads the
 vault. Pass it via the environment, never as `--personal-access-token`.
 
+If Proton refuses that cached token, `proton-ssh-load` retires it to
+`…-bootstrap-pat.rejected` rather than deleting it. A revoked token is not going
+to start working, and leaving it in place means every new terminal presents the
+same dead credential forever — but a failed login does not distinguish "revoked"
+from "Proton was unreachable for ten seconds", and deleting on the second would
+destroy the only copy on a machine that cannot read the vault to get another.
+Delete the `.rejected` file once a working token is cached again.
+
 ## SSH keys
 
 Auth, git signing and AUR keys live in the same vault and are loaded straight
