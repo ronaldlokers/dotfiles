@@ -4,7 +4,8 @@ Personal dotfiles, managed with [chezmoi](https://chezmoi.io). Arch/Omarchy host
 plus [DevPod](https://devpod.sh) containers, one source tree for both.
 
 How to install, restore and use it. Why it is built this way lives in
-[`docs/design-notes.md`](docs/design-notes.md).
+[`docs/design-notes.md`](docs/design-notes.md); what to do when a credential
+leaks is [`docs/revocation.md`](docs/revocation.md).
 
 Everything chezmoi manages is under `home/` (`.chezmoiroot`); source paths here
 are relative to it — `dot_zshrc` is `home/dot_zshrc` on disk.
@@ -168,6 +169,11 @@ title can only be wrong here if the consumer naming it is wrong. SSH keys are
 counted rather than named, because `proton-ssh-load` loads them by item type,
 not by title. `dotfiles-secrets-check.timer` runs it weekly and notifies on
 failure.
+
+When one of these leaks, [`docs/revocation.md`](docs/revocation.md) has the
+inventory and the order to work in — including which single item cannot be
+re-issued, and why re-keying a file is not the same as revoking what is inside
+it.
 
 The token is cached at `~/.config/pass-cli-bootstrap-pat` (0600), which is what
 makes unattended applies work — and what means disk access alone now reads the
