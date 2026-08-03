@@ -145,6 +145,47 @@ setup_file() {
 	[ -z "$(find "$HOME/.config" -name '*.tmp.*' -print -quit 2>/dev/null)" ]
 }
 
+# B5. The mode is the whole security property of these files, and the only code
+# that ever sets it sat after the unchanged-content early return — so a secret
+# that got loosened (a stray chmod, a restore from a backup, an editor writing a
+# new inode) stayed loosened for as long as its content stayed the same. For a
+# secret that is not rotated, that is forever, and every apply reported success.
+@test "a loosened secret is re-tightened even when the content has not changed" {
+	run_restore
+	[ "$status" -eq 0 ]
+	chmod 644 "$AGE"
+	run_restore
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$AGE")" = "600" ]
+}
+
+@test "re-tightening does not depend on the content having changed" {
+	run_restore
+	[ "$status" -eq 0 ]
+	before="$(cat "$AGE")"
+	chmod 666 "$AGE"
+	run_restore
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$AGE")" = "600" ]
+	# and it did not rewrite the file to get there
+	[ "$(cat "$AGE")" = "$before" ]
+}
+
+@test "every secret is re-tightened, not just the first" {
+	run_restore
+	[ "$status" -eq 0 ]
+	for f in "$AGE" "$HOME/.config/gh/hosts.yml" \
+		"$HOME/.config/devpod/project-tokens"; do
+		chmod 644 "$f"
+	done
+	run_restore
+	[ "$status" -eq 0 ]
+	for f in "$AGE" "$HOME/.config/gh/hosts.yml" \
+		"$HOME/.config/devpod/project-tokens"; do
+		[ "$(stat -c %a "$f")" = "600" ]
+	done
+}
+
 # Fetched every apply, rewritten only on change: CI asserts a second apply
 # produces no drift, so an unconditional rewrite would show up as churn.
 @test "an unchanged secret is not rewritten" {

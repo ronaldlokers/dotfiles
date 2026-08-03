@@ -156,6 +156,38 @@ run_check() {
 	grep -q -- "--item-title gh hosts.yml" "$STUB_LOG"
 }
 
+# B8. The derivation anchored on `^restore "`, so wrapping a call in a
+# conditional — that is, indenting it — silently dropped that secret from the
+# check. Nothing failed; the item just stopped being watched, which is the exact
+# failure the derivation was built to prevent, arriving through the back door.
+@test "an indented restore call is still derived" {
+	printf 'if [ -n "$x" ]; then\n\trestore "indented secret" "$HOME/x" 600\nfi\n' \
+		>>"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl"
+	printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/indented secret"
+	run_check
+	[ "$status" -eq 0 ]
+	grep -q -- "--item-title indented secret" "$STUB_LOG"
+}
+
+@test "a restore call indented with spaces is derived too" {
+	printf '    restore "space indented" "$HOME/y" 600\n' \
+		>>"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl"
+	printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/space indented"
+	run_check
+	[ "$status" -eq 0 ]
+	grep -q -- "--item-title space indented" "$STUB_LOG"
+}
+
+# The other side of widening the pattern: a commented-out call is not a call,
+# and must not become a vault item that fails the check forever.
+@test "a commented-out restore call is not derived" {
+	printf '# restore "commented secret" "$HOME/z" 600\n' \
+		>>"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl"
+	run_check
+	[ "$status" -eq 0 ]
+	! grep -q -- "--item-title commented secret" "$STUB_LOG"
+}
+
 # The whole point: the field comes from the URI, not from a guess. A hand-kept
 # list said `private_key` for the signing key while the template reads
 # `public_key`, so the check passed on a field nothing consumed.
