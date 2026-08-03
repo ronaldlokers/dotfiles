@@ -2,7 +2,7 @@
 #
 # dotfiles-secrets-check verifies the Proton Pass path in two halves, because
 # they are different code paths: every vault item readable by title, and every
-# template calling protonPass rendering non-empty. `mise run secrets-check` was
+# template naming a pass:// URI rendering non-empty. `mise run secrets-check` was
 # green while `chezmoi apply` was failing on a stale pass:// reference — item
 # readability said nothing about whether a template could render.
 #
@@ -40,12 +40,18 @@ setup() {
 		printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/$title"
 	done
 
-	# A fixture source tree. The templates only need to CONTAIN the string
-	# protonPass for the grep to find them — calling it for real would need a
-	# live vault, which is the thing these tests must not need.
+	# A fixture source tree. The templates only need to NAME a pass:// URI for
+	# the grep to find them — calling the vault for real would need a live
+	# session, which is the thing these tests must not need.
+	#
+	# Every discovery fixture names the same URI on purpose: half one derives
+	# items from these same URIs and dedupes them, so adding a template moves
+	# the template count without moving the item count. A fixture that needs a
+	# distinct item says so explicitly (fake-field, fake-other below).
+	URI="pass://Dotfiles/fixture signing key/public_key"
 	SRC="$BATS_TEST_TMPDIR/src"
 	mkdir -p "$SRC/.chezmoitemplates"
-	printf '{{- /* protonPass */ -}}ssh-ed25519 AAAAFAKE\n' \
+	printf '{{- /* %s */ -}}ssh-ed25519 AAAAFAKE\n' "$URI" \
 		>"$SRC/.chezmoitemplates/fake-pubkey"
 
 	# Derivation source A: restore "<title>" lines, exactly the shape of
@@ -60,6 +66,10 @@ RESTORE
 	# Derivation source B: a pass:// URI naming both title and field. The
 	# comment line is the regression guard for the false positive found while
 	# writing the spec — grepping for the bare scheme matches prose.
+	#
+	# This one still calls chezmoi's protonPass for real, deliberately: the
+	# repo's own templates no longer do, and discovery must not care which
+	# mechanism a template reads the vault through, only that it names one.
 	cat >"$SRC/.chezmoitemplates/fake-signing" <<'TMPL'
 {{- /* protonPass — a stale pass:// share id once broke this */ -}}
 {{- protonPass "pass://Dotfiles/fixture signing key/public_key" | trim -}}
@@ -175,10 +185,13 @@ TMPL
 	[[ "$output" == *"unreadable"* ]]
 }
 
-# The general rule: derived-and-empty must not look like checked-and-fine.
+# The general rule: derived-and-empty must not look like checked-and-fine. Both
+# sources have to go: the restore lines, and every template naming a URI —
+# which is now every discovery fixture, fake-pubkey included.
 @test "deriving zero titles is a fault" {
 	rm -rf "$SRC/.chezmoiscripts"
 	rm -f "$SRC/.chezmoitemplates/fake-signing"
+	rm -f "$SRC/.chezmoitemplates/fake-pubkey"
 	run_check
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"no vault items"* ]]
@@ -198,15 +211,20 @@ TMPL
 	[[ "$output" == *"no restore titles"* ]]
 }
 
-# IMPORTANT 1, part 2: symmetric case. Removing only the one file that names a
-# pass:// URI leaves .chezmoitemplates in place (fake-pubkey is still there,
-# so half two's template count stays non-zero) but the URI scan itself yields
-# nothing, while the restore titles keep the union non-empty. This reproduces
-# the exact bug this branch exists to fix: deleting
+# IMPORTANT 1, part 2: symmetric case. The URI scan yielding nothing must be
+# its own fault, while the restore titles keep the union non-empty. This
+# reproduces the bug the derivation exists to fix: deleting
 # `.chezmoitemplates/signing-pubkey` made the public_key check disappear with
 # no fault at all.
+#
+# Both URI-naming fixtures have to go now. Half two keys off the same URI shape
+# as half one, so "templates present but no URIs" is no longer a state that can
+# exist — a template is found *because* it names one. Removing every URI trips
+# both faults at once; this pins half one's, and the zero-template test below
+# pins half two's from the same starting point.
 @test "a templates directory that names no pass:// URIs is a fault" {
 	rm "$SRC/.chezmoitemplates/fake-signing"
+	rm "$SRC/.chezmoitemplates/fake-pubkey"
 	run_check
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"no pass:// URIs"* ]]
@@ -251,13 +269,13 @@ TMPL
 }
 
 @test "a template that renders empty fails and names it" {
-	printf '{{- /* protonPass */ -}}\n' >"$SRC/.chezmoitemplates/fake-empty"
+	printf '{{- /* %s */ -}}\n' "$URI" >"$SRC/.chezmoitemplates/fake-empty"
 	run_check
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"fake-empty"* ]]
 }
 
-# A template with no protonPass call is not this check's business.
+# A template that names no pass:// URI is not this check's business.
 @test "ignores templates that do not touch proton" {
 	printf 'nothing interesting\n' >"$SRC/.chezmoitemplates/unrelated"
 	run_check
@@ -265,16 +283,16 @@ TMPL
 	[[ "$output" != *"unrelated"* ]]
 }
 
-# An empty render half must not look like a passing one: if the protonPass
-# marker ever gets renamed, or the templates directory moves, or a future
-# repo genuinely has none, the for loop over `grep -rl` matches nothing and
-# silently checks zero templates. `chezmoi execute-template --source
+# An empty render half must not look like a passing one: if the templates stop
+# naming pass:// URIs, or the templates directory moves, or a future repo
+# genuinely has none, the loop over `grep -rlE` matches nothing and silently
+# checks zero templates. `chezmoi execute-template --source
 # /nonexistent` exits 0 and echoes the path straight back, so a moved source
 # tree reproduces this exact case — a zero count must be a fault, not a
 # lookalike for "checked everything, all fine".
 @test "a zero template count is a fault, not a silent pass" {
 	# fake-signing (added in setup for URI derivation) also lives under
-	# .chezmoitemplates and also calls protonPass, so it has to go too for the
+	# .chezmoitemplates and also names a URI, so it has to go too for the
 	# template count to reach zero.
 	rm "$SRC/.chezmoitemplates/fake-pubkey"
 	rm "$SRC/.chezmoitemplates/fake-signing"
@@ -283,7 +301,7 @@ TMPL
 	[[ "$output" == *"0 proton template"* ]]
 	# The message has to explain why zero is suspicious, not just report it.
 	[[ "$output" == *"moved"* ]]
-	[[ "$output" == *"renamed"* ]]
+	[[ "$output" == *"pass://"* ]]
 }
 
 @test "a missing templates directory is its own fault, not a silently-skipped half" {
@@ -299,9 +317,9 @@ TMPL
 # root*, not inside .chezmoitemplates, which fails, has its stderr eaten by
 # the `|| true` guard, and gets reported as "renders empty" — a false failure
 # for a template that never had a chance to run.
-@test "a protonPass template nested under .chezmoitemplates is found and rendered by its full relative name" {
+@test "a nested proton template under .chezmoitemplates is found and rendered by its full relative name" {
 	mkdir -p "$SRC/.chezmoitemplates/nested"
-	printf '{{- /* protonPass */ -}}nested-fake\n' \
+	printf '{{- /* %s */ -}}nested-fake\n' "$URI" \
 		>"$SRC/.chezmoitemplates/nested/deep"
 	run_check
 	[ "$status" -eq 0 ]
@@ -310,12 +328,12 @@ TMPL
 }
 
 # .chezmoitemplates only holds partials reached through includeTemplate. A
-# template that calls protonPass directly, anywhere else in the tree, is real
-# and must count too — otherwise "every template calling protonPass renders"
-# is only true for templates that happen to live in one particular directory.
-@test "a protonPass call in an ordinary .tmpl file outside .chezmoitemplates is found and rendered" {
+# template that names a pass:// URI directly, anywhere else in the tree, is
+# real and must count too — otherwise "every template naming a pass:// URI
+# renders" is only true for templates in one particular directory.
+@test "a pass:// URI in an ordinary .tmpl file outside .chezmoitemplates is found and rendered" {
 	mkdir -p "$SRC/dot_config"
-	printf '{{- /* protonPass */ -}}direct-fake\n' \
+	printf '{{- /* %s */ -}}direct-fake\n' "$URI" \
 		>"$SRC/dot_config/fake-secret.conf.tmpl"
 	run_check
 	[ "$status" -eq 0 ]
@@ -324,7 +342,7 @@ TMPL
 }
 
 @test "the template count reflects how many actually rendered" {
-	printf '{{- /* protonPass */ -}}second-fake\n' \
+	printf '{{- /* %s */ -}}second-fake\n' "$URI" \
 		>"$SRC/.chezmoitemplates/fake-second"
 	run_check
 	[ "$status" -eq 0 ]

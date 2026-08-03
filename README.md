@@ -66,9 +66,9 @@ propagates. A failed or empty fetch leaves the existing file alone.
 `restore "<item title>" "<target>" 600` line to the script.
 
 **Checking it still works:** `mise run secrets-check` verifies every item is
-readable *and* that every template calling `protonPass` still renders — two
+readable *and* that every template naming a `pass://` URI still renders — two
 different code paths, and a stale vault reference breaks the second while the
-first stays green. The item list isn't maintained by hand: it's derived from
+first stays green. Neither list is maintained by hand: both are derived from
 the `restore` lines and the `pass://` URIs the templates themselves use, so a
 title can only be wrong here if the consumer naming it is wrong. SSH keys are
 counted rather than named, because `proton-ssh-load` loads them by item type,
