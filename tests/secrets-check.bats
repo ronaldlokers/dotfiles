@@ -426,13 +426,18 @@ TMPL
 
 # The state the finding is about: the README says "keep an offline copy" and
 # nothing ever checked that anyone had.
-@test "never having made an offline copy is a fault" {
+# A warning now, not a fault, and the exit code is the assertion. It has been
+# true since the machine was built, it needs removable media physically present
+# to resolve, and as a fault it marked the unit failed every week and produced
+# an identical unactionable toast every day through the status command and the
+# daily timer. A copy that exists and has gone stale is still a fault — that
+# one is actionable, specific and rare.
+@test "never having made an offline copy warns rather than failing" {
 	rm -f "$BACKUP_MANIFEST"
 	run_check
-	[ "$status" -ne 0 ]
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"warn"* ]]
 	[[ "$output" == *"no offline copy has ever been recorded"* ]]
-	# and it says what to run, because a warning without a next step is what
-	# this replaced
 	[[ "$output" == *"dotfiles-secrets-export"* ]]
 }
 
@@ -1020,11 +1025,12 @@ STUB
 }
 
 @test "a different fault gets a different name" {
-	rm -f "$BACKUP_MANIFEST"
+	# The offline copy is a warning now, so a fault in a different section is
+	# what this needs: a template that stops rendering.
+	rm -f "$SRC/.chezmoitemplates/fake-pubkey" "$SRC/.chezmoitemplates/fake-signing"
 	run_check
 	[ "$status" -ne 0 ]
 	notify_text="$(cat "$NOTIFY_LOG")"
-	[[ "$notify_text" == *"offline backup"* ]]
 	[[ "$notify_text" != *"vault items"* ]]
 }
 
