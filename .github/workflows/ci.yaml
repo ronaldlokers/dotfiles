@@ -91,6 +91,9 @@ jobs:
           fi
       - name: assert externals actually landed
         run: |
+          # chezmoi is in $RUNNER_TEMP/bin, not on the default PATH; this step
+          # renders the externals to derive what to assert, so it needs it too
+          export PATH="$RUNNER_TEMP/bin:$PATH"
           # a network blip or upstream rename can leave empty external dirs;
           # the shells source them behind `[ -f ]` guards and stay silent, so
           # assert the real files exist rather than trusting apply's exit code.
