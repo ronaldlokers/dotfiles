@@ -294,11 +294,15 @@ Containers are outside all of this. They have no `pass-cli` and no session by
 design: git uses the forwarded ssh-agent, and the DevPod token arrives as an env
 file passed by the wrapper on the host.
 
-### Why the check has two halves
+### Why the check keeps growing sections
 
 `dotfiles-secrets-check` verifies item readability and template rendering
 separately because they are different code paths, and only checking one has
-already hidden a real fault. The first instance: `secrets-check` reported all
+already hidden a real fault. Every section added since is another instance of
+the same shape — some claim that looks implied by an earlier one and is not:
+the ssh keys load, an offline copy exists and is current, the bootstrap PAT has
+not expired, the devpod token is still accepted by GitHub. Reading a secret out
+of the vault proves none of those. The first instance: `secrets-check` reported all
 eight vault items readable at the same moment `chezmoi apply` was failing on a
 stale `pass://` share id — the item existed and could be fetched by title, but
 the template referencing it by share id could not resolve. Item readability
@@ -558,13 +562,29 @@ value but isn't in that list would be misread as the subcommand and silently ski
 the token file. `~/.local/libexec/devpod` runs the binary unwrapped, and a
 machine with no token file yet passes straight through.
 
-Two limits worth knowing. The token's expiry is not checked by anything local:
-`mise run secrets-check` only proves the vault item is still readable, not that
-the PAT inside it is still live. A lapsed PAT looks exactly like the original bug,
-with every local check green. And this covers the dotfiles bootstrap only — a
-project whose own `mise.toml` pulls `github:`/`vfox:`/`pipx:` tools can still
-exhaust the anonymous quota in its `postCreateCommand`, which runs before DevPod
-clones the dotfiles and before this token is in scope.
+The token's liveness *is* checked now, and it was worth closing: a lapsed PAT
+used to look exactly like the original bug — `devpod up` dying partway through a
+build with `rate limit exceeded` — while every local check stayed green, because
+"the vault still hands the token over" is not the same claim as "GitHub still
+accepts it". `dotfiles-secrets-check` asks GitHub directly.
+
+The trap in asking is worth recording, because the obvious version of this check
+does not work. `/rate_limit` answers **200 to anonymous requests too**, so the
+status code proves nothing: a header that was dropped or ignored would read as
+success. The rate limit in the response is what discriminates — 60 anonymous,
+5000 authenticated, whatever the token's scopes — and that endpoint costs no
+quota to ask. The header goes in through a `curl --config -` on stdin, never
+`-H`, for the same reason `proton-ssh-load` refuses
+`--personal-access-token`: an argument is visible in `ps`.
+
+An unreachable github.com is reported as a skip rather than a failure. Every
+other check in that script needs only Proton, so calling the token bad because
+GitHub was down would be a lie of the kind that teaches you to ignore the line.
+
+One limit remains, and it is not fixable here: this covers the dotfiles
+bootstrap only — a project whose own `mise.toml` pulls `github:`/`vfox:`/`pipx:`
+tools can still exhaust the anonymous quota in its `postCreateCommand`, which
+runs before DevPod clones the dotfiles and before this token is in scope.
 
 ### Quiet bootstraps
 

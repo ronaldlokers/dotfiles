@@ -18,7 +18,8 @@ Description=Check whether the dotfiles repo has unapplied commits
 [Service]
 Type=oneshot
 ExecStart=%h/.local/bin/dotfiles-update-check
-# A failed check is noise, not an incident: no network, no remote, a shallow
-# clone. The unit exits 0 on all of those itself, but keep systemd quiet about
-# any it doesn't anticipate rather than mailing failures into the journal.
-SuccessExitStatus=0
+# No SuccessExitStatus here either, and for a duller reason than its sibling:
+# `SuccessExitStatus=0` is systemd's default, so the line asserted nothing. What
+# it was trying to say is true and stays true — no network, no remote and a
+# shallow clone are ordinary states, and the script exits 0 on all of them
+# itself, which is where that behaviour belongs.
