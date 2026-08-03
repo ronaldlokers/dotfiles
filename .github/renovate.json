@@ -67,6 +67,14 @@
       "automerge": true
     },
     {
+      "description": "Never automerge the mise tool lists. Same reasoning as the externals rule below, and it was inconsistent to apply it to one and not the other: home/dot_config/mise/config.toml installs and runs the CLI tools this machine uses all day, and mise.toml installs the linters and the test runner that this repo's own checks execute. Both are code that runs as you, fetched from upstream, with CI asserting only that the install succeeded \u2014 never that the contents are what was expected. A green pipeline says the new version installs, not that it is the version the maintainer published. The cost is a PR to click rather than one to read; the alternative is a compromised release reaching every machine's next apply with nobody having looked.",
+      "matchFileNames": [
+        "home/dot_config/mise/config.toml",
+        "mise.toml"
+      ],
+      "automerge": false
+    },
+    {
       "description": "Never automerge the graphify package. The `/graphify` skill it ships is vendored into home/dot_claude/skills rather than left to `graphify install`, which writes straight into $HOME over chezmoi \u2014 so a version bump is only half the change, and the other half is re-vendoring the skill by hand into a scratch HOME. Automerging moved the tool while the skill describing it stayed behind, silently, which is what had already happened (pin 0.9.32, vendored skill 0.9.30). `mise run lint` now asserts the two agree, so an automerged bump would fail CI rather than drift \u2014 but a red main is not the right way to find out.",
       "matchPackageNames": [
         "graphifyy"

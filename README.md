@@ -374,6 +374,20 @@ timer (`dotfiles-update-check.timer`, daily with 4h jitter) reports when this
 machine is behind the remote — it only notifies. Run it by hand with
 `dotfiles-update-check`.
 
+Three things **never** automerge, for one reason: they are code that runs as
+you, and a green pipeline proves the new version installs, not that it is the
+version the maintainer published. `.chezmoiexternals/` (fetched binaries and
+shell plugins), the two mise tool lists (`dot_config/mise/config.toml` and this
+repo's `mise.toml`), and the graphify package, whose vendored skill has to be
+re-vendored by hand alongside any bump. Each is a PR to click rather than one
+to read.
+
+`.github/workflows/keepalive.yaml` exists because GitHub disables a
+repository's scheduled workflows after 60 days of inactivity — which would stop
+the weekly CI canary and the Renovate run without stopping anything that
+reports on them. It force-pushes an empty commit to an orphan `keepalive`
+branch every ten days. Nothing on that branch is meant to be merged or read.
+
 ## Working on this repo
 
 [`CLAUDE.md`](CLAUDE.md) carries the rules for agents. `mise.toml` pins the

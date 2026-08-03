@@ -1,0 +1,62 @@
+name: Keepalive
+
+# GitHub disables a repository's *scheduled* workflows after 60 days with no
+# repository activity. It emails the owner first, but the failure this guards
+# against is the one where that mail is missed: the weekly CI canary and the
+# Renovate run both stop, silently, and the machine they exist to protect looks
+# fine because nothing is reporting on it any more. A monitoring system whose
+# own liveness depends on someone noticing an email is not a monitoring system.
+#
+# The irony is not lost: this is itself a scheduled workflow, so it can be
+# disabled by exactly the condition it prevents. That is why it runs every ten
+# days rather than monthly — six chances inside the window, so a single missed
+# run is not the whole margin.
+#
+# What counts as "activity" is not documented precisely by GitHub. A push is the
+# thing most consistently reported to reset the timer, so that is what this
+# does — an empty commit onto a branch that exists only for this, force-pushed
+# each time so it never grows and never touches main's history.
+
+on:
+  schedule:
+    - cron: "0 4 */10 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Never two at once: they would race on the same force-push.
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+      - name: push an empty commit to the keepalive branch
+        run: |
+          set -eu
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Orphan, not a branch off main: nothing here should ever be
+          # mergeable, and starting from main would invite exactly that.
+          git checkout --orphan keepalive
+          git rm -rq --cached . || true
+          cat > KEEPALIVE.md <<'EOF'
+          This branch exists to keep GitHub from disabling this repository's
+          scheduled workflows, which it does after 60 days of inactivity.
+
+          It is an orphan branch with one commit, force-pushed by
+          .github/workflows/keepalive.yaml. Nothing here is meant to be merged
+          or read. If the scheduled CI canary and the Renovate run are still
+          firing, this is doing its job.
+          EOF
+          git add KEEPALIVE.md
+          git commit -qm "chore: keepalive $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push -q --force origin keepalive
+          echo "pushed; scheduled workflows should stay enabled"
