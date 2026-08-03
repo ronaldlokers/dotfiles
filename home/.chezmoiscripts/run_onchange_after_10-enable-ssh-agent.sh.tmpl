@@ -12,9 +12,33 @@ set -eu
 # Probe the manager's own socket, not `systemctl` exit codes: devcontainer
 # images ship a systemctl shim that exits 0 with a "systemd is not
 # running" notice.
-if [ -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
-    systemctl --user daemon-reload
-    systemctl --user enable --now ssh-agent.service
-else
+if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
     echo "No systemd user session, skipping ssh-agent service enable." >&2
+    exit 0
+fi
+
+systemctl --user daemon-reload
+
+# systemctl --user talks to the running user manager, which resolves unit paths
+# from its own environment — not from whatever HOME this script inherited. When
+# an apply runs against a redirected HOME (a throwaway-HOME verify, any test)
+# the unit lands somewhere the manager will never look, while $XDG_RUNTIME_DIR
+# still points at the developer's real session. Enabling regardless is worse
+# than a failure: it succeeds, against the machine that was only supposed to be
+# running the check.
+#
+# Same guard, same wording as the two sibling scripts next door.
+if ! systemctl --user cat ssh-agent.service >/dev/null 2>&1; then
+    echo "Unit not visible to the user manager, skipping enable." >&2
+    echo "Expected when applying to a HOME the manager doesn't own." >&2
+    exit 0
+fi
+
+# Best-effort, like the siblings: this is a run_onchange, so a failure here must
+# cost the ssh-agent unit and not every script queued behind it. CI's
+# host-ssh-agent job asserts the unit is actually active afterwards, so a
+# silently swallowed failure still fails the build there.
+if ! systemctl --user enable --now ssh-agent.service; then
+    echo "Could not enable ssh-agent.service; continuing." >&2
+    echo "Enable it by hand with: systemctl --user enable --now ssh-agent.service" >&2
 fi
