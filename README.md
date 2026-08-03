@@ -83,6 +83,37 @@ plugged in for that: the check compares fingerprints, not files.
 Staleness is a fingerprint mismatch, not an age in days. An untouched key means
 a two-year-old copy is still a good copy.
 
+<a name="renewing-the-bootstrap-pat"></a>
+
+### Renewing the bootstrap PAT
+
+The weekly check warns for 60 days before the token expires, and says this is
+the cause if the session is already dead. It is three commands, not one:
+
+```sh
+pass-cli login                      # web login — see below, this step matters
+pass-cli pat list                   # find the token's name
+pass-cli pat renew --personal-access-token-name <name> --expiration 1y
+```
+
+The web login is not optional. Proton refuses every `pat` subcommand while the
+session itself came from a personal access token — *"Cannot manage or act on
+personal access tokens while logged in with a personal access token"* — and on
+this machine that is always how the session was made, because the cached
+bootstrap PAT is what creates it. `pass-cli login` replaces that session with
+one that may manage tokens.
+
+Then move the date, in both places that hold it:
+
+- `bootstrap_pat_expiry` in `home/dot_local/bin/executable_dotfiles-secrets-check`
+- the **bootstrap token expires** line under [Gotchas](#gotchas)
+
+`mise run lint` asserts the two agree, so a half-done renewal fails there rather
+than silently leaving a warning that never fires again. Commit, and
+`chezmoi apply`. If the renewal hands back a new token value, write it to
+`~/.config/pass-cli-bootstrap-pat` (0600) and update the `bootstrap PAT` vault
+item too.
+
 ## Secrets
 
 Items in the **Dotfiles vault**, written by
@@ -343,11 +374,13 @@ mise run prune             # needs a human: shows a dry run, then asks
 - **Nothing secret goes in the repo.** No `.age` blobs, no `chezmoi add
   --encrypt`, no `encrypted_` files — see [Secrets](#secrets).
 - **The bootstrap token expires** 2027-07-29. After that `proton-ssh-load` and
-  the secrets script quietly report no session until `pass-cli pat renew`. The
-  weekly check now warns for 60 days beforehand, and if the session is already
-  dead it says the expiry is why rather than leaving you to work it out. That
-  date is asserted against the one in `dotfiles-secrets-check` by `mise run
-  lint`, so the two cannot drift.
+  the secrets script quietly report no session until it is renewed — which takes
+  a web login first, and is written out under [Renewing the bootstrap
+  PAT](#renewing-the-bootstrap-pat). The weekly check warns for 60 days
+  beforehand *without* failing the unit, and if the session is already dead it
+  says the expiry is why rather than leaving you to work it out. That date is
+  asserted against the one in `dotfiles-secrets-check` by `mise run lint`, so
+  the two cannot drift.
 - **New repo-only files go outside `home/`.** Anything inside is source state
   and gets applied into `$HOME`.
 - **Never edit a managed file in `$HOME`.** Edit the source
@@ -362,5 +395,9 @@ mise run prune             # needs a human: shows a dry run, then asks
   `duf`, `btop` in interactive shells only.
 - **Never run `omarchy-setup-zsh`.** It replaces `~/.zshrc` and `~/.bashrc`,
   which chezmoi owns.
-- **A lapsed DevPod PAT looks like nothing at all.** No local check tests it;
-  `devpod up` just hits the rate limit it exists to prevent, with CI green.
+- **A lapsed DevPod PAT fails a long way from the cause.** `devpod up` dies
+  partway through a container build with `rate limit exceeded`, which looks
+  exactly like the anonymous-quota bug the token exists to fix. The weekly check
+  now asks GitHub directly whether the token is still accepted, so it is caught
+  before a build is. Readable in the vault is not the same as live, and every
+  other check only proves the first.
