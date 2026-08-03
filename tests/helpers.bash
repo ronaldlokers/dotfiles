@@ -309,10 +309,23 @@ STUB
 # render runs under: has-proton-session calls `pass-cli info` at render time, so
 # the stub has to be visible here for the rendered script to take the
 # session-is-live branch.
+# The XDG clearing is not tidiness. This desktop exports XDG_CONFIG_HOME
+# pointing at the real ~/.config, and chezmoi reads its config from there — so
+# every caller of this function was rendering against this developer's personal
+# chezmoi.toml while believing it had redirected HOME. Four suites went through
+# here, and the failure mode is the worst kind: green locally for a reason that
+# does not exist in CI, or red for a typo in a config the suite has nothing to
+# do with. Same hazard, same fix as [tasks.verify] and the export suite.
+# $4 is an optional source tree to render against, for templates that bake in a
+# path — dotfiles-update-check interpolates .chezmoi.sourceDir and then operates
+# on it, so pointing it at a fixture is the only way to test the behaviour
+# rather than the argument parsing. Defaults to this repo.
 render_template() {
 	local tmpl="$1" out="$2" render_path="$3"
-	PATH="$render_path" chezmoi execute-template --source "$BATS_TEST_DIRNAME/.." \
-		<"$tmpl" >"$out"
+	local source="${4:-$BATS_TEST_DIRNAME/..}"
+	env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME \
+		PATH="$render_path" chezmoi execute-template \
+		--source "$source" <"$tmpl" >"$out"
 }
 
 # Runs $SCRIPT under a pty, feeding $1 as the typed answer, so the code behind

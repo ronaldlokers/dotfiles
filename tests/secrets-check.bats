@@ -848,3 +848,94 @@ TMPL
 	[[ "$output" == *"trashed"* ]]
 	[[ "$output" == *"ssh"* ]]
 }
+
+# --- the guards that no test was holding down (N21, N25) ---------------------
+
+# The EXIT trap. Deleting it left all sixty-seven cases green, which means the
+# whole safety net was, in test terms, absent — and it exists precisely for the
+# case no test thinks to write: an unguarded command dying under `set -e` before
+# the script reaches its summary and its own alarm() call. This runs unattended
+# under a weekly timer, so a silent abort is a check that has quietly stopped
+# checking.
+#
+# `wc` is the seam. `n="$(pass-cli item view … | wc -c)"` is an ordinary
+# unguarded assignment in the middle of the item loop; a wc that fails takes the
+# script down exactly the way a missing coreutil or a broken pipe would, without
+# any test-only hook in the script itself.
+@test "an abort partway through still raises the alarm" {
+	cat >"$BIN/wc" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+	chmod 755 "$BIN/wc"
+	run_check
+	[ "$status" -ne 0 ]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"exited unexpectedly"* ]]
+}
+
+# ...and the counterpart, or the test above would pass with the trap firing on
+# every run including the good ones. A completed run must not claim it aborted.
+@test "a run that finishes does not claim it aborted" {
+	run_check
+	[ "$status" -eq 0 ]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" != *"exited unexpectedly"* ]]
+}
+
+# `set -f` around the two loops that walk derived titles. A vault item may
+# legitimately be called something containing a glob character, and without the
+# guard the shell replaces that title with whatever happens to match in the
+# current directory before the loop body ever sees it — so the check reads a
+# different item than the one the restore script names, and reports on it
+# happily. Nothing tested this, and both `set -f` lines could be deleted with
+# the suite green.
+@test "a derived title containing a glob character is used verbatim" {
+	printf 'restore "api * keys" "$HOME/api" 600\n' \
+		>>"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl"
+	printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/api * keys"
+
+	# The trap being sprung: a directory whose contents would match if the shell
+	# were allowed to expand. The loop walks "field<TAB>title" pairs, so the
+	# pattern the shell would try is the whole pair — the decoy has to carry the
+	# field and the tab, or it matches nothing and the test proves nothing.
+	cwd="$BATS_TEST_TMPDIR/globbable"
+	mkdir -p "$cwd"
+	: >"$cwd/$(printf 'note\tapi SURPRISE keys')"
+
+	run env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME \
+		HOME="$HOME" STUB_LOG="$STUB_LOG" NOTIFY_LOG="$NOTIFY_LOG" \
+		DBUS_SESSION_BUS_ADDRESS="unix:path=$BATS_TEST_TMPDIR/fake-bus" \
+		CURL_LOG="$CURL_LOG" PATH="$BIN:$PATH" PASS_ITEM_DIR="$ITEMS" \
+		sh -c 'cd "$1" && shift && sh "$@"' _ "$cwd" "$SCRIPT" --source "$SRC"
+
+	[ "$status" -eq 0 ]
+	grep -q -- "--item-title api \* keys" "$STUB_LOG"
+	! grep -q -- "--item-title api SURPRISE keys" "$STUB_LOG"
+}
+
+# The same guard on the URI loop, which runs earlier and derives from a
+# different source, so it is a second `set -f` and needs its own case.
+@test "a glob character in a pass:// URI title is used verbatim too" {
+	printf '{{- /* pass://Dotfiles/tmpl * item/public_key */ -}}x\n' \
+		>"$SRC/.chezmoitemplates/globby"
+	printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/tmpl * item"
+
+	# The URI loop walks whole `pass://vault/title/field` strings, so the
+	# pattern the shell would expand is a path — the decoy has to be one, empty
+	# path segment and all. Contrived to build, and exactly what the guard is
+	# for: a title is not a filename and must never be resolved as one.
+	cwd="$BATS_TEST_TMPDIR/globbable2"
+	mkdir -p "$cwd/pass:/Dotfiles/tmpl SURPRISE item"
+	: >"$cwd/pass:/Dotfiles/tmpl SURPRISE item/public_key"
+
+	run env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME \
+		HOME="$HOME" STUB_LOG="$STUB_LOG" NOTIFY_LOG="$NOTIFY_LOG" \
+		DBUS_SESSION_BUS_ADDRESS="unix:path=$BATS_TEST_TMPDIR/fake-bus" \
+		CURL_LOG="$CURL_LOG" PATH="$BIN:$PATH" PASS_ITEM_DIR="$ITEMS" \
+		sh -c 'cd "$1" && shift && sh "$@"' _ "$cwd" "$SCRIPT" --source "$SRC"
+
+	[ "$status" -eq 0 ]
+	grep -q -- "--item-title tmpl \* item" "$STUB_LOG"
+	! grep -q -- "--item-title tmpl SURPRISE item" "$STUB_LOG"
+}
