@@ -41,9 +41,36 @@ mise run secrets-check     # assert every vault item is still readable
 ```
 
 > [!WARNING]
-> Proton is the only copy. No account, no secrets — there is no offline or
-> account-free path back, and the same account holds the SSH keys. Keep an
-> offline copy of anything you cannot re-issue.
+> Proton is the only copy unless you make another. No account, no secrets —
+> there is no account-free path back, and the same account holds the SSH keys.
+
+### The offline copy
+
+One item cannot be re-issued: **`sops age keys`**. A new age key can be
+generated, but nothing already encrypted to the old one can be read again. The
+`gh` token, both DevPod tokens, the sugarrush config and the git signing key
+can all be revoked and re-minted; SSH keys can too, painfully.
+
+So the offline copy is one small file:
+
+```sh
+dotfiles-secrets-export /run/media/you/STICK   # asks for a passphrase
+age -d /run/media/you/STICK/dotfiles-age-key.age   # verify you can read it back
+```
+
+Keep the passphrase somewhere that is **not** Proton Pass — in your head, or
+wherever you keep things you cannot look up. A passphrase stored in the vault
+rebuilds exactly the single point of failure the copy exists to break.
+
+The export records what it wrote (a date, a destination and the *public* half
+of the key — no secret material) at
+`~/.local/state/dotfiles/secrets-backup`. `dotfiles-secrets-check` reads that
+record on its weekly run and tells you if no copy was ever made, or if the
+vault's age key has rotated since. The backup medium does not need to be
+plugged in for that: the check compares fingerprints, not files.
+
+Staleness is a fingerprint mismatch, not an age in days. An untouched key means
+a two-year-old copy is still a good copy.
 
 ## Secrets
 

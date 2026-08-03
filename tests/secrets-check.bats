@@ -30,6 +30,16 @@ setup() {
 	NOTIFY_LOG="$BATS_TEST_TMPDIR/notify.log"
 	: >"$NOTIFY_LOG"
 	make_notify_send_stub "$BIN"
+	make_age_keygen_stub "$BIN"
+
+	# A recorded offline copy, current by default: the key the manifest names is
+	# the one the age-keygen stub derives from the vault item, so the offline
+	# half passes unless a test deliberately moves one of the two. run_check
+	# clears XDG_STATE_HOME, so the script falls back to $HOME/.local/state.
+	BACKUP_MANIFEST="$HOME/.local/state/dotfiles/secrets-backup"
+	mkdir -p "$(dirname "$BACKUP_MANIFEST")"
+	printf 'date=2026-07-01T00:00:00Z\ndestination=/mnt/stick/dotfiles-age-key.age\nage_public_key=age1fakepubkeyfixture\n' \
+		>"$BACKUP_MANIFEST"
 
 	# Every item the check knows about, all readable by default. The bodies are
 	# sentinels: any test that finds one in the output has found a leak.
@@ -357,6 +367,74 @@ TMPL
 	run_check
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"3 vault item(s) checked"* ]]
+}
+
+# --- the offline half ---------------------------------------------------------
+#
+# Everything else here asks whether Proton works. These ask whether there is a
+# way back if it does not — the question that only matters on the day the rest
+# stop mattering, and the one the repo had documented as a warning and enforced
+# nowhere.
+
+@test "an offline copy matching the vault passes" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"offline backup"* ]]
+	[[ "$output" == *"2026-07-01"* ]]
+}
+
+# The state the finding is about: the README says "keep an offline copy" and
+# nothing ever checked that anyone had.
+@test "never having made an offline copy is a fault" {
+	rm -f "$BACKUP_MANIFEST"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no offline copy has ever been recorded"* ]]
+	# and it says what to run, because a warning without a next step is what
+	# this replaced
+	[[ "$output" == *"dotfiles-secrets-export"* ]]
+}
+
+# Staleness is a fingerprint mismatch, not an age in days: a rotated age key
+# means the copy no longer opens anything, whenever it was made.
+@test "a rotated vault key makes the recorded copy stale" {
+	run_check AGE_PUBKEY="age1rotatedtosomethingelse"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"stale"* ]]
+	[[ "$output" == *"2026-07-01"* ]]
+}
+
+# The mirror of the above, and the reason the check is worth having at all: an
+# old copy of an unchanged key is a good copy. A check that nagged about age
+# would train you to ignore it.
+@test "an old copy of an unchanged key is not stale" {
+	printf 'date=2019-01-01T00:00:00Z\ndestination=/mnt/stick/x.age\nage_public_key=age1fakepubkeyfixture\n' \
+		>"$BACKUP_MANIFEST"
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"stale"* ]]
+}
+
+@test "a manifest naming no key is a fault, not a silent pass" {
+	printf 'date=2026-07-01T00:00:00Z\ndestination=/mnt/stick/x.age\n' >"$BACKUP_MANIFEST"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"names no key"* ]]
+}
+
+@test "an unusable vault age key is a fault, not a pass" {
+	run_check AGE_KEYGEN_RC=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"cannot read the vault age key"* ]]
+}
+
+# The check must stay read-only and leak-free: it derives the public half
+# through a pipe, so no private key reaches disk and none reaches the journal.
+@test "the offline half emits no key material" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"SENTINEL-SECRET-BODY"* ]]
+	[[ "$output" != *"AGE-SECRET-KEY"* ]]
 }
 
 # The spec lists this case and nothing implemented it: notify-send prints

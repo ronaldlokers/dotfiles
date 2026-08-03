@@ -250,8 +250,35 @@ none of those things.
 The second cost is concentration. Proton now holds the SSH keys, the file
 secrets and the recovery path, so a lockout — forgotten password, lost 2FA
 device, account issue — takes all of it at once. An offline copy of anything
-that cannot be re-issued is the only thing that closes that, and nothing in this
-repo can do it for you.
+that cannot be re-issued is the only thing that closes that.
+
+That sentence used to end "and nothing in this repo can do it for you", which
+was true and useless: it addressed a human's memory, weekly, forever.
+`dotfiles-secrets-export` is the mechanism behind it now.
+
+Three decisions in it are worth stating, because each had an alternative that
+looks simpler and is wrong:
+
+**It exports one item, not the vault.** Only `sops age keys` is unreissuable —
+a new age key can be generated, but nothing already encrypted to the old one
+opens again. Every other item can be revoked and re-minted, and copying them
+offline would make the copy bigger, more dangerous to lose, and no more useful.
+The list is declared rather than derived, because "can this be re-issued" is a
+judgement about each secret, not a fact about the code.
+
+**It is passphrase-encrypted, and refuses to run without a terminal.** `age -p`
+has to ask. An export that could run unattended would need its passphrase
+stored somewhere, and the only somewhere available is the vault it exists to
+survive the loss of. The refusal is the design, not a limitation.
+
+**Staleness is a fingerprint mismatch, not an age in days.** The manifest
+records the *public* half of the age key — derivable from the private one,
+useless to an attacker, and safe to leave in cleartext in `~/.local/state`. The
+weekly check derives the same value from the vault through a pipe (no private
+key touches disk, in either direction) and compares. So the backup medium never
+has to be plugged in, and an untouched key means a two-year-old copy is still a
+good copy. A check that nagged about calendar age would only teach you to
+ignore it — which is the failure mode of the sentence it replaced.
 
 Failure handling is deliberately conservative: a fetch that errors or returns
 empty leaves the existing file untouched. A stale secret is recoverable; a
