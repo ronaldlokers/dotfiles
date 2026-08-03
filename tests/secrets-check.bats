@@ -1001,3 +1001,96 @@ STUB
 	chmod 700 "$HOME/.local/state"
 	[ "$status" -eq 0 ]
 }
+
+# --- what the alarm actually says (N14) --------------------------------------
+#
+# Five unrelated faults produced the same rc=1 and so the same sentence: "The
+# Proton Pass check failed." A notification gets a glance, not a reading, and
+# that glance told you only to go and read the journal — a second task, at
+# whatever moment systemd chose to fire the timer.
+
+@test "the alarm names which section failed" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$(cat "$NOTIFY_LOG")" == *"vault items"* ]]
+}
+
+@test "a different fault gets a different name" {
+	rm -f "$BACKUP_MANIFEST"
+	run_check
+	[ "$status" -ne 0 ]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"offline backup"* ]]
+	[[ "$notify_text" != *"vault items"* ]]
+}
+
+# Section names, never item titles. This string lands on a desktop; the vault's
+# contents are not for it.
+@test "the alarm never names a vault item" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" != *"gh hosts.yml"* ]]
+	[[ "$notify_text" != *"SENTINEL"* ]]
+}
+
+# `mise run secrets-check` only works from inside the repo checkout. This
+# notification arrives wherever you happen to be — quite possibly on a machine
+# where reaching that checkout is the thing that has stopped working.
+@test "the alarm points at a command that works from anywhere" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"dotfiles-secrets-check"* ]]
+	[[ "$notify_text" != *"mise run"* ]]
+}
+
+@test "one section failing repeatedly is named once" {
+	rm "$ITEMS/gh hosts.yml" "$ITEMS/sops age keys"
+	run_check
+	[ "$status" -ne 0 ]
+	[ "$(printf '%s\n' "$(cat "$NOTIFY_LOG")" | grep -c 'vault items')" -eq 1 ]
+}
+
+# The durable record gets the same list, so `dotfiles-status` can say what
+# broke without the journal either.
+@test "the recorded result names the failing section too" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	grep -q 'vault items' "$HOME/.local/state/dotfiles/last-check"
+}
+
+# --- the offline copy, when Proton is the thing that is gone (N28) -----------
+#
+# Every other check here asks whether Proton still works, so gating them on a
+# live session is right. The offline copy asks the opposite question, and it is
+# the only one whose answer matters on the day the others stop mattering. "No
+# session" is exactly the shape a lockout takes — so the dead-session exit was
+# silent about the backup at the precise moment somebody would want to know
+# whether there is one.
+
+@test "a dead session still reports that an offline copy exists" {
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+	[[ "$output" == *"offline backup"* ]]
+	[[ "$output" == *"2026-07-01"* ]]
+}
+
+@test "a dead session with no offline copy says that plainly" {
+	rm -f "$BACKUP_MANIFEST"
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"none recorded, and Proton is unreachable"* ]]
+	[[ "$output" == *"no copy of the unreissuable secret"* ]]
+}
+
+# Existence, not currency: comparing the recorded fingerprint needs the vault,
+# which is the thing that is missing. Claiming "current" here would be a guess
+# dressed as a fact.
+@test "the dead-session backup line does not claim the copy is current" {
+	run_check PASS_INFO_RC=1
+	[[ "$output" != *"current as of"* ]]
+	[[ "$output" == *"dotfiles-secrets-restore"* ]]
+}
