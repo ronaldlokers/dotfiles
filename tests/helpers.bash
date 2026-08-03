@@ -223,6 +223,28 @@ make_fake_runtime_dir() {
 	printf '%s\n' "$dir"
 }
 
+# Writes a fake age-keygen into $1 (a directory placed first on PATH). Only
+# `-y -` is implemented, which is the one form both the export and the check
+# use: derive the public half of an age identity read from stdin.
+#
+# The mapping is deliberately dumb — it echoes AGE_PUBKEY — so a test can say
+# "the vault now holds a different key" by changing one variable, without
+# needing real age keys or the real binary. AGE_KEYGEN_RC=1 covers the input
+# that is not a usable identity at all.
+make_age_keygen_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/age-keygen" <<'STUB'
+#!/bin/sh
+# Drain stdin so the writer upstream never sees EPIPE.
+cat >/dev/null
+[ "${AGE_KEYGEN_RC:-0}" -ne 0 ] && exit "${AGE_KEYGEN_RC}"
+printf '%s\n' "${AGE_PUBKEY:-age1fakepubkeyfixture}"
+exit 0
+STUB
+	chmod 755 "$bin/age-keygen"
+}
+
 # Renders a chezmoi script template to a runnable sh file. $2 is the PATH the
 # render runs under: has-proton-session calls `pass-cli info` at render time, so
 # the stub has to be visible here for the rendered script to take the

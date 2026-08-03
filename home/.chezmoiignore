@@ -25,4 +25,7 @@ ghostty.terminfo
 # container at runtime as well, because the source-tree copy is reachable from
 # a devcontainer working on this repo.
 .local/bin/dotfiles-secrets-check
+# And the offline export, which reads the same vault to write the copy. A
+# container has nothing to export and nowhere to export it to.
+.local/bin/dotfiles-secrets-export
 {{ end -}}
