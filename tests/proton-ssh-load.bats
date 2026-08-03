@@ -21,7 +21,17 @@ setup() {
 	: >"$STUB_LOG"
 	make_pass_cli_stub "$BIN"
 	PAT_FILE="$HOME/.config/pass-cli-bootstrap-pat"
-	export HOME STUB_LOG
+
+	# Per-test, and not optional. The script's warn-once marker lives in
+	# $XDG_RUNTIME_DIR, and this desktop exports the real one — so without this
+	# the suite writes markers into /run/user/$UID and every test after the
+	# first silently takes the already-warned path. Redirecting HOME does not
+	# cover it, the same way it did not for XDG_STATE_HOME in the export tests.
+	XDG_RUNTIME_DIR="$BATS_TEST_TMPDIR/run"
+	mkdir -p "$XDG_RUNTIME_DIR"
+	WARN_MARKER="$XDG_RUNTIME_DIR/proton-ssh-load.warned"
+
+	export HOME STUB_LOG XDG_RUNTIME_DIR
 }
 
 # Runs the script with only the stub dir plus the real coreutils on PATH.
@@ -269,7 +279,10 @@ EOF
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
 		sh "$SCRIPT" --quiet --prompt </dev/null
 	[ "$status" -eq 0 ]
-	[ -z "$output" ]
+	# Not exact emptiness any more: the no-session explanation is said once per
+	# boot even under --quiet. What must not happen is a prompt, which would
+	# block forever with no terminal to answer on.
+	[[ "$output" != *"Proton Pass PAT"* ]]
 	[ ! -f "$PAT_FILE" ]
 	! grep -q "^login" "$STUB_LOG"
 }
@@ -383,31 +396,120 @@ EOF
 # reason that has nothing to do with the script's own output. Assert the
 # absence of the script's own messages instead, the same way the sibling test
 # "bare --quiet never prompts, even on a terminal" (above) already does.
-@test "a rejected token is silent without --prompt" {
+@test "a rejected token warns once and then stops, without --prompt" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_stale\n' >"$PAT_FILE"
+
+	# First terminal after the session died: it explains itself.
 	run_load_tty "unused" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --quiet
 	[ "$status" -eq 0 ]
+	[[ "$output" == *"could not authenticate"* ]]
+	# but never prompts, which is the thing that would block a shell
 	[[ "$output" != *"Proton Pass PAT"* ]]
-	[[ "$output" != *"was rejected"* ]]
-	# --quiet suppresses the final "could not authenticate" too, not just the
-	# prompt; the non-tty sibling below already pins this via [ -z "$output" ],
-	# but this shape needs its own check since it can't assert exact emptiness.
+
+	# Every terminal after it, for the rest of this boot, says nothing. This is
+	# the property the original version of this test was protecting: the rc
+	# calls this on every new shell, and a line per prompt is noise nobody
+	# reads.
+	[ -e "$WARN_MARKER" ]
+	run_load_tty "unused" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --quiet
+	[ "$status" -eq 0 ]
 	[[ "$output" != *"could not authenticate"* ]]
+	[[ "$output" != *"was rejected"* ]]
+
 	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
 	! grep -q "ssh-agent load" "$STUB_LOG"
+}
+
+# D2, stated directly. The shell rc runs this on every terminal with an empty
+# agent and passes --quiet, so a successful load is silent. The finding was that
+# --quiet also silenced the one thing worth saying: that the keys did not load
+# and why. Once per boot is the resolution — the first terminal explains itself,
+# the rest stay quiet, and a reboot earns the message again because a reboot is
+# exactly when you have forgotten.
+@test "a dead session explains itself on the first shell of a boot" {
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" PASS_INFO_RC=1 sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$stderr" == *"no Proton Pass session"* ]]
+	[[ "$stderr" == *"SSH keys are not loaded"* ]]
+	[[ "$stderr" == *"pass-cli login"* ]]
+	# on stderr, so anything capturing this script's output is unaffected
+	[ -z "$output" ]
+}
+
+@test "and says nothing on the shells after it" {
+	for _ in 1 2 3; do
+		run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+			PATH="$BIN:$PATH" PASS_INFO_RC=1 sh "$SCRIPT" --quiet </dev/null
+		[ "$status" -eq 0 ]
+	done
+	# three shells, one message
+	[ -z "$stderr" ]
+	[ -e "$WARN_MARKER" ]
+}
+
+# The marker is per-boot because $XDG_RUNTIME_DIR is: the OS clears it, so there
+# is no cleanup to get wrong and no stale marker to outlive the problem.
+@test "a new boot earns the message again" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		PASS_INFO_RC=1 sh "$SCRIPT" --quiet </dev/null
+	[ -e "$WARN_MARKER" ]
+
+	# what a reboot does to $XDG_RUNTIME_DIR
+	rm -rf "$XDG_RUNTIME_DIR"
+	mkdir -p "$XDG_RUNTIME_DIR"
+
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" PASS_INFO_RC=1 sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$stderr" == *"no Proton Pass session"* ]]
+}
+
+# No runtime dir at all — a container, a stripped environment, a cron-like
+# context. Nowhere to record that we spoke, so it speaks every time. That is the
+# safe direction: these callers are not the shell rc and are not on a per-prompt
+# path, so repeating costs nothing, while staying silent could hide the reason
+# an unattended run did nothing.
+@test "with no runtime dir it warns every time rather than never" {
+	for _ in 1 2; do
+		run --separate-stderr env -u XDG_RUNTIME_DIR HOME="$HOME" \
+			STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+			sh "$SCRIPT" --quiet </dev/null
+		[ "$status" -eq 0 ]
+		[[ "$stderr" == *"no Proton Pass session"* ]]
+	done
+}
+
+# --quiet still has to do its job, or the finding is traded for a worse one.
+@test "a successful load stays silent under --quiet" {
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ -z "$stderr" ]
+	[ ! -e "$WARN_MARKER" ]
 }
 
 # The CI / chezmoi-apply shape: stdin is closed, not a tty, so there is no pty
 # to echo anything and $output really must be empty. Kept alongside the tty
 # version above rather than replacing it — each pins a different invocation
 # shape, and neither's coverage substitutes for the other's.
-@test "a rejected token is silent without --prompt and without a tty" {
+@test "a rejected token warns once and then stops, without --prompt or a tty" {
 	mkdir -p "$(dirname "$PAT_FILE")"
 	printf 'pst_stale\n' >"$PAT_FILE"
+
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
+		PASS_LOGIN_RC=1 sh "$SCRIPT" --quiet
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"could not authenticate"* ]]
+
+	# No pty here, so this shape can assert exact emptiness on the second run —
+	# the stronger form the tty sibling above cannot use.
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
 		PASS_LOGIN_RC=1 sh "$SCRIPT" --quiet
 	[ "$status" -eq 0 ]
 	[ -z "$output" ]
+
 	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
 }

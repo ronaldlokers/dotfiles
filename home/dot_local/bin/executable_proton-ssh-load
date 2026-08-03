@@ -44,6 +44,39 @@ say() {
 	[ "$quiet" = 1 ] || echo "$@"
 }
 
+# The one thing --quiet must not swallow, said at most once per boot.
+#
+# Two requirements pull opposite ways here. The shell rc calls this on every new
+# terminal that finds an empty agent, and passes --quiet so a successful load
+# does not print at every prompt — a line per terminal is noise nobody reads.
+# But a terminal where ssh silently has no keys, saying nothing about why, is
+# how you end up debugging a push instead of running one command.
+#
+# So: the first terminal after a session dies explains itself, and every
+# terminal after that stays quiet. The marker lives in $XDG_RUNTIME_DIR, which
+# is per-boot and cleared by the OS — no cleanup to get wrong, and a reboot
+# earns the message again, which is right, because a reboot is exactly when you
+# have forgotten. Where there is no runtime dir (a container, a stripped
+# environment) the message simply always prints; those callers are not the shell
+# rc and are not on a per-prompt path.
+#
+# stderr, so it stays out of anything capturing this script's output.
+warn_once() {
+	_warn_dir="${XDG_RUNTIME_DIR:-}"
+	if [ -n "$_warn_dir" ] && [ -d "$_warn_dir" ]; then
+		_warn_marker="$_warn_dir/proton-ssh-load.warned"
+		# Already told you this boot. Say nothing.
+		[ -e "$_warn_marker" ] && return 0
+		# Best effort: a marker we cannot write means the message repeats,
+		# which is the safe direction to fail in.
+		: >"$_warn_marker" 2>/dev/null || true
+	fi
+	while [ $# -gt 0 ]; do
+		echo "$1" >&2
+		shift
+	done
+}
+
 command -v pass-cli >/dev/null 2>&1 || {
 	say "proton-ssh-load: pass-cli is not installed"
 	exit 0
@@ -145,10 +178,11 @@ if ! pass-cli info >/dev/null 2>&1; then
 	fi
 
 	if [ -z "$pat" ]; then
-		say "proton-ssh-load: no Proton Pass session."
-		say "proton-ssh-load: run 'pass-cli login', or set"
-		say "proton-ssh-load: PROTON_PASS_PERSONAL_ACCESS_TOKEN (Dotfiles vault,"
-		say "proton-ssh-load: item 'bootstrap PAT') and run this again."
+		warn_once \
+			"proton-ssh-load: no Proton Pass session — your SSH keys are not loaded." \
+			"proton-ssh-load: run 'pass-cli login', or set" \
+			"proton-ssh-load: PROTON_PASS_PERSONAL_ACCESS_TOKEN (Dotfiles vault," \
+			"proton-ssh-load: item 'bootstrap PAT') and run this again."
 		exit 0
 	fi
 
@@ -162,7 +196,7 @@ if ! pass-cli info >/dev/null 2>&1; then
 			try_login "$pat"; then
 			cache_it=1
 		else
-			say "proton-ssh-load: could not authenticate to Proton Pass"
+			warn_once "proton-ssh-load: could not authenticate to Proton Pass — your SSH keys are not loaded."
 			exit 0
 		fi
 	fi
