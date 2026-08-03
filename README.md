@@ -421,11 +421,14 @@ repo's `mise.toml`), and the graphify package, whose vendored skill has to be
 re-vendored by hand alongside any bump. Each is a PR to click rather than one
 to read.
 
-`.github/workflows/keepalive.yaml` exists because GitHub disables a
-repository's scheduled workflows after 60 days of inactivity — which would stop
-the weekly CI canary and the Renovate run without stopping anything that
-reports on them. It force-pushes an empty commit to an orphan `keepalive`
-branch every ten days. Nothing on that branch is meant to be merged or read.
+GitHub disables a repository's scheduled workflows after 60 days of
+inactivity, which would stop the weekly CI canary and the Renovate run. There
+was briefly a keepalive workflow guarding against that; it was deleted. A
+scheduled workflow whose only job is to stop scheduled workflows being
+disabled is itself disabled by the condition it guards, and on a repo with
+this commit cadence the condition is not reachable — if activity does lapse
+for sixty days the repo is dormant and the schedules stopping is the correct
+outcome, not a fault. GitHub emails before it acts.
 
 ## Working on this repo
 
