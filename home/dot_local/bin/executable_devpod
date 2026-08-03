@@ -3,6 +3,12 @@
 # dotfiles-script env flags to every `devpod up`: a no-scope GitHub token for
 # mise's rate limit, plus MISE_QUIET and CXXFLAGS=-w to keep bootstrap output
 # readable. Run ~/.local/libexec/devpod directly to bypass this.
+#
+# The one script in ~/.local/bin that deliberately does NOT handle `--help`
+# itself. Every other one prints its own usage and exits 0; this is a
+# pass-through wrapper, and someone typing `devpod --help` wants devpod's help,
+# not a note about the wrapper. Intercepting it would hide the thing they asked
+# for. Everything here is forwarded, including that.
 set -eu
 
 real="$HOME/.local/libexec/devpod"
