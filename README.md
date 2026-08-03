@@ -291,11 +291,18 @@ machine is behind the remote — it only notifies. Run it by hand with
 tooling and defines the checks, so local runs and CI use identical versions:
 
 ```sh
-mise run check     # lint + tests + gitleaks + clean-HOME bootstrap (what CI runs)
+mise run check     # lint + test + gitleaks + verify + shells
 mise run lint      # shellcheck, actionlint, renovate config
 mise run test      # bats suite over the scripts
 mise run verify    # bootstrap into a throwaway HOME, non-interactively
 ```
+
+`check` overlaps CI without matching it, in both directions. It also runs
+`shells`, which CI cannot — there is no applied `$HOME` on a runner to start an
+interactive shell in. And CI runs two jobs `check` has no way to: `host-ssh-agent`
+brings up a real systemd user session, and `container-gates` runs inside an Arch
+container to prove the host-only gates skip. A green `check` is the strongest
+signal available locally, not a guarantee the pipeline will pass.
 
 `verify` is the one that matters before pushing: it redirects `/dev/null` into
 the apply, reproducing the no-TTY conditions of `devpod up` and CI.

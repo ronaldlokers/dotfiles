@@ -42,9 +42,12 @@ version `home/dot_config/mise/config.toml` pins, because that pin is the only
 chezmoi CI and every machine actually exercises. A fresh machine satisfies the
 floor regardless: `setup` installs latest from `get.chezmoi.io`.
 
-Two files now carry that number, so `mise run lint` asserts they agree. Renovate
-bumps the mise pin on its own schedule; the failing assertion is what says "bump
-the floor too" rather than letting them drift apart silently.
+Three files now carry that number — `.chezmoiversion`, the machine pin in
+`home/dot_config/mise/config.toml`, and this repo's own pin in `mise.toml` (the
+suite renders a script template, so the tests need the binary) — so `mise run
+lint` asserts all three agree. Renovate bumps the pins on its own schedule; the
+failing assertion is what says "bump the floor too" rather than letting them
+drift apart silently.
 
 ### `exact_` on two directories, not six
 
@@ -460,7 +463,8 @@ API for every `github:`, `vfox:` and `pipx:` tool, and unauthenticated that is 6
 requests an hour per IP — less than this repo's tool list, so a cold container
 fails partway through with `rate limit exceeded` and takes the whole apply with
 it. The host is unaffected because `gh` is authenticated there; a container has
-no `gh` session, since `hosts.yml` only decrypts with a TTY.
+no `gh` session, because `hosts.yml` comes from the vault and containers get
+nothing from Proton by design.
 
 So `~/.config/devpod/dotfiles-env` holds a **fine-grained** PAT as
 `MISE_GITHUB_TOKEN`, and `~/.local/bin/devpod` — a managed wrapper script — hands
@@ -555,8 +559,8 @@ the token file. `~/.local/libexec/devpod` runs the binary unwrapped, and a
 machine with no token file yet passes straight through.
 
 Two limits worth knowing. The token's expiry is not checked by anything local:
-`mise run secrets-restore` only proves the age blob still decrypts, not that the
-plaintext PAT is still live. A lapsed PAT looks exactly like the original bug,
+`mise run secrets-check` only proves the vault item is still readable, not that
+the PAT inside it is still live. A lapsed PAT looks exactly like the original bug,
 with every local check green. And this covers the dotfiles bootstrap only — a
 project whose own `mise.toml` pulls `github:`/`vfox:`/`pipx:` tools can still
 exhaust the anonymous quota in its `postCreateCommand`, which runs before DevPod
@@ -663,8 +667,8 @@ zoxide is the only source of directories sesh has.
 
 `dotfiles-update-check` **only notifies**; it never pulls and never applies. An
 unattended `chezmoi update` would restart services and re-run scripts at an
-arbitrary moment, including secret decryption, which now means a YubiKey PIN
-prompt with no terminal to answer it. It stays silent when there's nothing to
+arbitrary moment, including the secret restore — which now means a vault fetch,
+and on a machine with no cached token a prompt with no terminal to answer it. It stays silent when there's nothing to
 say, and distinguishes a clean fast-forward from a diverged branch. Enabled by
 `run_onchange_after_11-enable-update-check.sh.tmpl`, which skips where no systemd
 user session exists — so containers don't get it.

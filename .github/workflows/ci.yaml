@@ -65,9 +65,9 @@ jobs:
           export PATH="$RUNNER_TEMP/bin:$PATH"
           TESTHOME="$(mktemp -d)"
           echo "TESTHOME=$TESTHOME" >> "$GITHUB_ENV"
-          # CI has no passphrase and no tty, same as `devpod up` on a
-          # fresh machine: the unlock script detects that and skips
-          # decrypting the age identity and the secrets behind it.
+          # CI has no Proton Pass session and no tty, same as `devpod up` on
+          # a fresh machine: run_after_14-restore-secrets detects that and
+          # skips the file secrets rather than prompting or failing.
           # Everything else runs for real: externals, run scripts, full
           # mise tool install.
           HOME="$TESTHOME" chezmoi init --source "$PWD"
@@ -75,13 +75,14 @@ jobs:
       - name: idempotency — second apply changes no managed files
         run: |
           export PATH="$RUNNER_TEMP/bin:$PATH"
-          # the design leans on re-run safety (the unlock script and every
-          # run_onchange are meant to no-op once settled); prove it. A second
-          # apply must exit 0 and leave no managed-file drift.
+          # the design leans on re-run safety (every run_onchange, and the
+          # plain run_afters, are meant to no-op once settled); prove it. A
+          # second apply must exit 0 and leave no managed-file drift.
           HOME="$TESTHOME" chezmoi apply --source "$PWD" </dev/null
-          # run_before_00-unlock-secrets is a plain run_before: it re-runs on
-          # every apply by design, so chezmoi always lists it as ' R ...'.
-          # That's expected — exclude scripts and assert no real file drift.
+          # The plain run_after scripts (ensure-ssh-include, restore-secrets,
+          # install-host-packages) re-run on every apply by design, so chezmoi
+          # always lists them as ' R ...'. That's expected — exclude scripts
+          # and assert no real file drift.
           pending="$(HOME="$TESTHOME" chezmoi status --source "$PWD" \
             | grep -v '\.chezmoiscripts/' || true)"
           if [ -n "$pending" ]; then

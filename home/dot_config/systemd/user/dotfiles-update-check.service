@@ -8,9 +8,12 @@
 # .chezmoiscripts/run_onchange_after_11-enable-update-check.sh.tmpl
 [Unit]
 Description=Check whether the dotfiles repo has unapplied commits
-# Pointless without a network, and starting early just means a failed fetch.
-After=network-online.target
-Wants=network-online.target
+# No network ordering, and the two lines that used to claim it were removed
+# rather than corrected: there is no user-instance network-online.target, so
+# `After=/Wants=` on it never ordered anything here. A fetch that runs before
+# the network is up fails and the check stays silent, which is the same
+# outcome the ordering was meant to buy. See the sibling comment in
+# dotfiles-secrets-check.service.
 
 [Service]
 Type=oneshot
