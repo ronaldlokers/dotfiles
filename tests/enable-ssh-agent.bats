@@ -49,6 +49,19 @@ run_enable() {
 	grep -q -- "--user daemon-reload" "$SYSTEMCTL_LOG"
 }
 
+# The enable below it was guarded from the start; this call was not, and it is
+# the one that runs first. Under `set -eu` a refused reload killed the script
+# non-zero, and chezmoi stops applying on a non-zero run_ script — so a user
+# manager having a bad day silently cost the file secrets, the host packages and
+# the DevPod config, all of which are numbered after this one.
+@test "a failed daemon-reload does not abort the apply" {
+	run_enable SYSTEMCTL_RELOAD_RC=1
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Could not reload"* ]]
+	# and it carried on to the thing it was reloading for
+	grep -q -- "--user enable --now ssh-agent.service" "$SYSTEMCTL_LOG"
+}
+
 # The container/no-session case. The probe is for a socket specifically, because
 # devcontainer images ship a systemctl shim that exits 0 while printing
 # "systemd is not running" — trusting exit codes enables a unit that never runs.

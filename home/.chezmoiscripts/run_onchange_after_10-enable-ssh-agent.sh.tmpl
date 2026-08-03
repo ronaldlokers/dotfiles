@@ -17,7 +17,15 @@ if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
     exit 0
 fi
 
-systemctl --user daemon-reload
+# Guarded for the same reason the enable below is, and it was the one call
+# here that was not. These are run_onchange scripts: a non-zero exit does not
+# merely skip this unit, it aborts the whole apply — chezmoi stops, and every
+# script numbered after this one (restoring the file secrets, installing the
+# host packages, configuring DevPod) never runs. A user manager that refuses a
+# reload is not a reason to leave the machine half-provisioned.
+if ! systemctl --user daemon-reload; then
+    echo "Could not reload the systemd user manager; continuing." >&2
+fi
 
 # systemctl --user talks to the running user manager, which resolves unit paths
 # from its own environment — not from whatever HOME this script inherited. When

@@ -79,12 +79,16 @@ run_script() {
 	[ "$(head -n 1 "$CONFIG")" = "Include config.d/*.conf" ]
 }
 
+# 640, not 600. mktemp creates the replacement at 600 already, so asserting 600
+# here passed with `chmod "$mode" "$final"` deleted outright — the test agreed
+# with the default rather than with the file it was supposed to be preserving.
+# A mode mktemp will never produce is the whole assertion.
 @test "rewriting preserves the existing mode" {
 	printf 'Host example\nInclude config.d/*.conf\n' >"$CONFIG"
-	chmod 600 "$CONFIG"
+	chmod 640 "$CONFIG"
 	run_script
 	[ "$status" -eq 0 ]
-	[ "$(stat -c %a "$CONFIG")" = "600" ]
+	[ "$(stat -c %a "$CONFIG")" = "640" ]
 }
 
 @test "user content survives a rewrite" {
@@ -127,21 +131,44 @@ run_script() {
 	grep -q "AddKeysToAgent no" "$CONFIG"
 }
 
+# Exit 0, and that is the point of these two, not an incidental detail.
+#
+# chezmoi stops applying the moment a run_ script exits non-zero, and this one
+# is numbered 13. Refusing a config someone else owns used to take out scripts
+# 14, 20 and 30 with it — the file secrets, the host packages, the DevPod
+# config — so an ssh config this script deliberately does not manage decided
+# whether the rest of the machine got provisioned. The refusal stays; only its
+# blast radius changes.
 @test "refuses a symlinked config rather than replacing the link" {
 	printf 'Host example\n' >"$HOME/.ssh/real-config"
 	ln -s "$HOME/.ssh/real-config" "$CONFIG"
 	run_script
-	[ "$status" -eq 1 ]
+	[ "$status" -eq 0 ]
 	[ -L "$CONFIG" ]
 	[[ "$output" == *"symlink"* ]]
+	# Silence would be the wrong way to keep the apply alive: the invariant is
+	# genuinely unasserted now, so it has to say what to type.
+	[[ "$output" == *"Include config.d/*.conf"* ]]
 }
 
 @test "refuses a config that is not a regular file" {
 	mkdir "$CONFIG"
 	run_script
-	[ "$status" -eq 1 ]
+	[ "$status" -eq 0 ]
 	[ -d "$CONFIG" ]
 	[[ "$output" == *"not a regular file"* ]]
+	[[ "$output" == *"Include config.d/*.conf"* ]]
+}
+
+# The reason both of the above assert 0 rather than "some exit code": a refusal
+# must be distinguishable from a success by reading the output, since it is no
+# longer distinguishable by the exit status. If the message ever stops naming
+# the file, the refusal becomes a silent no-op.
+@test "a refusal still names the file it would not touch" {
+	ln -s /dev/null "$CONFIG"
+	run_script
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"$CONFIG"* ]]
 }
 
 # set -u catches an unset HOME but not an empty one, which would send every
