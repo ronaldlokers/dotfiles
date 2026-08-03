@@ -24,18 +24,36 @@ ssh_dir="$HOME/.ssh"
 config="$ssh_dir/config"
 include_line="Include config.d/*.conf"
 
-# Refuse a symlinked config rather than silently replacing the link with a
-# regular file, which is what the `mv` below would do.
+# Refusing to touch the file is right. Exiting non-zero to say so was not.
+#
+# This is a run_after script, so chezmoi treats a non-zero exit as a failed
+# apply and stops: everything numbered after this one — restoring the file
+# secrets (14), installing the host packages (20), configuring DevPod (30) —
+# never runs. So the two conditions below, both of which mean "someone else
+# owns this file and I am deliberately staying out of it", took the whole
+# machine down with them. The file this script does not manage is not more
+# important than the ones the rest of the apply does.
+#
+# Report loudly and hand back 0. The Include line is the one thing that does
+# not get asserted; the fix is one edit by hand, and it is named here.
+refuse() {
+	echo "[ssh-include] $1" >&2
+	echo "[ssh-include] Add this line above any Host/Match block, by hand:" >&2
+	echo "[ssh-include]   $include_line" >&2
+	echo "[ssh-include] Continuing — the rest of the apply is unaffected." >&2
+	exit 0
+}
+
+# A symlinked config: the `mv` below would silently replace the link with a
+# regular file.
 if [ -L "$config" ]; then
-	echo "[ssh-include] $config is a symlink; refusing to rewrite it in place." >&2
-	exit 1
+	refuse "$config is a symlink; not rewriting it in place."
 fi
 
 # Anything else non-regular: `mv` onto a directory would move the temp file
 # into it and look like success.
 if [ -e "$config" ] && [ ! -f "$config" ]; then
-	echo "[ssh-include] $config exists but is not a regular file; refusing to touch it." >&2
-	exit 1
+	refuse "$config exists but is not a regular file; not touching it."
 fi
 
 if [ ! -e "$config" ]; then
