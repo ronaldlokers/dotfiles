@@ -94,12 +94,29 @@ fi
 
 # compinit's full security audit is slow; skip it (-C) unless the dump
 # is older than a day. Omarchy's zoptions already ran compinit.
+#
+# -i is not a speed flag and is the important one here. Without it, an audit
+# that finds a group-writable directory anywhere in $fpath stops and *asks*:
+#
+#   zsh compinit: insecure directories, run compaudit for list.
+#   Ignore insecure directories and continue [y] or abort compinit [n]?
+#
+# On any path where nothing can answer that — a CI runner, a container build, a
+# terminal opened by something automated — the shell blocks forever. Not slowly:
+# permanently. And it is the *first* shell on a fresh machine that meets it,
+# because there is no ~/.zcompdump yet, so the full-audit branch is the one that
+# runs. An rc file must not be able to hang a login on a question.
+#
+# -i answers it the safe way and keeps going: insecure directories are skipped
+# rather than trusted. The cost is that completions from such a directory go
+# missing silently — `compaudit` lists them, and the Gotchas in README say so.
+# Found by CI's shell smoke test, which hung for exactly this reason.
 if [ -z "${_omarchy_zsh:-}" ]; then
   autoload -Uz compinit
   if [ -n "$(find "$HOME/.zcompdump" -mmin -1440 2>/dev/null)" ]; then
-    compinit -C
+    compinit -C -i
   else
-    compinit
+    compinit -i
   fi
 fi
 

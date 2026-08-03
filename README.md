@@ -415,6 +415,11 @@ mise run prune             # needs a human: shows a dry run, then asks
   `~/.devpod/config.yaml` are deliberately unmanaged for the same reason.
 - **Aliases don't apply in scripts.** `du`, `df`, `top` are aliased to `dust`,
   `duf`, `btop` in interactive shells only.
+- **A completion that never appears may be a permissions problem.** `compinit`
+  runs with `-i`, so a group-writable directory in `$fpath` is skipped rather
+  than trusted — silently, because the alternative is zsh stopping to ask a
+  question that hangs any shell nothing can type into. `compaudit` lists what
+  is being skipped; `chmod g-w` on the directory brings its completions back.
 - **Never run `omarchy-setup-zsh`.** It replaces `~/.zshrc` and `~/.bashrc`,
   which chezmoi owns.
 - **A lapsed DevPod PAT fails a long way from the cause.** `devpod up` dies
