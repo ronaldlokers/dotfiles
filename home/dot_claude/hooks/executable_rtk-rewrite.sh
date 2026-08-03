@@ -37,7 +37,8 @@ if [ ! -f "$CACHE_FILE" ]; then
   RTK_VERSION=${RTK_VERSION_RAW#rtk }
   RTK_VERSION=${RTK_VERSION%% *}
   if [ -n "$RTK_VERSION" ]; then
-    IFS=. read -r MAJOR MINOR PATCH <<<"$RTK_VERSION"
+    # PATCH is parsed only to keep it out of MINOR; the floor is 0.23.
+    IFS=. read -r MAJOR MINOR _ <<<"$RTK_VERSION"
     # Require >= 0.23.0
     if [ "$MAJOR" -eq 0 ] && [ "$MINOR" -lt 23 ]; then
       echo "[rtk] WARNING: rtk $RTK_VERSION is too old (need >= 0.23.0). Upgrade: cargo install rtk" >&2

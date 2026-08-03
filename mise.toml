@@ -19,7 +19,7 @@ chezmoi = "2.70.5"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_proton-ssh-load tests/helpers.bash",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_dotfiles-update-check.tmpl home/dot_local/bin/executable_proton-ssh-load home/dot_local/bin/executable_repos-sync home/dot_claude/hooks/executable_rtk-rewrite.sh tests/helpers.bash",
 	# The workflows lint themselves: a typo in a job key or a bad `needs:`
 	# reference otherwise only shows up as a skipped job on a green PR.
 	"actionlint",
@@ -198,7 +198,15 @@ run = '''
 set -eu
 mise prune --dry-run
 printf 'Continue? [y/N] '
-read -r reply
+# `read` returns non-zero at EOF, and under `set -e` that killed the task
+# outright: piping anything in, or running it where stdin is closed, ended in a
+# bare exit 1 with no output rather than the "nothing removed" this obviously
+# means. Declining is not an error.
+if ! read -r reply; then
+	echo
+	echo "nothing removed"
+	exit 0
+fi
 case "$reply" in
 y|Y) mise prune ;;
 *) echo "nothing removed" ;;
