@@ -478,6 +478,18 @@ TMPL
 	[[ "$output" != *"AGE-SECRET-KEY"* ]]
 }
 
+# D1. The alarm is a desktop notification: it gets a glance, not a reading. It
+# named the symptom ("secrets are not being refreshed") and left the reader to
+# work out that the fix is one command. The expired-PAT case already names its
+# own cause; this is the ordinary one.
+@test "the dead-session alarm names the fix, not just the symptom" {
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"pass-cli login"* ]]
+	[[ "$notify_text" != *"SENTINEL-SECRET-BODY"* ]]
+}
+
 # --- the bootstrap PAT's expiry (I7) -----------------------------------------
 #
 # The date was in the README and nowhere else, so nothing warned and nothing

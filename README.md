@@ -18,8 +18,19 @@ PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply   # or supply it up fr
 ```
 
 Or run [`setup`](setup), which does the same and makes zsh the login shell. Both
-are safe to re-run. The token is in the Dotfiles vault as `bootstrap PAT`; the
-first apply installs `pass-cli`, the second derives everything.
+are safe to re-run. The first apply installs `pass-cli`, the second derives
+everything.
+
+<a name="bootstrapping"></a>
+**Where the token comes from.** It is a Proton Pass personal access token,
+scoped `viewer` on the Dotfiles vault, minted from your Proton account and
+renewed with `pass-cli pat renew`. The vault holds a copy as `bootstrap PAT`,
+which is a record for renewal and *not* where a fresh machine gets it — a
+machine with no token cannot read the vault to find the token. That copy is
+convenience; the one that bootstraps a new machine has to come from somewhere
+you can reach without the vault. Once an apply has succeeded it is cached at
+`~/.config/pass-cli-bootstrap-pat` (0600) and you are not asked again until it
+expires.
 
 Applying pulls in the rest automatically:
 
@@ -118,7 +129,11 @@ agent. Run it by hand any time — reloading is a no-op.
 | auth | `ssh auth key` |
 | git signing | `git signing key` |
 | AUR | `aur ssh key` |
-| bootstrap token | `bootstrap PAT` |
+
+The `bootstrap PAT` item used to be listed here too, and is not an SSH key: it
+is the Proton Pass token that gets you *to* the vault, never goes near the
+agent, and is the one credential the vault cannot hand you. See
+[Bootstrapping](#bootstrapping).
 
 Commit signing goes through the agent: `user.signingkey` is the literal public
 key, resolved by `.chezmoitemplates/signing-pubkey` from Proton, falling back to
