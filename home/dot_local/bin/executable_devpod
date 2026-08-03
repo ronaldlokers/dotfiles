@@ -20,11 +20,22 @@ if [ ! -x "$real" ]; then
 	exit 127
 fi
 
-# Walk the arguments rather than reading $1: global flags may precede the
-# subcommand, and the four below take a value. The next non-flag argument is
-# the workspace source, which the per-project token lookup keys on.
+# Walk the arguments rather than reading $1: flags may precede the subcommand,
+# and a lot of them take a value in the next argument. The first non-flag
+# argument is the subcommand, the second is the workspace source, which the
+# per-project token lookup keys on.
+#
+# The list used to hold four global flags and nothing else, so `devpod up --ide
+# vscode ../other-project` parsed `vscode` as the source — and `vscode` is not a
+# directory, so the lookup fell back to $PWD and handed *this* project's
+# fine-grained token to a container built for a different repo. Every existing
+# test used the bare `devpod up .` form, so the entire walk was uncovered.
+#
+# `--flag=value` needs no entry: the value is attached, so the argument after it
+# is genuinely the next argument. Only the space-separated form skips.
 sub=""
 src=""
+src_seen=0
 skip=0
 for arg in "$@"; do
 	if [ "$skip" = 1 ]; then
@@ -32,7 +43,14 @@ for arg in "$@"; do
 		continue
 	fi
 	case "$arg" in
-	--context | --devpod-home | --log-output | --provider)
+	# globals
+	--context | --devpod-home | --log-output | --provider | \
+		--devcontainer-image | --devcontainer-path | --dotfiles | \
+		--dotfiles-script | --dotfiles-script-env | --dotfiles-script-env-file | \
+		--fallback-image | --git-clone-strategy | --git-ssh-signing-key | \
+		--id | --ide | --ide-option | --init-env | --machine | \
+		--prebuild-repository | --provider-option | --source | --ssh-config | \
+		--workspace-env | --workspace-env-file)
 		skip=1
 		;;
 	-*) ;;
@@ -41,6 +59,7 @@ for arg in "$@"; do
 			sub="$arg"
 		else
 			src="$arg"
+			src_seen=1
 			break
 		fi
 		;;
@@ -63,9 +82,25 @@ project_token() {
 	[ -r "$tokens" ] || return 1
 
 	# Key on the push remote, not the directory name: a fork is what you can
-	# mint a token for. Falls back to $PWD, the common `devpod up .` form.
-	proj="${1:-$PWD}"
-	[ -d "$proj" ] || proj="$PWD"
+	# mint a token for.
+	#
+	# Two cases, and the difference matters more than it looks. No source
+	# argument at all is the common `devpod up` / `devpod up .` shape, and $PWD
+	# is the right answer. A source argument that is *not* a directory means
+	# either a flag value this walk failed to recognise or an existing
+	# workspace addressed by name — and in both cases $PWD is a different
+	# project from the one being built. Falling back there is how one repo's
+	# token ends up inside another repo's container, so it fails closed: no
+	# token, and the container simply does without.
+	if [ "$src_seen" = 1 ]; then
+		proj="$1"
+		if [ ! -d "$proj" ]; then
+			echo "devpod: '$proj' is not a local directory; not injecting a project token." >&2
+			return 1
+		fi
+	else
+		proj="$PWD"
+	fi
 	url="$(git -C "$proj" remote get-url --push origin 2>/dev/null)" || return 1
 	[ -n "$url" ] || return 1
 
@@ -104,7 +139,11 @@ if [ "$sub" = "up" ]; then
 		set -- "$@" --dotfiles-script-env-file "$env_file"
 	fi
 
-	tok="$(project_token "$src" 2>/dev/null || true)"
+	# stderr is not redirected here: the only thing this writes to it is the
+	# "not injecting a project token" refusal, and a refusal nobody sees is
+	# indistinguishable from a project that simply has no token entry. Every
+	# noisy command inside already silences itself.
+	tok="$(project_token "$src" || true)"
 	if [ -n "$tok" ]; then
 		# GH_TOKEN, not GITHUB_TOKEN/MISE_GITHUB_TOKEN: mise reads those and
 		# must keep using the no-scope PAT above.
