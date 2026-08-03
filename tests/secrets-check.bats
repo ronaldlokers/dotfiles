@@ -113,6 +113,21 @@ run_check() {
 		PATH="$BIN:$PATH" PASS_ITEM_DIR="$ITEMS" "$@" sh "$SCRIPT" --source "$SRC"
 }
 
+# Under a pty, so the `[ -t 1 ]` branch in alarm()/notice() is reachable. The
+# ordinary run_check has no terminal and therefore exercises the other half.
+run_check_tty() {
+	local cmd="" word
+	for word in env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME "HOME=$HOME" "STUB_LOG=$STUB_LOG" \
+		"NOTIFY_LOG=$NOTIFY_LOG" \
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=$BATS_TEST_TMPDIR/fake-bus" \
+		"CURL_LOG=$CURL_LOG" "PATH=$BIN:$PATH" "PASS_ITEM_DIR=$ITEMS" \
+		sh "$SCRIPT" --source "$SRC"; do
+		cmd="$cmd $(printf '%q' "$word")"
+	done
+	run script -qec "$cmd" /dev/null </dev/null
+}
+
 @test "all items readable and all templates rendering exits 0" {
 	run_check
 	[ "$status" -eq 0 ]
@@ -1163,4 +1178,38 @@ STUB
 	[ -n "$per" ] && [ -n "$ceiling" ]
 	calls="$(grep -c 'pc \(item view\|ssh-agent\|info\)' "$SCRIPT")"
 	[ "$((per * calls))" -lt "$((ceiling * 60))" ]
+}
+
+# --- the report has to reach the person who asked for it (H6) ----------------
+#
+# alarm() had no tty branch, so when a session bus existed the message went to
+# the desktop *instead of* the terminal. Running this by hand printed its FAIL
+# lines and then stopped — the summary of what broke, and every "run X next"
+# sentence, were fired at a toast that then sat there undismissable. Debugging
+# by re-running left a stack of them and a terminal that never said what to type.
+
+@test "a failing run explains itself on the terminal, not only in a toast" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check_tty
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"vault items"* ]]
+	[[ "$output" == *"dotfiles-secrets-check"* ]]
+}
+
+# ...and the toast still fires, because the timer run has nobody watching.
+@test "it still notifies as well" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check_tty
+	[ -s "$NOTIFY_LOG" ]
+}
+
+# Every ok line went to stdout and every FAIL to stderr, so piping the report
+# to a pager or a file kept exactly the lines that did not matter.
+@test "piping the report keeps the failures, not just the successes" {
+	rm "$ITEMS/gh hosts.yml"
+	run_check
+	[ "$status" -ne 0 ]
+	# bats merges the streams, so assert against the script directly: no report
+	# row may be redirected away from stdout.
+	! grep -qE "printf '(FAIL|warn|ok) [^\n]*>&2" "$SCRIPT"
 }
