@@ -29,7 +29,13 @@ setup() {
 	# cover it, the same way it did not for XDG_STATE_HOME in the export tests.
 	XDG_RUNTIME_DIR="$BATS_TEST_TMPDIR/run"
 	mkdir -p "$XDG_RUNTIME_DIR"
-	WARN_MARKER="$XDG_RUNTIME_DIR/proton-ssh-load.warned"
+	# One marker per condition, not one for the script. A single marker meant
+	# whichever fault spoke first silenced every other fault for the rest of the
+	# boot — a terminal that said "no session" left a later rejected token, or a
+	# load that failed outright, with nothing to say.
+	WARN_MARKER="$XDG_RUNTIME_DIR/proton-ssh-load.warned.no-session"
+	WARN_MARKER_REJECTED="$XDG_RUNTIME_DIR/proton-ssh-load.warned.rejected"
+	WARN_MARKER_LOAD="$XDG_RUNTIME_DIR/proton-ssh-load.warned.load-failed"
 
 	export HOME STUB_LOG XDG_RUNTIME_DIR
 }
@@ -185,8 +191,52 @@ EOF
 @test "exits zero when the agent load itself fails, under --quiet" {
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_SSH_RC=1 \
 		sh "$SCRIPT" --quiet
+	# Exit 0 is the assertion: the shell rc calls this, and a non-zero exit on
+	# a startup path is worse than an unloaded key. What it must NOT do is stay
+	# silent about it — see below.
 	[ "$status" -eq 0 ]
-	[ -z "$output" ]
+}
+
+# --quiet means "say nothing on success". This line read it as "say nothing".
+#
+# Every other failure path earns its way to a warn_once; this one — the call
+# that actually loads the keys — sent its error to /dev/null and exited 0. So a
+# live session whose key load fails, which is the most direct route there is to
+# an empty agent, was the single failure a new terminal could never report. That
+# is the state where you go and debug a git push instead of reading one line.
+@test "a failed load under --quiet still says so, once per boot" {
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" PASS_SSH_RC=1 \
+		sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$stderr" == *"loading the SSH keys failed"* ]]
+	# and it points at the command that shows why, rather than reprinting
+	# pass-cli's error at every prompt
+	[[ "$stderr" == *"by hand"* ]]
+	[ -e "$WARN_MARKER_LOAD" ]
+
+	# the terminal after it stays quiet
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" PASS_SSH_RC=1 \
+		sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[ -z "$stderr" ]
+}
+
+# The reason each condition gets its own marker rather than sharing one. These
+# are different faults with different fixes, and whichever happened first used
+# to silence the rest for the remainder of the boot.
+@test "a dead session does not silence a later load failure" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" PASS_INFO_RC=1 \
+		sh "$SCRIPT" --quiet </dev/null
+	[ -e "$WARN_MARKER" ]
+
+	run --separate-stderr env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		PATH="$BIN:$PATH" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" PASS_SSH_RC=1 \
+		sh "$SCRIPT" --quiet </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$stderr" == *"loading the SSH keys failed"* ]]
 }
 
 @test "surfaces the agent load failure when not quiet" {
@@ -411,7 +461,7 @@ EOF
 	# the property the original version of this test was protecting: the rc
 	# calls this on every new shell, and a line per prompt is noise nobody
 	# reads.
-	[ -e "$WARN_MARKER" ]
+	[ -e "$WARN_MARKER_REJECTED" ]
 	run_load_tty "unused" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --quiet
 	[ "$status" -eq 0 ]
 	[[ "$output" != *"could not authenticate"* ]]
