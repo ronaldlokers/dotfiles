@@ -173,6 +173,49 @@ stays on, so the next commit fails loudly rather than going unsigned.
 
 `pass-cli ssh-agent debug` explains why an item is or isn't usable.
 
+### Rotating the signing key
+
+> [!WARNING]
+> The key currently in the vault **needs rotating**, and this is not
+> hypothetical. Its private half is in this repository's public history, at
+> `private_dot_ssh/encrypted_private_id_ed25519_signing.age`. That blob is
+> age-encrypted, but only to an identity whose own private half — `key.txt.age`
+> — sat at the repository root, in the same public history, wrapped by a single
+> passphrase. Anyone who cracks that passphrase has the key that signs these
+> commits.
+
+`allowed_signers` carries the retired key with a `valid-before` boundary, so
+the commits it already signed keep verifying while it cannot vouch for anything
+newer. git compares against the *commit's* timestamp, which is what makes that
+work. Do the steps in this order:
+
+1. Mint the replacement, and do not write it to disk:
+   ```sh
+   ssh-keygen -t ed25519 -C git-signing -f /dev/stdout -N '' -q
+   ```
+   Or generate it wherever you normally would — what matters is that it lands
+   in the vault and nowhere else.
+2. Replace the **`git signing key`** item in the Dotfiles vault with it.
+   `signing-pubkey` reads `public_key` from that item, so nothing in this repo
+   names the key itself.
+3. Set `$retiredBefore` in `home/dot_config/git/allowed_signers.tmpl` to the
+   day you are doing this, then `chezmoi apply`. Both entries should now
+   render — check with
+   `chezmoi execute-template < home/dot_config/git/allowed_signers.tmpl`.
+4. Add the new public key to GitHub under **Settings → SSH and GPG keys → New
+   SSH key**, type *Signing Key*, and remove the old one. Removing it there
+   does not un-verify past commits: GitHub keeps the verification it already
+   recorded.
+5. Verify both directions:
+   ```sh
+   git log --show-signature -1              # a new commit, new key
+   git log --show-signature -1 <old-sha>    # an old commit, retired key
+   ```
+
+Until step 2 is done the template deliberately emits only the bounded entry —
+the vault still returns the retired key, and listing it twice, once unbounded,
+would give back exactly the forgery window the boundary closes.
+
 ## YubiKey
 
 Used for touch-to-sudo. Tooling comes from the host package list; PIV holds

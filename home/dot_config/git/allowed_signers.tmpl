@@ -1,6 +1,42 @@
-{{- /* Who git trusts to have signed a commit. Same source as
-       user.signingkey, so a rotation is one edit in the vault. */ -}}
+{{- /* Who git trusts to have signed a commit.
+
+       Two entries, not one, and the second is why this stopped being a
+       one-liner: a rotated signing key must not silently turn every commit it
+       already signed into an unverifiable one. git checks a signature against
+       this file using the *commit's* timestamp, so a retired key bounded with
+       valid-before keeps verifying its own history while being unable to
+       vouch for anything dated after the boundary.
+
+       The current key still comes from the vault through signing-pubkey, so a
+       rotation is one edit there plus one entry here. */ -}}
+{{- /* The retired key, retired for a reason worth writing down.
+
+       Its private half is in the public history of this repository, in
+       private_dot_ssh/encrypted_private_id_ed25519_signing.age — age-encrypted,
+       but only to an identity whose own private half (key.txt.age) sat at the
+       root of the same public repo behind a single passphrase. It signed
+       everything up to the date below and should be trusted for exactly that.
+
+       valid-before is the whole point, not a courtesy: without it this entry
+       would let anyone who recovers that key sign a commit today and have git
+       call it verified. */ -}}
+{{- $retiredKey := "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMj1CJnE/kvOEVs8B8AWfDSKAtICy8fP45R0QYAZdhbf" -}}
+{{- /* A week out from when this was written, not the day of. The retired key
+       is still the one in the vault until the rotation is finished, so a
+       boundary of "today" would mean any commit made between merging this and
+       swapping the vault item fails to verify. A week is grace, not a target:
+       move it to the day the rotation actually completes. */ -}}
+{{- $retiredBefore := "20260811Z" -}}
+{{ .email }} valid-before="{{ $retiredBefore }}" {{ $retiredKey }}
 {{- $key := includeTemplate "signing-pubkey" . }}
 {{- if $key }}
+{{- /* While the vault still holds the retired key — the window between merging
+       this and finishing the rotation — signing-pubkey returns exactly the
+       string above, and emitting it again unbounded would hand back the
+       forgery window the line above just closed. So it is skipped, and commits
+       made in that window are the ones to make after the vault swap, not
+       before. */}}
+{{- if ne $key $retiredKey }}
 {{ .email }} {{ $key }}
+{{- end }}
 {{- end }}
