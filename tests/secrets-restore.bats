@@ -251,3 +251,82 @@ STUB
 	[ "$status" -eq 0 ]
 	[ ! -e "$KEY_TARGET" ]
 }
+
+# --- writing the key somewhere it can actually be read (H7, M19, L1) ---------
+#
+# `mv "$tmp" "$dir"` does not fail — it moves the file *into* the directory and
+# reports success. With --force skipping the existence check, the key landed at
+# `keys.txt/keys.txt.tmp.$$`, the chmod then stripped the directory's execute
+# bit so nothing could reach it, and the script printed `wrote …/keys.txt` and
+# exited 0. On the one path where the backup is the only copy left.
+#
+# The identical hazard is guarded, with a comment, in ensure-ssh-include. The
+# lesson was in the tree and had not been applied here.
+
+@test "--write --force refuses a directory at the target" {
+	mkdir -p "$KEY_TARGET"
+	run_restore -- --write --force "$BACKUP"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"not a regular file"* ]]
+	[ -d "$KEY_TARGET" ]
+	[ -z "$(find "$KEY_TARGET" -type f -print -quit)" ]
+}
+
+# -e is false for a dangling symlink, so the existence guard alone would let one
+# through and the key would land wherever the link points.
+@test "--write refuses a symlink at the target" {
+	mkdir -p "$(dirname "$KEY_TARGET")"
+	ln -s "$BATS_TEST_TMPDIR/elsewhere" "$KEY_TARGET"
+	run_restore -- --write --force "$BACKUP"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"symlink"* ]]
+	[ ! -e "$BATS_TEST_TMPDIR/elsewhere" ]
+}
+
+# The script's own header argues that a recorded fingerprint proves nothing
+# about the copy. It made no equivalent claim about its own write.
+@test "--write reads the key back and refuses to claim success on a mismatch" {
+	run_restore -- --write "$BACKUP"
+	[ "$status" -eq 0 ]
+	# and the readback is real: make age-keygen disagree with itself and the
+	# write must be reported as untrustworthy rather than as done
+	rm -f "$KEY_TARGET"
+	cat >"$BIN/age-keygen" <<'STUB'
+#!/bin/sh
+# First call (from the plaintext) answers one key; the readback answers another.
+if [ -t 0 ] || [ -n "${AGEKEYGEN_SEEN:-}" ]; then :; fi
+if [ -f "$BATS_TEST_TMPDIR/seen" ]; then printf 'age1different\n'; else
+	: >"$BATS_TEST_TMPDIR/seen"; printf 'age1fakepubkeyfixture\n'
+fi
+STUB
+	chmod 755 "$BIN/age-keygen"
+	run_restore -- --write --force "$BACKUP"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"Do not trust this file"* ]]
+}
+
+# M19: the trap had zero coverage — deleting it left all 21 cases green. The
+# case it exists for is a failed write leaving a plaintext age private key at a
+# predictable adjacent path.
+@test "a failed move leaves no plaintext key behind" {
+	cat >"$BIN/mv" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+	chmod 755 "$BIN/mv"
+	run_restore -- --write "$BACKUP"
+	rm -f "$BIN/mv"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"could not move"* ]]
+	[ -z "$(find "$(dirname "$KEY_TARGET")" -name '*.tmp.*' -print -quit 2>/dev/null)" ]
+}
+
+# L1: the parent directory used to be created under the ambient umask and only
+# the leaf chmodded, leaving a window where another local user can replace the
+# `age` directory before the key lands in it.
+@test "both directories it creates are owner-only" {
+	run_restore -- --write "$BACKUP"
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$HOME/.config/sops")" = "700" ]
+	[ "$(stat -c %a "$HOME/.config/sops/age")" = "700" ]
+}
