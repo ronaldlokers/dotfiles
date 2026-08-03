@@ -2,9 +2,14 @@
 # native equivalent of — this shim provides them. It is a single file rather
 # than a repo, so `type = "file"` against the tagged raw URL; everything else
 # matches the zsh plugin externals next to it.
+# Checksummed like the rest. This one is sourced into every interactive
+# bash session, and a raw.githubusercontent URL at a tag is exactly as
+# mutable as the tag — the hash is what makes "0.6.0" name one file.
+#
 # renovate: datasource=github-tags depName=rcaloras/bash-preexec
 {{ $bashPreexecVersion := "0.6.0" }}
 [".bash/bash-preexec.sh"]
 type = "file"
 url = "https://raw.githubusercontent.com/rcaloras/bash-preexec/{{ $bashPreexecVersion }}/bash-preexec.sh"
+checksum.sha256 = "998f4d5e9dd82e254463228cc6caa4d40125ae79b31d5a16a2a2f49357f0c160"
 refreshPeriod = "168h"
