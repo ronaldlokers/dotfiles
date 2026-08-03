@@ -96,10 +96,25 @@ for shell in zsh bash; do
 			"$shell" -ic true >"$outfile" 2>&1 </dev/null && status=0 || status=$?
 	fi
 	out="$(cat "$outfile")"
+	# zsh's completion audit names no names. It says "run compaudit for list"
+	# and then either prompts or aborts, and on a machine you are not sitting at
+	# — a runner, a container build — that sentence is the end of the trail.
+	# Since this check is the thing that meets it, it may as well answer the
+	# question it raises.
+	audit_hint() {
+		case "$shell" in zsh) ;; *) return 0 ;; esac
+		case "$out" in *compinit*|*compaudit*|*"insecure directories"*) ;; *) return 0 ;; esac
+		echo "      compaudit says these directories are the problem:" >&2
+		zsh -fc 'autoload -Uz compaudit; compaudit' 2>&1 |
+			sed 's/^/        /' >&2 || true
+		echo "        (chmod g-w,o-w each, or accept that compinit -i skips them)" >&2
+	}
+
 	if [ "$status" -eq 0 ]; then
 		if [ -n "$out" ]; then
 			echo "FAIL  $shell started but printed output:" >&2
 			printf '%s\n' "$out" >&2
+			audit_hint
 			rc=1
 		else
 			echo "ok    $shell"
@@ -113,6 +128,7 @@ for shell in zsh bash; do
 		else
 			echo "      (nothing — it blocked before writing anything)" >&2
 		fi
+		audit_hint
 		rc=1
 	else
 		echo "FAIL  $shell exited non-zero:" >&2
