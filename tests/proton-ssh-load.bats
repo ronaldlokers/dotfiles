@@ -399,7 +399,12 @@ EOF
 	printf 'pst_stale\n' >"$PAT_FILE"
 	run_load_tty "pst_also_bad" PASS_INFO_RC=1 PASS_LOGIN_RC=1 -- --prompt
 	[ "$status" -eq 0 ]
-	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	# The guarantee is unchanged and the shape is not: a rejected replacement
+	# must never become the cache. The refused cached token is retired to
+	# .rejected on the way past, so what must not exist is a cache file
+	# holding the token that was just refused.
+	[ ! -f "$PAT_FILE" ]
+	[ "$(cat "$PAT_FILE.rejected")" = "pst_stale" ]
 	[[ "$output" == *"could not authenticate"* ]]
 	! grep -q "ssh-agent load" "$STUB_LOG"
 	# The retry actually happened: the rejection notice was printed, and a
@@ -467,7 +472,7 @@ EOF
 	[[ "$output" != *"could not authenticate"* ]]
 	[[ "$output" != *"was rejected"* ]]
 
-	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	[ "$(cat "$PAT_FILE.rejected")" = "pst_stale" ]
 	! grep -q "ssh-agent load" "$STUB_LOG"
 }
 
@@ -554,12 +559,84 @@ EOF
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"could not authenticate"* ]]
 
-	# No pty here, so this shape can assert exact emptiness on the second run —
-	# the stronger form the tty sibling above cannot use.
+	# No pty here, so this shape can assert exactly what the second run says.
+	# It is not the same message: the refused token was retired on the first
+	# run, so there is nothing left to present and this is the no-session path
+	# rather than a second rejection. Both are once-per-boot, and they have
+	# separate markers precisely so one does not silence the other.
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" PASS_INFO_RC=1 \
 		PASS_LOGIN_RC=1 sh "$SCRIPT" --quiet
 	[ "$status" -eq 0 ]
-	[ -z "$output" ]
+	[[ "$output" != *"could not authenticate"* ]]
 
-	[ "$(cat "$PAT_FILE")" = "pst_stale" ]
+	[ ! -f "$PAT_FILE" ]
+	[ "$(cat "$PAT_FILE.rejected")" = "pst_stale" ]
+}
+
+# --- retiring a cached token Proton has refused (N31) -------------------------
+#
+# A cached token that has been revoked or has expired is not going to start
+# working, and leaving it in place means every new terminal from now until
+# somebody notices presents the same dead credential and gets the same answer.
+#
+# Renamed rather than deleted, deliberately. `pass-cli login` failing does not
+# distinguish "revoked" from "Proton was unreachable for ten seconds", and
+# deleting on the second would destroy the thing that makes unattended applies
+# work — on a machine that by construction cannot read the vault for another
+# copy.
+
+@test "a rejected cached token is retired rather than retried forever" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_revoked\n' >"$PAT_FILE"
+	run_load PASS_INFO_RC=1 PASS_LOGIN_RC=1
+	[ "$status" -eq 0 ]
+	[ ! -f "$PAT_FILE" ]
+	[ -f "$PAT_FILE.rejected" ]
+}
+
+@test "the retired copy keeps the value and the mode" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_revoked\n' >"$PAT_FILE"
+	run_load PASS_INFO_RC=1 PASS_LOGIN_RC=1
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE.rejected")" = "pst_revoked" ]
+	[ "$(stat -c %a "$PAT_FILE.rejected")" = "600" ]
+}
+
+# The next terminal has no cached token, so it takes the no-session path and
+# says what to do — which is more useful than repeating "could not
+# authenticate" at a token that no longer exists.
+@test "the terminal after a retirement asks for a token rather than retrying" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_revoked\n' >"$PAT_FILE"
+	run_load PASS_INFO_RC=1 PASS_LOGIN_RC=1
+	[ "$status" -eq 0 ]
+
+	: >"$STUB_LOG"
+	run_load PASS_INFO_RC=1 PASS_LOGIN_RC=1
+	[ "$status" -eq 0 ]
+	# no login attempt at all the second time: there is nothing to attempt with
+	! grep -q "^login" "$STUB_LOG"
+}
+
+# A token handed in through the environment is the caller's to manage, and the
+# cache may hold a perfectly good one this run never looked at. Retiring it on
+# someone else's rejection would be destroying an unrelated credential.
+@test "a rejected environment token does not retire the cached one" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_cached_and_fine\n' >"$PAT_FILE"
+	run_load PASS_INFO_RC=1 PASS_LOGIN_RC=1 \
+		PROTON_PASS_PERSONAL_ACCESS_TOKEN=pst_bad_from_env
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_cached_and_fine" ]
+	[ ! -f "$PAT_FILE.rejected" ]
+}
+
+@test "a cached token that still works is left exactly where it is" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_good\n' >"$PAT_FILE"
+	run_load PASS_INFO_RC=1
+	[ "$status" -eq 0 ]
+	[ "$(cat "$PAT_FILE")" = "pst_good" ]
+	[ ! -f "$PAT_FILE.rejected" ]
 }
