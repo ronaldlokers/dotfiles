@@ -5,6 +5,33 @@
 # dotfiles-update-check.timer, and safe to run by hand.
 set -euo pipefail
 
+usage() {
+	cat <<'EOF'
+usage: dotfiles-update-check
+
+Notifies when the dotfiles repo has commits this machine hasn't applied. Fetches
+and compares; never pulls, never applies. Silent when there is nothing to say.
+
+Takes no options. Run from dotfiles-update-check.timer, and safe to run by hand.
+EOF
+}
+
+# Took no arguments before, so `--help` reached the network and ran a fetch
+# instead of printing this. Same correction as repos-sync next door.
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "dotfiles-update-check: unknown argument: $1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
 source_dir="{{ .chezmoi.sourceDir }}"
 
 # Every early exit is 0. This runs unattended on a timer, and "no network" or

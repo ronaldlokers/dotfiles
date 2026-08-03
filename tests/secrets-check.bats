@@ -467,6 +467,31 @@ TMPL
 	[ -z "$output" ]
 }
 
+# D3: every script in ~/.local/bin answers --help the same way — usage on
+# stdout, exit 0, no work done. This one used to fall through to the catch-all
+# and print usage to stderr with exit 2, which is the answer for a *mistake*,
+# not for a question.
+@test "--help prints usage on stdout and exits 0" {
+	run env HOME="$HOME" PATH="$BIN:$PATH" sh "$SCRIPT" --help
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"usage: dotfiles-secrets-check"* ]]
+	# and it explains what the check actually covers
+	[[ "$output" == *"--source"* ]]
+}
+
+@test "-h does the same" {
+	run env HOME="$HOME" PATH="$BIN:$PATH" sh "$SCRIPT" -h
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"usage: dotfiles-secrets-check"* ]]
+}
+
+@test "an unknown argument still gets usage and exit 2" {
+	run env HOME="$HOME" PATH="$BIN:$PATH" sh "$SCRIPT" --nope
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"unknown argument"* ]]
+	[[ "$output" == *"usage:"* ]]
+}
+
 # MINOR 8: `src_root="${2:-}"` used to succeed even with nothing after
 # --source, then `shift 2` with one argument left died with a raw shell error
 # ("shift count out of range", exit 1) instead of this script's own usage

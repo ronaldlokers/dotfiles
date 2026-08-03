@@ -4,16 +4,36 @@
 # and safe to run by hand — reloading is a no-op.
 set -eu
 
+usage() {
+	cat <<'USAGE'
+usage: proton-ssh-load [--quiet] [--prompt]
+
+Loads the SSH keys held in the Proton Pass Dotfiles vault into the running
+ssh-agent. The keys never touch disk. Reloading is a no-op, so this is safe to
+run by hand.
+
+  --quiet    say nothing on success
+  --prompt   ask for the bootstrap token when there is no session and a
+             terminal to ask on. Only the apply path passes this: the shell rc
+             must not, or every new terminal with an empty agent would block.
+USAGE
+}
+
 quiet=0
 prompt=0
 while [ "$#" -gt 0 ]; do
 	case "$1" in
+	-h | --help)
+		usage
+		exit 0
+		;;
 	--quiet) quiet=1 ;;
 	# Only the apply path passes this. The shell rc must not, or every new
 	# terminal with an empty agent would block on the prompt.
 	--prompt) prompt=1 ;;
 	*)
 		echo "proton-ssh-load: unknown option: $1" >&2
+		usage >&2
 		exit 2
 		;;
 	esac

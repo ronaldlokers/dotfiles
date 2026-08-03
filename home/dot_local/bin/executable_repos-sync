@@ -4,6 +4,36 @@
 # uncommitted work included.
 set -euo pipefail
 
+usage() {
+	cat <<'EOF'
+usage: repos-sync
+
+Clones the personal repos that aren't checked out yet, under $XDG_PROJECTS_DIR
+(default ~/Projects) in host/owner/repo layout. Clones only: an existing
+checkout is left alone, branch, remotes and uncommitted work included.
+
+Takes no options. Run on demand; it is not part of chezmoi apply.
+EOF
+}
+
+# This script took no arguments at all until now, which meant `repos-sync
+# --help` did not print help — it silently ignored the flag and cloned six
+# repositories. Asking a command what it does should never be the thing that
+# makes it do it.
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "repos-sync: unknown argument: $1" >&2
+		usage >&2
+		exit 2
+		;;
+	esac
+done
+
 # XDG_PROJECTS_DIR is declared in ~/.config/user-dirs.dirs but isn't exported
 # into the shell environment, so read it from there before falling back.
 root="${XDG_PROJECTS_DIR:-}"

@@ -29,6 +29,36 @@ run_load() {
 	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" "$@" sh "$SCRIPT"
 }
 
+# D3: the script refused unknown options with a bare "unknown option" line and
+# no usage text at all, so --help got an error message that did not say what the
+# options were. Every script in ~/.local/bin answers the question the same way
+# now.
+@test "--help prints usage and loads nothing" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --help
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"usage: proton-ssh-load"* ]]
+	[[ "$output" == *"--prompt"* ]]
+	[ ! -s "$STUB_LOG" ]
+}
+
+@test "-h does the same" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" -h
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"usage: proton-ssh-load"* ]]
+}
+
+# It already refused unknown options; what it did not do was say what the valid
+# ones are.
+@test "an unknown option gets usage as well as the error" {
+	run env HOME="$HOME" STUB_LOG="$STUB_LOG" PATH="$BIN:$PATH" \
+		sh "$SCRIPT" --nope
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"unknown option"* ]]
+	[[ "$output" == *"usage: proton-ssh-load"* ]]
+}
+
 @test "loads keys when the session is already live" {
 	run_load
 	[ "$status" -eq 0 ]
