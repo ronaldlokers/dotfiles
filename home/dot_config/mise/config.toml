@@ -73,7 +73,7 @@ uv = "0.11.32"
 # Builds a knowledge graph of a codebase. The `/graphify` skill it ships is
 # vendored into dot_claude/skills rather than left to `graphify install`, so a
 # fresh machine gets it from an apply.
-"pipx:graphifyy" = "0.9.30"
+"pipx:graphifyy" = "0.9.32"
 
 [settings]
 # run pipx-backend tools through uvx so no system python/pipx is needed
