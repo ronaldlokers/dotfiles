@@ -486,7 +486,10 @@ TMPL
 	run_check PASS_INFO_RC=1
 	[ "$status" -ne 0 ]
 	notify_text="$(cat "$NOTIFY_LOG")"
-	[[ "$notify_text" == *"pass-cli login"* ]]
+	# proton-ssh-load, not `pass-cli login`. The advice has to fit this machine:
+	# the session here comes from the cached token, and a web login is a
+	# heavier, different operation that is not what has gone wrong.
+	[[ "$notify_text" == *"proton-ssh-load"* ]]
 	[[ "$notify_text" != *"SENTINEL-SECRET-BODY"* ]]
 }
 
@@ -1093,4 +1096,65 @@ STUB
 	run_check PASS_INFO_RC=1
 	[[ "$output" != *"current as of"* ]]
 	[[ "$output" == *"dotfiles-secrets-restore"* ]]
+}
+
+# --- establishing a session before calling its absence a fault (H1) ----------
+#
+# This was the only consumer in the tree that probed `pass-cli info` cold and
+# treated a dead session as a hard failure. proton-ssh-load logs in from the
+# cached PAT; the restore script calls proton-ssh-load precisely so unattended
+# applies work. So the weekly timer — firing at whatever hour systemd picks,
+# with no inherited session — was the one caller guaranteed to find nothing and
+# raise a critical toast about it. It did, on 2026-08-03 at 04:26, with the
+# token readable on disk the whole time.
+
+@test "a dead session is repaired from the cached token" {
+	mkdir -p "$HOME/.config"
+	printf 'pst_cached\n' >"$HOME/.config/pass-cli-bootstrap-pat"
+	run_check PASS_INFO_RC=1 PASS_INFO_RC_AFTER_LOGIN=0
+	grep -q "^login" "$STUB_LOG"
+}
+
+@test "the cached token is never passed as a flag" {
+	mkdir -p "$HOME/.config"
+	printf 'pst_supersecret\n' >"$HOME/.config/pass-cli-bootstrap-pat"
+	run_check PASS_INFO_RC=1
+	! grep -q -- "--personal-access-token" "$STUB_LOG"
+	! grep -q "pst_supersecret" "$STUB_LOG"
+}
+
+# With no cache there is nothing to try, so the fault is real and reported.
+@test "no cached token still reports the dead session" {
+	rm -f "$HOME/.config/pass-cli-bootstrap-pat"
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+}
+
+# The advice has to be one that works. `pass-cli login` is a web login; what
+# this machine needs is the token path, which proton-ssh-load owns.
+@test "the dead-session alarm names a command that fits this machine" {
+	rm -f "$HOME/.config/pass-cli-bootstrap-pat"
+	run_check PASS_INFO_RC=1
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"proton-ssh-load"* ]]
+}
+
+# M1: the wrapper is worth nothing if the call that runs before any output is
+# produced is the one left unbounded.
+@test "the session probe goes through the timeout wrapper" {
+	! grep -qE '^[[:space:]]*(if ! )?pass-cli info' "$SCRIPT"
+	grep -q 'pc info' "$SCRIPT"
+}
+
+# The per-call bound has to multiply to less than the unit's ceiling or it buys
+# nothing: the guillotine fires first, the summary never prints, and the
+# durable record is never written. 12 x 20s = 240s against 300s.
+@test "the timeout budget fits inside the unit ceiling" {
+	per="$(sed -n 's/^pc_timeout=\([0-9]*\)$/\1/p' "$SCRIPT")"
+	unit="$BATS_TEST_DIRNAME/../home/dot_config/systemd/user/dotfiles-secrets-check.service"
+	ceiling="$(sed -n 's/^TimeoutStartSec=\([0-9]*\)min$/\1/p' "$unit")"
+	[ -n "$per" ] && [ -n "$ceiling" ]
+	calls="$(grep -c 'pc \(item view\|ssh-agent\|info\)' "$SCRIPT")"
+	[ "$((per * calls))" -lt "$((ceiling * 60))" ]
 }
