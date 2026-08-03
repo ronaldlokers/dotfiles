@@ -34,7 +34,8 @@ usage: scripts/check-agreement.sh [root] [check ...]
 
 Asserts the facts this repo states in more than one place still agree.
 
-Checks: chezmoi-pins, vault-name, container-markers, pat-expiry, graphify-pin
+Checks: chezmoi-pins, vault-name, container-markers, pat-expiry, graphify-pin,
+        pat-path
 With no check named, runs all of them.
 USAGE
 }
@@ -167,8 +168,24 @@ check_graphify_pin() {
 	fi
 }
 
+# --- the cached bootstrap PAT's path ----------------------------------------
+# proton-ssh-load writes it; dotfiles-secrets-check now reads it to establish a
+# session before calling its absence a fault. Two scripts, one path, and a
+# rename that missed one would put the check straight back to false-alarming
+# every week — which is the bug that made it read this file at all.
+check_pat_path() {
+	paths="$(grep -rhoE 'pat_file="[^"]+"' \
+		"$root/home/dot_local/bin" 2>/dev/null | sort -u)"
+	n="$(printf '%s\n' "$paths" | grep -c . || true)"
+	if [ "$n" -eq 0 ]; then
+		fail "found no bootstrap-PAT path at all — the scan broke, not the tree"
+	elif [ "$n" -ne 1 ]; then
+		fail "the cached bootstrap PAT path disagrees: $(printf '%s' "$paths" | tr '\n' ' ')"
+	fi
+}
+
 if [ $# -eq 0 ]; then
-	set -- chezmoi-pins vault-name container-markers pat-expiry graphify-pin
+	set -- chezmoi-pins vault-name container-markers pat-expiry graphify-pin pat-path
 fi
 
 for want in "$@"; do
@@ -178,6 +195,7 @@ for want in "$@"; do
 	container-markers) check_container_markers ;;
 	pat-expiry) check_pat_expiry ;;
 	graphify-pin) check_graphify_pin ;;
+	pat-path) check_pat_path ;;
 	*)
 		echo "check-agreement: unknown check: $want" >&2
 		usage >&2

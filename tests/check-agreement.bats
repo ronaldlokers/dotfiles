@@ -38,6 +38,12 @@ make_tree() {
 
 	printf 'vault="Dotfiles"\n' >"$TREE/home/.chezmoiscripts/restore.sh.tmpl"
 	printf 'vault="Dotfiles"\n' >"$TREE/home/dot_local/bin/executable_a"
+	# The cached bootstrap PAT's path, written by proton-ssh-load and read by
+	# dotfiles-secrets-check.
+	printf 'pat_file="$HOME/.config/pass-cli-bootstrap-pat"\n' \
+		>"$TREE/home/dot_local/bin/executable_pat_a"
+	printf 'pat_file="$HOME/.config/pass-cli-bootstrap-pat"\n' \
+		>"$TREE/home/dot_local/bin/executable_pat_b"
 	printf 'pass://Dotfiles/some item/public_key\n' \
 		>"$TREE/home/.chezmoitemplates/signing-pubkey"
 
@@ -214,4 +220,27 @@ run_check() {
 	run sh "$SCRIPT" "$BATS_TEST_TMPDIR/nowhere"
 	[ "$status" -eq 2 ]
 	[[ "$output" == *"no such directory"* ]]
+}
+
+# --- the cached PAT's path ---------------------------------------------------
+#
+# Two scripts now name it: proton-ssh-load writes it, dotfiles-secrets-check
+# reads it to establish a session before calling its absence a fault. A rename
+# that missed one would put that check straight back to false-alarming every
+# week, which is the bug that made it read the file at all.
+
+@test "a PAT path that disagrees between the two scripts is caught" {
+	printf 'pat_file="$HOME/.config/somewhere-else"\n' \
+		>"$TREE/home/dot_local/bin/executable_pat_b"
+	run_check pat-path
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"disagrees"* ]]
+}
+
+@test "finding no PAT path at all is a failure, not agreement" {
+	rm -f "$TREE/home/dot_local/bin/executable_pat_a" \
+		"$TREE/home/dot_local/bin/executable_pat_b"
+	run_check pat-path
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"the scan broke"* ]]
 }

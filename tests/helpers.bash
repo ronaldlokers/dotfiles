@@ -14,6 +14,9 @@
 # environment variables so a test can pick the failure it wants:
 #
 #   PASS_INFO_RC   exit code for `pass-cli info`      (default 0 — session live)
+#   PASS_INFO_RC_AFTER_LOGIN  exit code for `info` once a `login` has been
+#                         recorded in $STUB_LOG, so a test can model a session
+#                         being repaired rather than merely absent
 #   PASS_LOGIN_RC  exit code for `pass-cli login`     (default 0)
 #   PASS_LOGIN_BAD_TOKEN  a token value that `pass-cli login` rejects; any
 #                         other token falls through to PASS_LOGIN_RC
@@ -59,6 +62,15 @@ make_pass_cli_stub() {
 
 case "$1" in
 info)
+	# A session that can be *repaired* needs two answers, not one: dead before
+	# a login and live after it. Without that, a test cannot tell "the check
+	# established a session" apart from "the check gave up", which is the whole
+	# distinction dotfiles-secrets-check now turns on. The marker is a file
+	# because the stub is a fresh process each time.
+	if [ -n "${PASS_INFO_RC_AFTER_LOGIN:-}" ] && [ -n "${STUB_LOG:-}" ] &&
+		grep -q '^login' "$STUB_LOG" 2>/dev/null; then
+		exit "$PASS_INFO_RC_AFTER_LOGIN"
+	fi
 	exit "${PASS_INFO_RC:-0}"
 	;;
 login)
