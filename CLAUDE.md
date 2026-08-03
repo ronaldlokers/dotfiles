@@ -37,8 +37,8 @@ was accepted deliberately and should not be papered over.
 - Never edit chezmoi-managed file in `$HOME` direct — edit source
   (`chezmoi source-path <file>`), run `chezmoi apply`. Source tree sit under
   `home/` (`.chezmoiroot`), so `source-path` return path below `home/`.
-- Repo-only files (docs, `setup`, `mise.toml`, `tests/`, this file) live
-  *outside* `home/`. Anything inside `home/` is source state and get applied
+- Repo-only files (docs, `setup`, `mise.toml`, `tests/`, `scripts/`, this file)
+  live *outside* `home/`. Anything inside `home/` is source state and get applied
   into `$HOME` unless `.chezmoiignore` say otherwise.
 - Verify changes against clean HOME way CI does before pushing:
   `HOME="$(mktemp -d)" chezmoi apply --source "$PWD" </dev/null`, or

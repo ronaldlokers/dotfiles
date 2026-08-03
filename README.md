@@ -338,10 +338,20 @@ tooling and defines the checks, so local runs and CI use identical versions:
 
 ```sh
 mise run check     # lint + test + gitleaks + verify + shells
-mise run lint      # shellcheck, actionlint, renovate config
+mise run lint      # shellcheck, actionlint, renovate config, agreement checks
 mise run test      # bats suite over the scripts
 mise run verify    # bootstrap into a throwaway HOME, non-interactively
 ```
+
+Some facts are stated in more than one place on purpose — the vault name, the
+bootstrap PAT's expiry, the chezmoi version, the two container markers, the
+vendored graphify skill's version. Hoisting any of them into a shared file
+would be worse than the duplication (the scripts that have to work when other
+things do not would gain a runtime dependency on each other; a date hoisted out
+of the README is a date nobody reads). `scripts/check-agreement.sh`, run by
+`mise run lint`, asserts they still agree, and `tests/check-agreement.bats`
+drives each check against a tree with the drift deliberately introduced —
+because a checker nobody has watched fail is not a checker.
 
 `check` overlaps CI without matching it, in both directions. It also runs
 `shells`, which CI cannot — there is no applied `$HOME` on a runner to start an

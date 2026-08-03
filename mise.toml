@@ -19,7 +19,7 @@ chezmoi = "2.70.5"
 [tasks.lint]
 description = "shellcheck the scripts and validate the JSON/Renovate config"
 run = [
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_13-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_dotfiles-update-check.tmpl home/dot_local/bin/executable_proton-ssh-load home/dot_local/bin/executable_repos-sync home/dot_claude/hooks/executable_rtk-rewrite.sh tests/helpers.bash",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_13-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_dotfiles-update-check.tmpl home/dot_local/bin/executable_proton-ssh-load home/dot_local/bin/executable_repos-sync home/dot_claude/hooks/executable_rtk-rewrite.sh scripts/check-agreement.sh tests/helpers.bash",
 	# The workflows lint themselves: a typo in a job key or a bad `needs:`
 	# reference otherwise only shows up as a skipped job on a green PR.
 	"actionlint",
@@ -28,43 +28,20 @@ run = [
 	# unreadable one-liners used to live here instead.
 	# renovate: datasource=npm depName=renovate
 	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
-	# Three files now carry a chezmoi version: the .chezmoiversion floor, the
-	# mise pin every machine installs, and this repo's own pin (the tests render
-	# a script template, so they need the binary). Renovate bumps the pins; this
-	# is what says "bump the floor too". A multi-line literal ('''), because the
-	# sed script needs single quotes and a double-quoted TOML string would need
-	# every " and \ escaped.
-	'''v="$(cat .chezmoiversion)"; p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' home/dot_config/mise/config.toml)"; r="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' mise.toml)"; { [ "$v" = "$p" ] && [ "$v" = "$r" ]; } || { echo ".chezmoiversion ($v), the machine pin ($p) and this repo's pin ($r) disagree" >&2; exit 1; }''',
-	# The vault name is written in five places: `vault="Dotfiles"` in four
-	# scripts, and the `pass://Dotfiles/...` URI in signing-pubkey. Rather than
-	# hoist it into a shared file — which would give the scripts a runtime
-	# dependency on each other, and these are the scripts that have to work when
-	# other things do not — assert they agree, the same way the three chezmoi
-	# pins above do. A rename that misses one then fails here rather than at
-	# 3am on a rebuild.
+	# The facts this repo states in more than one place — the three chezmoi
+	# versions, the vault name, the two container markers, the bootstrap PAT's
+	# expiry, the vendored graphify skill's version. Each is duplicated on
+	# purpose (hoisting any of them would be worse; the script says why for each
+	# one), and this is what stops the duplication rotting.
 	#
-	# The URI pattern is deliberately narrower than the one
-	# dotfiles-secrets-check derives items with: this scan reads the source
-	# tree, where `pass://<vault>/<title>/<field>` appears in prose and
-	# `pass://[^/"[:space:]]+/` appears as that script's own regex literal.
-	# Both match a permissive pattern and neither is a vault name.
-		# The container predicate exists twice on purpose and must not be collapsed:
-	# .chezmoitemplates/is-container answers it at *apply* time for the template
-	# gates, while proton-ssh-load and dotfiles-secrets-check re-ask it at *run*
-	# time, because the source-tree copy of a script is reachable from a
-	# devcontainer working on this repo long after any apply. Two questions, two
-	# answers. What can still drift is the marker list — adding a third runtime
-	# to the template and forgetting the scripts — so assert instead that
-	# anything probing for one marker probes for both.
-	'''for f in $(grep -rl 'dockerenv\|containerenv' home 2>/dev/null); do if ! grep -q '/\.dockerenv' "$f" || ! grep -q '/run/\.containerenv' "$f"; then echo "$f probes for only one container marker; is-container tests both" >&2; exit 1; fi; done''',
-	# The bootstrap PAT's expiry is written twice: the constant
-	# dotfiles-secrets-check warns from, and the README gotcha a human reads.
-	# Same reasoning as the vault name below — assert they agree rather than
-	# hoist one into the other, because a date that has drifted out of the
-	# README is a date nobody trusts, and a date that has drifted out of the
-	# check is a warning that never fires.
-	'''c="$(sed -n 's/^bootstrap_pat_expiry="\(.*\)"$/\1/p' home/dot_local/bin/executable_dotfiles-secrets-check)"; r="$(grep -oE 'bootstrap token expires\*\* [0-9]{4}-[0-9]{2}-[0-9]{2}' README.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')"; if [ -z "$c" ] || [ -z "$r" ]; then echo "could not find the bootstrap PAT expiry in the check ($c) or the README ($r)" >&2; exit 1; elif [ "$c" != "$r" ]; then echo "bootstrap PAT expiry disagrees: check says $c, README says $r" >&2; exit 1; fi''',
-	'''names="$( { grep -rhoE '^vault="[^"]+"' home/.chezmoiscripts home/dot_local/bin 2>/dev/null | sed 's/^vault="//; s/"$//'; grep -rhoE 'pass://[A-Za-z0-9._-]+/' home 2>/dev/null | sed 's|^pass://||; s|/$||'; } | sort -u)"; n="$(printf '%s\n' "$names" | grep -c .)"; if [ "$n" -eq 0 ]; then echo "found no vault references at all — the scan broke, not the tree" >&2; exit 1; elif [ "$n" -ne 1 ]; then echo "the vault name disagrees across the tree:" >&2; printf '%s\n' "$names" >&2; exit 1; fi''',
+	# It was five multi-line shell one-liners embedded in TOML strings here.
+	# They are in a file now for one reason: they can be tested, and one of them
+	# was wrong. The container-marker check had no floor on how many files it
+	# found, so a moved directory or a changed spelling would have made it pass
+	# by scanning nothing — reporting success for exactly the reason that should
+	# have alarmed it. tests/check-agreement.bats now drives each check against
+	# a fixture tree with the drift deliberately introduced.
+	"sh scripts/check-agreement.sh .",
 ]
 
 [tasks.test]
