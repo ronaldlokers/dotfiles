@@ -328,7 +328,11 @@ mise run prune             # needs a human: shows a dry run, then asks
 - **Nothing secret goes in the repo.** No `.age` blobs, no `chezmoi add
   --encrypt`, no `encrypted_` files — see [Secrets](#secrets).
 - **The bootstrap token expires** 2027-07-29. After that `proton-ssh-load` and
-  the secrets script quietly report no session until `pass-cli pat renew`.
+  the secrets script quietly report no session until `pass-cli pat renew`. The
+  weekly check now warns for 60 days beforehand, and if the session is already
+  dead it says the expiry is why rather than leaving you to work it out. That
+  date is asserted against the one in `dotfiles-secrets-check` by `mise run
+  lint`, so the two cannot drift.
 - **New repo-only files go outside `home/`.** Anything inside is source state
   and gets applied into `$HOME`.
 - **Never edit a managed file in `$HOME`.** Edit the source

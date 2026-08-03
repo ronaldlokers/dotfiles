@@ -57,6 +57,13 @@ run = [
 	# to the template and forgetting the scripts — so assert instead that
 	# anything probing for one marker probes for both.
 	'''for f in $(grep -rl 'dockerenv\|containerenv' home 2>/dev/null); do if ! grep -q '/\.dockerenv' "$f" || ! grep -q '/run/\.containerenv' "$f"; then echo "$f probes for only one container marker; is-container tests both" >&2; exit 1; fi; done''',
+	# The bootstrap PAT's expiry is written twice: the constant
+	# dotfiles-secrets-check warns from, and the README gotcha a human reads.
+	# Same reasoning as the vault name below — assert they agree rather than
+	# hoist one into the other, because a date that has drifted out of the
+	# README is a date nobody trusts, and a date that has drifted out of the
+	# check is a warning that never fires.
+	'''c="$(sed -n 's/^bootstrap_pat_expiry="\(.*\)"$/\1/p' home/dot_local/bin/executable_dotfiles-secrets-check)"; r="$(grep -oE 'bootstrap token expires\*\* [0-9]{4}-[0-9]{2}-[0-9]{2}' README.md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')"; if [ -z "$c" ] || [ -z "$r" ]; then echo "could not find the bootstrap PAT expiry in the check ($c) or the README ($r)" >&2; exit 1; elif [ "$c" != "$r" ]; then echo "bootstrap PAT expiry disagrees: check says $c, README says $r" >&2; exit 1; fi''',
 	'''names="$( { grep -rhoE '^vault="[^"]+"' home/.chezmoiscripts home/dot_local/bin 2>/dev/null | sed 's/^vault="//; s/"$//'; grep -rhoE 'pass://[A-Za-z0-9._-]+/' home 2>/dev/null | sed 's|^pass://||; s|/$||'; } | sort -u)"; n="$(printf '%s\n' "$names" | grep -c .)"; if [ "$n" -eq 0 ]; then echo "found no vault references at all — the scan broke, not the tree" >&2; exit 1; elif [ "$n" -ne 1 ]; then echo "the vault name disagrees across the tree:" >&2; printf '%s\n' "$names" >&2; exit 1; fi''',
 ]
 

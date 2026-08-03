@@ -245,6 +245,66 @@ STUB
 	chmod 755 "$bin/age-keygen"
 }
 
+# Writes a fake curl into $1. Only the `--config -` form the check uses is
+# implemented: it reads the header off stdin (which is the point — a header
+# passed as an argument would be visible in `ps`) and answers with whatever the
+# test asked for.
+#
+#   CURL_HTTP_CODE   status to report                        (default 200)
+#   CURL_RATE_LIMIT  x-ratelimit-limit to report              (default 5000)
+#                    5000 = the token was accepted, 60 = GitHub answered
+#                    anonymously, empty = no header at all
+#   CURL_LOG         file to record the stdin config in, so a test can prove
+#                    the token was sent and prove it never reached argv
+make_curl_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/curl" <<'STUB'
+#!/bin/sh
+if [ -n "${CURL_LOG:-}" ]; then
+	printf 'argv: %s\n' "$*" >>"$CURL_LOG"
+	# The config arrives on stdin; record it so a test can assert the token
+	# travelled that way and not as an argument.
+	sed 's/^/stdin: /' >>"$CURL_LOG"
+else
+	cat >/dev/null
+fi
+printf '%s %s' "${CURL_HTTP_CODE:-200}" "${CURL_RATE_LIMIT-5000}"
+exit 0
+STUB
+	chmod 755 "$bin/curl"
+}
+
+# Writes a fake date into $1, so a test can decide what "now" is. Only the two
+# forms the check uses are implemented: `date -u -d <when> +%s` and `date -u
+# +%s`. NOW_EPOCH moves the clock; without it the real time is used.
+#
+# Stubbing the clock rather than the expiry constant keeps the test-only
+# plumbing out of the script: the constant stays a plain literal that `mise run
+# lint` can compare against the README.
+make_date_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/date" <<'STUB'
+#!/bin/sh
+real_date=/usr/bin/date
+for arg in "$@"; do
+	case "$arg" in
+	-d) want_date=1 ;;
+	esac
+done
+if [ -n "${want_date:-}" ]; then
+	exec "$real_date" "$@"
+fi
+if [ -n "${NOW_EPOCH:-}" ]; then
+	printf '%s\n' "$NOW_EPOCH"
+	exit 0
+fi
+exec "$real_date" "$@"
+STUB
+	chmod 755 "$bin/date"
+}
+
 # Renders a chezmoi script template to a runnable sh file. $2 is the PATH the
 # render runs under: has-proton-session calls `pass-cli info` at render time, so
 # the stub has to be visible here for the rendered script to take the

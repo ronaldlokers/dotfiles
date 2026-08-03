@@ -31,6 +31,13 @@ setup() {
 	: >"$NOTIFY_LOG"
 	make_notify_send_stub "$BIN"
 	make_age_keygen_stub "$BIN"
+	make_curl_stub "$BIN"
+	make_date_stub "$BIN"
+	CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
+	: >"$CURL_LOG"
+
+	# The vault item the devpod liveness probe reads its token out of.
+	# SENTINEL so any test that finds it in the output has found a leak.
 
 	# A recorded offline copy, current by default: the key the manifest names is
 	# the one the age-keygen stub derives from the vault item, so the offline
@@ -49,6 +56,7 @@ setup() {
 		"sops age keys" "gh hosts.yml" "fixture signing key"; do
 		printf 'SENTINEL-SECRET-BODY\n' >"$ITEMS/$title"
 	done
+	printf 'MISE_GITHUB_TOKEN=SENTINEL-DEVPOD-TOKEN\n' >"$ITEMS/devpod dotfiles-env"
 
 	# A fixture source tree. The templates only need to NAME a pass:// URI for
 	# the grep to find them — calling the vault for real would need a live
@@ -101,6 +109,7 @@ run_check() {
 	run env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME \
 		HOME="$HOME" STUB_LOG="$STUB_LOG" NOTIFY_LOG="$NOTIFY_LOG" \
 		DBUS_SESSION_BUS_ADDRESS="unix:path=$BATS_TEST_TMPDIR/fake-bus" \
+		CURL_LOG="$CURL_LOG" \
 		PATH="$BIN:$PATH" PASS_ITEM_DIR="$ITEMS" "$@" sh "$SCRIPT" --source "$SRC"
 }
 
@@ -467,6 +476,128 @@ TMPL
 	[ "$status" -eq 0 ]
 	[[ "$output" != *"SENTINEL-SECRET-BODY"* ]]
 	[[ "$output" != *"AGE-SECRET-KEY"* ]]
+}
+
+# --- the bootstrap PAT's expiry (I7) -----------------------------------------
+#
+# The date was in the README and nowhere else, so nothing warned and nothing
+# could. The clock is stubbed rather than the constant, which stays a plain
+# literal `mise run lint` compares against the README.
+
+@test "an expiry comfortably in the future is reported, not warned about" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"bootstrap PAT"* ]]
+	[[ "$output" == *"days left"* ]]
+	[[ "$output" != *"pass-cli pat renew"* ]]
+}
+
+@test "an expiry inside the warning window fails and says how to fix it" {
+	# 30 days before 2027-07-29
+	run_check NOW_EPOCH=1814227200
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"expires in 30 days"* ]]
+	[[ "$output" == *"pass-cli pat renew"* ]]
+}
+
+@test "an expiry already passed fails" {
+	# the day after
+	run_check NOW_EPOCH=1816905600
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"expired on 2027-07-29"* ]]
+	[[ "$output" == *"pass-cli pat renew"* ]]
+}
+
+# The reason the expiry is computed before the session probe rather than after:
+# an expired token is the likeliest cause of a dead session, and "no session"
+# alone names the symptom. This is the one moment the machine can explain
+# itself, because after this it cannot read the vault to find out anything.
+@test "a dead session caused by an expired PAT names the cause, not just the symptom" {
+	run_check PASS_INFO_RC=1 NOW_EPOCH=1816905600
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+	[[ "$output" == *"bootstrap PAT expired on 2027-07-29"* ]]
+	[[ "$output" == *"pass-cli pat renew"* ]]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"expired"* ]]
+}
+
+@test "a dead session with a live PAT does not blame the expiry" {
+	run_check PASS_INFO_RC=1
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no Proton Pass session"* ]]
+	[[ "$output" != *"expired"* ]]
+}
+
+# --- the devpod token's liveness (I6) ----------------------------------------
+#
+# Readable is not live. A lapsed token fails in the least helpful way there is:
+# `devpod up` dies partway through a build with `rate limit exceeded`, which
+# looks exactly like the anonymous-quota bug the token exists to fix, with every
+# local check green.
+
+@test "a live devpod token passes" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"devpod PAT"* ]]
+	[[ "$output" == *"live"* ]]
+}
+
+@test "a token GitHub rejects is a fault" {
+	run_check CURL_HTTP_CODE=401
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"rejected by GitHub"* ]]
+	[[ "$output" == *"401"* ]]
+}
+
+# The trap this probe is built around: /rate_limit answers 200 to anonymous
+# requests too, so the status code alone proves nothing. If the header were
+# dropped or ignored, a naive check would call that success.
+@test "a 200 that is actually anonymous is a fault, not a pass" {
+	run_check CURL_RATE_LIMIT=60
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"answered anonymously"* ]]
+}
+
+@test "a 200 with no rate-limit header is a fault, not a pass" {
+	run_check CURL_RATE_LIMIT=
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no rate-limit header"* ]]
+}
+
+# Not a fault. Every other check here needs only Proton; this one call needs
+# GitHub. Calling the token bad because github.com was unreachable would be a
+# lie, and the kind that teaches you to ignore the line.
+@test "an unreachable GitHub is skipped, not failed" {
+	run_check CURL_HTTP_CODE=000 CURL_RATE_LIMIT=
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"could not reach GitHub"* ]]
+}
+
+@test "a vault item with no MISE_GITHUB_TOKEN is a fault" {
+	printf 'SOMETHING_ELSE=x\n' >"$ITEMS/devpod dotfiles-env"
+	run_check
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no MISE_GITHUB_TOKEN"* ]]
+}
+
+# The repo's cardinal rule, applied to the one new place a token is handled: a
+# header passed as an argument is visible in `ps` to every user on the machine.
+# It goes in through a config on stdin instead. Same rule tests/proton-ssh-load
+# pins for --personal-access-token.
+@test "the devpod token never appears in curl's arguments" {
+	run_check
+	[ "$status" -eq 0 ]
+	grep -q "^argv:" "$CURL_LOG"
+	! grep "^argv:" "$CURL_LOG" | grep -q "SENTINEL-DEVPOD-TOKEN"
+	# and it did travel, on stdin, or the probe proved nothing
+	grep -q "^stdin:.*SENTINEL-DEVPOD-TOKEN" "$CURL_LOG"
+}
+
+@test "the liveness probe emits no token" {
+	run_check
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"SENTINEL-DEVPOD-TOKEN"* ]]
 }
 
 # The spec lists this case and nothing implemented it: notify-send prints
