@@ -62,7 +62,18 @@ trap 'rm -rf "$testhome"' EXIT
 # Clearing HOME is not enough: this desktop exports XDG_* pointing back at the
 # real ~/.config, so chezmoi and mise would read and write the live config. CI
 # has no XDG_* set, so only local runs need this.
-clean_env="env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME"
+#
+# XDG_RUNTIME_DIR belongs in that list for a sharper reason than the rest. The
+# three run_onchange_after_1x scripts decide whether a systemd user manager is
+# running by probing $XDG_RUNTIME_DIR/systemd/private, and on a developer
+# desktop that socket is the *real* session's. A throwaway-HOME apply would
+# therefore reach past its own HOME and run `systemctl --user daemon-reload`
+# and `enable --now` against the machine actually being used — this task exists
+# to prove an apply works on an empty machine, not to reconfigure this one.
+# Clearing it makes the probe fail and those scripts take their no-session
+# branch, which is the branch a genuinely empty machine takes anyway. The real
+# enable path is covered by CI's host-ssh-agent job, on a session built for it.
+clean_env="env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME -u XDG_RUNTIME_DIR"
 
 # mise resolves release tags through the GitHub API; unauthenticated calls share
 # the machine's 60/hour and the all-or-nothing install then dies on 403.

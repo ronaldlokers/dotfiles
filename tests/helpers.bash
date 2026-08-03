@@ -1,8 +1,13 @@
-# Shared fixtures for the tests that exercise the Proton Pass path.
+# Shared fixtures for the tests that exercise paths a real apply cannot be asked
+# to take: the Proton Pass path, and the systemd user session.
 #
-# Neither script can be tested against the real vault: that needs a live session
-# and would put real secrets in a test's output. Both talk to Proton through one
-# binary, `pass-cli`, so a stub on PATH is the whole seam.
+# The Proton scripts cannot be tested against the real vault — that needs a live
+# session and would put real secrets in a test's output. Both talk to Proton
+# through one binary, `pass-cli`, so a stub on PATH is the whole seam.
+#
+# The systemd scripts cannot be tested against the real user manager either, for
+# the mirror-image reason: it would work, and reconfigure the developer's own
+# machine while doing so. `systemctl` is the seam there.
 
 # Writes a fake pass-cli into $1 (a directory placed first on PATH) and records
 # every invocation to $STUB_LOG, one argv per line. Behaviour is driven by
@@ -169,6 +174,53 @@ make_notify_send_stub() {
 exit 0
 STUB
 	chmod 755 "$bin/notify-send"
+}
+
+# Writes a fake systemctl into $1 (a directory placed first on PATH) and records
+# every invocation to $SYSTEMCTL_LOG, one argv per line. The enable scripts all
+# decide what to do from systemctl's exit codes, so those are what a test needs
+# to drive:
+#
+#   SYSTEMCTL_CAT_RC     exit code for `systemctl --user cat ...`  (default 0 —
+#                        the unit is visible to the running manager)
+#   SYSTEMCTL_ENABLE_RC  exit code for `systemctl --user enable ...`(default 0)
+#   SYSTEMCTL_RELOAD_RC  exit code for `systemctl --user daemon-reload`
+#                                                                  (default 0)
+make_systemctl_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/systemctl" <<'STUB'
+#!/bin/sh
+[ -n "${SYSTEMCTL_LOG:-}" ] && printf '%s\n' "$*" >>"$SYSTEMCTL_LOG"
+
+# Skip --user and friends to find the verb, so the stub does not care where in
+# the argv it sits.
+for arg in "$@"; do
+	case "$arg" in
+	--*) continue ;;
+	esac
+	case "$arg" in
+	cat) exit "${SYSTEMCTL_CAT_RC:-0}" ;;
+	enable) exit "${SYSTEMCTL_ENABLE_RC:-0}" ;;
+	daemon-reload) exit "${SYSTEMCTL_RELOAD_RC:-0}" ;;
+	esac
+	break
+done
+exit 0
+STUB
+	chmod 755 "$bin/systemctl"
+}
+
+# Creates a directory shaped like a live $XDG_RUNTIME_DIR and prints its path:
+# the enable scripts test for a *socket* at systemd/private, so an ordinary file
+# will not do — `[ -S ]` is the whole point of the probe, since it is what tells
+# a real user manager apart from a devcontainer's systemctl shim.
+make_fake_runtime_dir() {
+	local dir="$1"
+	mkdir -p "$dir/systemd"
+	python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \
+		"$dir/systemd/private"
+	printf '%s\n' "$dir"
 }
 
 # Renders a chezmoi script template to a runnable sh file. $2 is the PATH the
