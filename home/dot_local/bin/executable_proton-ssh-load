@@ -49,7 +49,10 @@ command -v pass-cli >/dev/null 2>&1 || {
 	exit 0
 }
 
-# Containers get keys from the forwarded agent instead.
+# Containers get keys from the forwarded agent instead. Asked here at run time
+# rather than gated at apply time by .chezmoitemplates/is-container, because
+# this script also runs from the source tree inside a devcontainer working on
+# this repo. Same two markers as the template; `mise run lint` asserts that.
 if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
