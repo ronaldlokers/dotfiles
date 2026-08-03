@@ -116,6 +116,29 @@ setup_file() {
 	[ ! -e "$AGE" ]
 }
 
+# Everything above pins "one secret failing leaves that secret alone". This
+# pins the other half of the same promise: one secret failing must not take the
+# rest of the apply with it. The script runs under `set -e`, so an unguarded
+# command failing inside restore() exits the whole script — and because this is
+# a run_after script, chezmoi stops there and every later one (host packages,
+# devpod config) never runs either. A dangling symlink or a plain file where a
+# config directory belongs is enough to trigger it.
+@test "a directory that cannot be created does not abort the rest of the apply" {
+	mkdir -p "$HOME/.config"
+	# mkdir -p "$HOME/.config/sops/age" cannot succeed through a regular file
+	: >"$HOME/.config/sops"
+
+	run_restore
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"could not create"* ]]
+	# "sops age keys" is the first restore call; the four behind it must still
+	# have run
+	[ -s "$HOME/.config/gh/hosts.yml" ]
+	[ -s "$HOME/.config/sugarrush/config.toml" ]
+	[ -s "$HOME/.config/devpod/dotfiles-env" ]
+	[ -s "$HOME/.config/devpod/project-tokens" ]
+}
+
 @test "leaves no temp file behind after a failed fetch" {
 	run_restore PASS_VIEW_RC=1
 	[ "$status" -eq 0 ]
