@@ -1,8 +1,20 @@
 {{- $miseVersion := "v2026.7.14" -}}
 # mise binary, pinned to an immutable release asset (linux-x64). Renovate bumps
 # $miseVersion via the custom manager in .github/renovate.json.
+#
+# The checksum is not optional decoration: this binary installs and executes
+# every other tool on the machine, so a swapped asset owns the host. Take the
+# hash from the release's own SHASUMS256.txt (jdx also publishes a signed
+# SHASUMS256.asc) rather than from whatever the URL serves at bump time —
+# hashing the download and pinning that only records what you were given.
+#
+#   curl -fsSL .../releases/download/$VER/SHASUMS256.txt | grep "mise-$VER-linux-x64$"
+#
+# Renovate cannot update this line, so a version bump that leaves it stale
+# fails the apply loudly. That is the intended failure mode: bump both together.
 [".local/bin/mise"]
 type = "file"
 executable = true
 url = "https://github.com/jdx/mise/releases/download/{{ $miseVersion }}/mise-{{ $miseVersion }}-linux-x64"
+checksum.sha256 = "fc96308f4fa085d7359892ac6351ededb35ecfabf1ddc34f5757bc755a2af8a6"
 refreshPeriod = "168h"

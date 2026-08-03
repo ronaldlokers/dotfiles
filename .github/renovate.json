@@ -60,6 +60,11 @@
       "description": "Automerge patch/minor once CI is green; majors wait for review",
       "matchUpdateTypes": ["minor", "patch"],
       "automerge": true
+    },
+    {
+      "description": "Never automerge .chezmoiexternals. Two reasons, both load-bearing. (1) These fetch code that runs as you — mise installs and executes every other tool, devpod drives containers holding your forwarded ssh-agent, and the plugin externals are sourced into every shell — while CI only asserts the fetched file is non-empty, never that its contents are what was expected. Automerge would take a compromised upstream release from a tag to every machine's next apply with nobody reading it. (2) mise and devpod now carry checksum.sha256 lines that Renovate cannot update, so a bumped version with a stale hash fails the apply; that is the right failure mode, but it must not land on main unattended. Bump version and checksum together, by hand.",
+      "matchFileNames": ["home/.chezmoiexternals/**"],
+      "automerge": false
     }
   ]
 }

@@ -1,2 +1,7 @@
 # Derived knowledge graph from `/graphify`. Rebuildable, sometimes megabytes.
 graphify-out/
+
+# Output of `/product-team-review`. The findings worth acting on become commits
+# and issues; the run itself is a dated snapshot against one HEAD, and the
+# rendered artifact already lives at claude.ai.
+.product-team-review/
