@@ -42,11 +42,23 @@ description = "age passphrase-encrypted file"
 regex = '''-----BEGIN AGE ENCRYPTED FILE-----'''
 keywords = ["BEGIN AGE ENCRYPTED FILE"]
 
-# Two kinds of exception, and only two.
+# Two kinds of exception, and only two — and every pattern is anchored, which
+# they were not.
 #
-# First, files whose job is to contain this string: the bats fixture proving the
-# export writes ciphertext rather than plaintext, and the prose that explains
-# why none of this is done that way any more.
+# A scan of a purpose-built repo holding four genuine armoured age blobs
+# reported exactly one of them. The three that landed in `tests/`, in
+# `docs/superpowers/` and in a file named `CLAUDE.md` were all exempt: the
+# `CLAUDE\.md` pattern was unanchored, so it covered `home/dot_claude/CLAUDE.md`
+# — a constantly-edited file that ships into $HOME — and `docs/superpowers/`
+# had been deleted the same day while remaining a live exemption for whatever a
+# future agent puts back there. The note below claimed this allowlist "exempts
+# named history, not a pattern that a future mistake could match". Three of
+# these were exactly such a pattern.
+#
+# First, then, files whose job is to contain this string: the two bats fixtures
+# proving the export writes ciphertext rather than plaintext, and the prose
+# explaining why none of this is done that way any more. Named individually,
+# anchored, no directory wildcards.
 #
 # Second — and this is the uncomfortable one — the repo's own history. Before
 # the move to Proton Pass this repo really did carry `chezmoi --encrypt` blobs,
@@ -65,13 +77,26 @@ keywords = ["BEGIN AGE ENCRYPTED FILE"]
 # design, and it would evaporate the moment anything scanned trees instead.
 [rules.allowlist]
 paths = [
-  # Any bats file. A fixture that proves ciphertext was written has to contain
-  # the armour header to be a fixture at all, and naming them one at a time
-  # meant the rule fired on the *next* such test rather than on a leak — which
-  # is how a rule ends up being turned off.
-  '''tests/.*\.bats''',
-  '''CLAUDE\.md''',
-  '''docs/superpowers/.*\.md''',
+  # The two fixtures that must contain the header to be fixtures at all. Named
+  # one at a time on purpose: a directory wildcard here means the rule fires on
+  # the next test rather than on a leak, and adding a line when you add a
+  # fixture is the correct amount of friction.
+  '''^tests/secrets-export\.bats$''',
+  '''^tests/secrets-restore\.bats$''',
+  # Prose about why the repo no longer works this way. Anchored, so the copy of
+  # CLAUDE.md that ships into $HOME is not covered.
+  '''^CLAUDE\.md$''',
+  '''^README\.md$''',
+  '''^docs/design-notes\.md$''',
+  '''^docs/revocation\.md$''',
+  # Three superpowers documents, pruned in 1c47f04, that discussed the age
+  # migration in prose and quoted the header while doing so. Named by their
+  # exact dated paths rather than by directory: the directory is gone, and a
+  # wildcard over it would exempt whatever a future agent writes there — which
+  # is precisely what the unanchored version did.
+  '''^docs/superpowers/plans/2026-07-29-chezmoiroot-restructure\.md$''',
+  '''^docs/superpowers/plans/2026-07-29-container-github-token\.md$''',
+  '''^docs/superpowers/specs/2026-07-29-container-github-token-design\.md$''',
   '''^(home/)?dot_config/.*\.age$''',
   '''^(home/)?private_dot_ssh/.*\.age$''',
   '''^(home/)?key\.txt\.age$''',

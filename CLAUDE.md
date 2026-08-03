@@ -50,10 +50,17 @@ was accepted deliberately and should not be papered over.
 - Script under test are not executable in the source tree — chezmoi run them
   itself. Invoke through `sh`/`bash` in a test, not directly.
 - `mise run check` is all of it: lint, test, gitleaks, verify, shells.
-- **Spec and plan pairs under `docs/superpowers/` are working documents, not
-  records.** Prune both halves once the work ships — precedent is 22af1cd, which
-  dropped eight plans and seven specs in one go. They describe the tree as it
-  was going to be, so once it is, they can only be wrong; the design *reasoning*
-  worth keeping belongs in `docs/design-notes.md`, and what actually happened is
-  in the commit. Leaving them is how `.chezmoitemplates/signing-pubkey` ended up
-  with three files describing a `protonPass` call it no longer makes.
+- **Spec and plan pairs are working documents, not records.** If a workflow
+  writes them under `docs/superpowers/`, prune both halves once the work ships —
+  precedent is 22af1cd, which dropped eight plans and seven specs in one go, and
+  1c47f04, which dropped the last three and left the directory empty. They
+  describe the tree as it was going to be, so once it is, they can only be
+  wrong; the design *reasoning* worth keeping belongs in `docs/design-notes.md`,
+  and what actually happened is in the commit. Leaving them is how
+  `.chezmoitemplates/signing-pubkey` ended up with three files describing a
+  `protonPass` call it no longer makes.
+- **Put the reasoning in `docs/design-notes.md`, not only in the commit or the
+  code comment.** The README says what, design-notes says why, and a review on
+  2026-08-03 found sixteen PRs' worth of design decisions — the warn tier, the
+  state file, retirement-rather-than-deletion, assert-agreement-in-a-script —
+  with none of them in the file that exists to outlive the code.
