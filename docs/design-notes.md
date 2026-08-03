@@ -164,6 +164,29 @@ A few packages need a group membership they can't grant themselves (chirp needs
 `uucp` to open `/dev/ttyUSB*`). Those are listed in `PACKAGE_GROUPS`, applied
 only when the package is actually installed, and take effect on the next login.
 
+### Saying it once, not never and not always
+
+`proton-ssh-load` runs from the shell rc on every terminal that finds a live but
+empty agent, with `--quiet`, so a successful load does not print at every
+prompt. That silence used to cover the failures too, and a terminal where ssh
+has no keys and nothing says why is how you end up debugging a push instead of
+running one command. The obvious fix — always warn — is the one the `--quiet`
+flag exists to prevent, and three tests were written to stop exactly that.
+
+So the message is said at most once per boot. The marker lives in
+`$XDG_RUNTIME_DIR`, chosen because the OS clears it: there is no cleanup to get
+wrong, no stale marker outliving the problem, and a reboot earns the message
+again — which is right, because a reboot is when you have forgotten. Where there
+is no runtime dir at all (a container, a stripped environment) it warns every
+time rather than never; those callers are not the rc and not on a per-prompt
+path, so repeating is the safe direction to fail in.
+
+Note for anyone testing this: the marker path comes from the environment, so a
+test that does not override `$XDG_RUNTIME_DIR` writes into the developer's real
+`/run/user/$UID` and every case after the first silently takes the
+already-warned branch. Redirecting `HOME` does not cover it — the same trap as
+`XDG_STATE_HOME` in the secrets-export tests.
+
 ## Shell keys: who owns what
 
 Five pickers coexist because they reach different things: `cd` (zoxide) jumps to
