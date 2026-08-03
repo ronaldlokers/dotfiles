@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# run_after_12-ensure-ssh-include.sh asserts that ~/.ssh/config pulls in
+# run_after_13-ensure-ssh-include.sh asserts that ~/.ssh/config pulls in
 # config.d/*.conf, on a file chezmoi deliberately does not manage. Everything it
 # guards is a property of a file this repo never gets to see: whether the
 # Include sits above the first Host block, whether the config is a symlink
@@ -9,7 +9,7 @@
 # "no config yet" branch.
 
 setup() {
-	SCRIPT="$BATS_TEST_DIRNAME/../home/.chezmoiscripts/run_after_12-ensure-ssh-include.sh"
+	SCRIPT="$BATS_TEST_DIRNAME/../home/.chezmoiscripts/run_after_13-ensure-ssh-include.sh"
 	HOME="$BATS_TEST_TMPDIR/home"
 	mkdir -p "$HOME/.ssh"
 	chmod 700 "$HOME/.ssh"

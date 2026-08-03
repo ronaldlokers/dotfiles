@@ -73,6 +73,23 @@ Four were refused, each because something else writes into the target:
 The test before adding `exact_` anywhere is `chezmoi apply --dry-run --verbose
 <target>`: if it proposes a deletion, the directory has another writer.
 
+### One numbering, not two
+
+The `run_after_*` and `run_onchange_*` scripts look like two sequences and are
+one. chezmoi treats `run_`, `onchange_` and `after_` as attributes, strips them,
+and orders what is left — so `run_onchange_after_10-enable-ssh-agent` and
+`run_after_14-restore-secrets` sort against each other as `10-…` and `14-…`,
+and every `run_onchange_after_1x` runs *before* `run_after_20-install-host-
+packages`. Confirmed by running four scripts with deliberately crossed prefixes
+and numbers against a throwaway HOME, not inferred from the docs.
+
+Two consequences worth keeping in mind. Reading the prefixes as phases is wrong:
+there is one pool, and the number is the only thing deciding order. And two
+scripts must not share a number — `12-enable-secrets-check` and
+`12-ensure-ssh-include` did, so their relative order came down to `a` sorting
+before `s` in the part after the number. That is not an ordering anyone chose,
+and it is not one anyone would notice changing. The second is `13-` now.
+
 ## Packages
 
 Two lists, split by *where* a tool is wanted rather than by what installs it:
@@ -615,7 +632,7 @@ what the other writer's file supports.
 
 **Own a fragment beside it** when the file supports an include mechanism.
 `~/.ssh/config` is deliberately unmanaged; chezmoi owns
-`~/.ssh/config.d/10-dotfiles.conf`, and `run_after_12-ensure-ssh-include.sh`
+`~/.ssh/config.d/10-dotfiles.conf`, and `run_after_13-ensure-ssh-include.sh`
 asserts that the real config has an `Include config.d/*.conf` line pointing at it
 — prepending one if it's missing or placed below a `Host`/`Match` block — and,
 the first time it has to rewrite the file, also migrates away the old three-line
