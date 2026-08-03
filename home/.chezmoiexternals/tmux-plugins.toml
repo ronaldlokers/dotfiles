@@ -1,3 +1,19 @@
+# The checksums below are on GitHub's *generated* tag tarballs, which is a
+# weaker pin than mise's or devpod's release assets and worth being precise
+# about. A tag is mutable — a maintainer can move it, and nothing about the URL
+# would change — so without a hash "pinned to v1.2.3" means "pinned to whatever
+# v1.2.3 points at today". The hash closes that. What it cannot promise is
+# permanence in the other direction: GitHub generates these archives on demand
+# and has changed their gzip framing once before, which would fail the apply
+# even though nothing upstream moved.
+#
+# That failure mode is the right one. A loud apply failure asks a human to look;
+# a silently different plugin sourced into every interactive shell does not.
+# Each hash was taken twice, from separate fetches, to confirm the archive is
+# byte-stable as served today.
+#
+# Renovate cannot update these lines, so a version bump that leaves one stale
+# fails the apply. Bump version and hash together.
 # renovate: datasource=github-tags depName=tmux-plugins/tmux-resurrect
 {{ $resurrectVersion := "v4.0.0" }}
 # renovate: datasource=github-tags depName=tmux-plugins/tmux-continuum
@@ -5,11 +21,13 @@
 [".tmux/plugins/tmux-resurrect"]
 type = "archive"
 url = "https://github.com/tmux-plugins/tmux-resurrect/archive/refs/tags/{{ $resurrectVersion }}.tar.gz"
+checksum.sha256 = "f8559d86d81be769054d63b28a268229a09bc6cc311f0623656c3090ec781b76"
 stripComponents = 1
 refreshPeriod = "168h"
 
 [".tmux/plugins/tmux-continuum"]
 type = "archive"
 url = "https://github.com/tmux-plugins/tmux-continuum/archive/refs/tags/{{ $continuumVersion }}.tar.gz"
+checksum.sha256 = "311dddeebbf7b803cd19c339ab887784b715fd8ef206ec430028cabb8574de87"
 stripComponents = 1
 refreshPeriod = "168h"

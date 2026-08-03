@@ -281,7 +281,7 @@ for a touch — but `sudo -v` then a non-interactive apply works.
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, `modify_settings.json` |
 | `dot_config/omarchy/branding/` | screensaver branding, generated from `assets/`. Host-only |
 | `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check`, `proton-ssh-load`, and `devpod` (wrapper for the binary in `~/.local/libexec`) |
-| `.chezmoiexternals/` | pinned downloads, checksummed where upstream publishes one |
+| `.chezmoiexternals/` | pinned downloads, every one checksummed |
 | `assets/` (repo root) | source artwork; never copied into `$HOME` |
 
 Anything that runs in a terminal goes in `dot_config/mise/config.toml` so
