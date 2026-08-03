@@ -236,3 +236,80 @@ run_export() {
 	grep -q "^age_public_key=age1rotatedkey$" "$MANIFEST"
 	[ "$(grep -c "^age_public_key=" "$MANIFEST")" -eq 1 ]
 }
+
+# --- what the file modes actually are (N6) -----------------------------------
+#
+# Nothing here looked at a permission bit. Deleting `umask 077` and both chmod
+# calls left all seventeen cases green — the script's only stated guarantees
+# about who can read the copy and the record were, in test terms, absent.
+#
+# The suite runs under an ordinary umask (022 on this machine and on CI), so
+# every assertion below is a real one: without the script's own chmod the
+# answers would be 644 and 755.
+
+@test "the encrypted copy is not world-readable" {
+	run_export -- "$DEST"
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$DEST/dotfiles-age-key.age")" = "600" ]
+}
+
+# The manifest holds no key material, but it does name where the copy went —
+# which is a map to the file for anyone who can read it, and it sits in the
+# home directory rather than on removable media.
+@test "the state directory holding the record is owner-only" {
+	run_export -- "$DEST"
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$HOME/.local/state/dotfiles")" = "700" ]
+}
+
+# The window before the mv, not just after it. The ciphertext is written to a
+# temp file first, and a mode fixed only afterwards leaves it readable for as
+# long as the encryption takes — which is however long the passphrase prompt
+# waits for a human. The umask in that subshell is what closes it; this is the
+# assertion that notices if it goes.
+@test "re-exporting over an existing copy still ends owner-only" {
+	run_export -- "$DEST"
+	[ "$status" -eq 0 ]
+	chmod 644 "$DEST/dotfiles-age-key.age"
+	run_export -- "$DEST"
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %a "$DEST/dotfiles-age-key.age")" = "600" ]
+}
+
+# --- where the copy is allowed to go (N16) -----------------------------------
+#
+# The destination is whatever you type, in a shell that is very often standing
+# in a checkout. What lands is passphrase-encrypted rather than plaintext, so
+# nothing else catches it: gitleaks matches key shapes and age armour is not
+# one, and the .gitignore only knows about directories this repo expects.
+
+@test "refuses a destination inside a git repository" {
+	repo="$BATS_TEST_TMPDIR/repo"
+	mkdir -p "$repo"
+	git -C "$repo" init -q
+	run_export -- "$repo"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"inside the git repository"* ]]
+	[ -z "$(ls -A "$repo" | grep -v '^\.git$')" ]
+}
+
+# Walks upward the way git does, so a subdirectory deep inside a checkout is
+# caught too — which is the shape this actually arrives in, since nobody exports
+# to the repository root.
+@test "refuses a subdirectory of a git repository too" {
+	repo="$BATS_TEST_TMPDIR/repo2"
+	mkdir -p "$repo/docs/notes"
+	git -C "$repo" init -q
+	run_export -- "$repo/docs/notes"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"inside the git repository"* ]]
+	[ -z "$(ls -A "$repo/docs/notes")" ]
+}
+
+# ...and an ordinary directory that merely has a .git-shaped name nearby is not
+# a repository, so the guard must not refuse everything.
+@test "an ordinary directory outside any repository is still accepted" {
+	run_export -- "$DEST"
+	[ "$status" -eq 0 ]
+	[ -s "$DEST/dotfiles-age-key.age" ]
+}

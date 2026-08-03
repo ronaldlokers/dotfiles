@@ -25,6 +25,49 @@ regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
 keywords = ["AGE-SECRET-KEY-1"]
 
 [[rules]]
+id = "age-armoured-ciphertext"
+description = "age passphrase-encrypted file"
+# Not a secret shape — that is the point. This is what `dotfiles-secrets-export`
+# writes: the unreissuable age key, encrypted under a passphrase. It is exactly
+# the thing you are supposed to keep, and exactly the thing that must never be
+# committed, because published ciphertext is offline-crackable forever while a
+# passphrase is only as good as the day it was chosen.
+#
+# The export refuses a destination inside a git work tree, which is the real
+# defence. This is the second one, for a copy that arrived some other way — a
+# file manager, a stray `cp`, a merge from a branch that predates the guard.
+#
+# The armour header is fixed text emitted by `age -a`, so there is nothing to
+# tune and no false-positive surface beyond a file that genuinely contains one.
+regex = '''-----BEGIN AGE ENCRYPTED FILE-----'''
+keywords = ["BEGIN AGE ENCRYPTED FILE"]
+
+# Two kinds of exception, and only two.
+#
+# First, files whose job is to contain this string: the bats fixture proving the
+# export writes ciphertext rather than plaintext, and the prose that explains
+# why none of this is done that way any more.
+#
+# Second — and this is the uncomfortable one — the repo's own history. Before
+# the move to Proton Pass this repo really did carry `chezmoi --encrypt` blobs,
+# and they are still in the history of a public repository: the sops age key,
+# the gh token, the ssh signing key, the DevPod env, the sugarrush config. They
+# are listed here by their exact historical paths, every one of which is a file
+# that no longer exists and cannot come back — `.chezmoiroot` moved the whole
+# tree under `home/`, so nothing new can ever land at these paths. That is what
+# makes the allowlist safe: it exempts named history, not a pattern that a
+# future mistake could match.
+[rules.allowlist]
+paths = [
+  '''tests/secrets-export\.bats''',
+  '''CLAUDE\.md''',
+  '''docs/superpowers/.*\.md''',
+  '''^dot_config/.*\.age$''',
+  '''^private_dot_ssh/.*\.age$''',
+  '''^key\.txt\.age$''',
+]
+
+[[rules]]
 id = "proton-pass-pat"
 description = "Proton Pass personal access token"
 # `pst_` prefix, as shown in the README's bootstrap example. The length floor

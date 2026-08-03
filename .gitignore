@@ -5,3 +5,9 @@ graphify-out/
 # and issues; the run itself is a dated snapshot against one HEAD, and the
 # rendered artifact already lives at claude.ai.
 .product-team-review/
+
+# Never a passphrase-encrypted backup. `dotfiles-secrets-export` refuses a
+# destination inside a git work tree, and .gitleaks.toml has a rule for the age
+# armour header — this is the third layer, for the copy that arrives by file
+# manager or stray cp rather than by the export.
+*.age
