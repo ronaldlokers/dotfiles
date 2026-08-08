@@ -14,7 +14,7 @@ ripgrep = "15.1.0"
 neovim = "0.12.4"
 direnv = "2.37.1"
 # Shell history in SQLite; sync off, see ~/.config/atuin/config.toml.
-atuin = "18.17.1"
+atuin = "18.18.1"
 yq = "4.53.3"
 jq = "1.8.2"
 delta = "0.19.2"
