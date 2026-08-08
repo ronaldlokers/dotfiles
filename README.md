@@ -328,14 +328,25 @@ stays `active`, every publish is rejected, and nothing surfaces that. A
 `systemctl --user restart moshi-hook` fixes it, and the apply script now
 notices the mismatch and restarts on its own.
 
-**If Moshi shows no herdr workspaces**, the daemon cannot find the `herdr`
-binary. `moshi-hook service install` generates a unit hardcoding
-`Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and herdr is a mise shim, so
-it is not on that path — and nothing errors, the workspace list is just empty,
-which reads like herdr being unsupported. `dot_config/systemd/user/
-moshi-hook.service.d/10-herdr-path.conf` sets `MOSHI_HERDR_PATH` to fix it.
-A drop-in rather than an edit to the unit, because the unit is regenerated on
-every apply.
+**If Moshi shows no herdr workspaces**, there are two separate causes, and both
+have to be fixed for the phone to see anything:
+
+The *daemon* cannot find the `herdr` binary. `moshi-hook service install`
+generates a unit hardcoding `Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and
+herdr is a mise shim, so it is not on that path — and nothing errors, the
+workspace list is just empty, which reads like herdr being unsupported.
+`dot_config/systemd/user/moshi-hook.service.d/10-herdr-path.conf` sets
+`MOSHI_HERDR_PATH` to fix it. A drop-in rather than an edit to the unit, because
+the unit is regenerated on every apply.
+
+The *launcher* cannot find it either, and that is a different PATH. Opening a
+workspace from the phone runs a command the app composes, which exports its own
+fixed PATH — `~/.local/bin`, `~/bin`, homebrew and nix paths, `/usr/bin`,
+`/bin`. No mise shims, so it falls back to tmux and quietly creates new tmux
+sessions beside your herdr ones. `dot_local/bin/symlink_herdr.tmpl` puts herdr
+on that PATH under a name it will find. Verify with
+`pgrep -af mosh-server`: the launch command should read `exec herdr --session`,
+not `tmux new-session`.
 
 Once paired, `run_after_22-enable-moshi-hook.sh.tmpl` starts the daemon on every
 apply. Before pairing it refuses and says so, because a daemon retrying against

@@ -780,6 +780,55 @@ address before it exists. It is smaller, and it is global — every process on t
 machine gains the ability to bind any address, to fix an ordering problem in one
 unit.
 
+### Moshi's launcher cannot see a mise shim
+
+`MOSHI_HERDR_PATH` on the daemon's unit fixes the daemon, and the daemon is not
+the only thing that has to find herdr. Opening a workspace from the phone runs a
+command the app composes and sends over mosh, and that command exports its own
+fixed PATH:
+
+```
+sh -lc export PATH="$HOME/.local/bin":"$HOME/bin":"$HOME/.linuxbrew/bin":...:'/usr/bin':'/bin':"$PATH"; ...
+```
+
+Homebrew, nix and `/usr/bin` — no mise shims, and `$PATH` is appended to a list
+that already decided the answer. So the launcher does not find herdr, falls back
+to `tmux new-session -A -s <name>`, and the phone shows tmux sessions it created
+itself sitting beside the seven herdr workspaces it cannot see. Nothing errors.
+The daemon reports herdr in `moshi-hook status` the whole time, because the
+daemon *can* find it — which is what makes this look like the drop-in having
+failed rather than a second PATH nobody has fixed yet.
+
+`~/.local/bin` is on that list and is already ours, so a symlink there is the
+whole fix. It is a chezmoi `symlink_` entry rather than a wrapper script: there
+is nothing to wrap, and a script would be a second thing to keep in step with
+the mise pin.
+
+The shim path, not the versioned install path — same reasoning as the daemon's
+drop-in, and now the same reasoning in two places, which is the argument for
+them being one line apart in the README.
+
+Confirmed by re-reading the launch command after the change: `herdr --session
+'default' workspace focus 'wF'; exec herdr --session 'default'`, and the
+gateway answering `{"kind":"herdr"}` with the real workspace labels instead of
+`{"kind":"tmux"}`.
+
+Two things found while tracing this, worth writing down because both look like
+bugs on the next visit:
+
+Workspace enumeration is scoped to the *caller's* terminal. A phone session that
+lands in a plain login shell gets `workspace enumeration requires tmux or herdr;
+current terminal kind is "shell"` — not an empty list, and not an error the app
+surfaces. There is nothing to fix on the host; the session has to be opened as a
+workspace rather than as a terminal.
+
+The `ssh-connection` session identifier does not work for mosh. The daemon walks
+up the process tree looking for the SSH bootstrap, and `mosh-server` reparents
+to pid 1 as soon as it has handed over the port, so the walk ends at systemd and
+the session is reported as not live. `mosh-port` resolves the same session
+without trouble. Upstream's, not ours, but it is the first thing that looks
+broken when probing the gateway by hand.
+
 ## Updates
 
 `dotfiles-update-check` **only notifies**; it never pulls and never applies. An
