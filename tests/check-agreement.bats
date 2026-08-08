@@ -44,6 +44,13 @@ make_tree() {
 		>"$TREE/home/dot_local/bin/executable_pat_a"
 	printf 'pat_file="$HOME/.config/pass-cli-bootstrap-pat"\n' \
 		>"$TREE/home/dot_local/bin/executable_pat_b"
+	# ...and the retirement the second one performs, plus the inventory that
+	# has to know about the file it leaves behind.
+	printf 'mv -f "$pat_file" "$pat_file.rejected"\n' \
+		>>"$TREE/home/dot_local/bin/executable_pat_b"
+	mkdir -p "$TREE/docs"
+	printf 'a rejected token is left at `~/.config/pass-cli-bootstrap-pat.rejected`\n' \
+		>"$TREE/docs/revocation.md"
 	printf 'pass://Dotfiles/some item/public_key\n' \
 		>"$TREE/home/.chezmoitemplates/signing-pubkey"
 
@@ -333,5 +340,38 @@ run_check() {
 @test "a directory that shares a check's name is still reachable as a root" {
 	mkdir -p "$TREE/vault-name"
 	run sh "$SCRIPT" "$TREE" vault-name
+	[ "$status" -eq 0 ]
+}
+
+# --- the retired token the inventory forgot (M8) ------------------------------
+#
+# proton-ssh-load renames a rejected cached token to `<path>.rejected` rather
+# than deleting it, deliberately: a failed login cannot tell "revoked" from
+# "Proton was unreachable for ten seconds", and deleting on the second destroys
+# the one thing that makes unattended applies work on a machine that cannot read
+# the vault to get another copy.
+#
+# The consequence is a second file on disk holding a vault-wide credential, 0600
+# and indefinitely. docs/revocation.md is the file that answers "what do I have
+# to revoke", and it listed only the live path — so the copy left behind by the
+# mechanism that exists to preserve it was the one the inventory did not know
+# about.
+
+@test "a retired-token path the inventory does not name is caught" {
+	printf 'nothing about retired copies here\n' >"$TREE/docs/revocation.md"
+	run_check pat-path
+	[ "$status" -ne 0 ]
+	[[ "$output" == *".rejected"* ]]
+}
+
+# The assertion has to be about what the code does, not about a string in a
+# doc: a tree that stopped retiring tokens should not be asked to document one.
+@test "a tree that retires nothing is not asked to document it" {
+	printf 'pat_file="$HOME/.config/pass-cli-bootstrap-pat"\n' \
+		>"$TREE/home/dot_local/bin/executable_pat_a"
+	printf 'pat_file="$HOME/.config/pass-cli-bootstrap-pat"\n' \
+		>"$TREE/home/dot_local/bin/executable_pat_b"
+	printf 'nothing about retired copies here\n' >"$TREE/docs/revocation.md"
+	run_check pat-path
 	[ "$status" -eq 0 ]
 }
