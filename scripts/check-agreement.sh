@@ -35,7 +35,7 @@ usage: scripts/check-agreement.sh [root] [check ...]
 Asserts the facts this repo states in more than one place still agree.
 
 Checks: chezmoi-pins, vault-name, container-markers, pat-expiry, graphify-pin,
-        pat-path
+        pat-path, shellcheck-targets
 With no check named, runs all of them.
 USAGE
 }
@@ -184,8 +184,92 @@ check_pat_path() {
 	fi
 }
 
+# --- every shell script is shellchecked --------------------------------------
+# The lint task names its targets by hand. That is the right call — a glob wide
+# enough to catch `setup` and `tests/helpers.bash` also drags in vendored trees
+# — but a hand-kept list is a list that goes stale silently: a script added
+# later is simply absent from it, and nothing fails. scripts/check-shells.sh sat
+# outside it for its whole life, with a bats file of its own the entire time.
+#
+# So the list stays hand-kept and this asserts it is complete. A target covers a
+# script literally or as a glob, which is how `home/.chezmoiscripts/*.sh.tmpl`
+# earns its place.
+#
+# Discovery prefers `git ls-files`, so an untracked graphify-out/ or a stray
+# scratch script cannot fail the repo's own lint; the find fallback is for a
+# fixture tree, which is not a checkout.
+check_shellcheck_targets() {
+	targets="$(sed -n 's/^[[:space:]]*"shellcheck \(.*\)",$/\1/p' \
+		"$root/mise.toml" 2>/dev/null | head -1)"
+	if [ -z "$targets" ]; then
+		fail "mise.toml has no shellcheck invocation to read the target list from"
+		return
+	fi
+
+	files="$(git -C "$root" ls-files 2>/dev/null ||
+		find "$root" -name .git -prune -o -type f -print 2>/dev/null |
+		sed "s|^$root/||")"
+
+	scripts=""
+	old_ifs="$IFS"
+	IFS='
+'
+	set -f
+	for f in $files; do
+		case "$f" in
+		*.sh | *.bash | *.sh.tmpl) ;;
+		*)
+			# A shell script is not always named like one: `setup` has no
+			# extension and every executable_* in dot_local/bin is a script
+			# whose name is the command it becomes.
+			head -n 1 "$root/$f" 2>/dev/null |
+				grep -qE '^#!.*[ /](ba|da|z|k)?sh$|^#!.*[ /](ba|da|z|k)?sh ' || continue
+			;;
+		esac
+		scripts="$scripts$f
+"
+	done
+
+	n=0
+	missing=""
+	for s in $scripts; do
+		n=$((n + 1))
+		covered=0
+		IFS=' '
+		for t in $targets; do
+			case "$t" in
+			-*) continue ;;
+			esac
+			# Unquoted on purpose: a target is a glob as often as a path.
+			# shellcheck disable=SC2254
+			case "$s" in
+			$t)
+				covered=1
+				break
+				;;
+			esac
+		done
+		IFS='
+'
+		[ "$covered" = 1 ] || missing="${missing:+$missing }$s"
+	done
+	set +f
+	IFS="$old_ifs"
+
+	# The same floor every other scan here carries: a moved directory must not
+	# pass by finding nothing left to disagree with.
+	if [ "$n" -lt 3 ]; then
+		fail "only $n shell script(s) found in the tree; expected at least 3 — the scan broke, not the tree"
+		return
+	fi
+	if [ -n "$missing" ]; then
+		fail "shell script(s) the lint task never shellchecks: $missing"
+	fi
+}
+
 if [ $# -eq 0 ]; then
-	set -- chezmoi-pins vault-name container-markers pat-expiry graphify-pin pat-path
+	set -- chezmoi-pins vault-name container-markers pat-expiry graphify-pin \
+		pat-path shellcheck-targets
 fi
 
 for want in "$@"; do
@@ -196,6 +280,7 @@ for want in "$@"; do
 	pat-expiry) check_pat_expiry ;;
 	graphify-pin) check_graphify_pin ;;
 	pat-path) check_pat_path ;;
+	shellcheck-targets) check_shellcheck_targets ;;
 	*)
 		echo "check-agreement: unknown check: $want" >&2
 		usage >&2
