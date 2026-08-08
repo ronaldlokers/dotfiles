@@ -1008,6 +1008,24 @@ STUB
 	grep -q 'no Proton Pass session' "$rec"
 }
 
+# M2. The EXIT trap alarmed and stopped there, so a run that died before its
+# summary left the *previous* run's record untouched — and a toast nobody was
+# there to see is exactly the case the record exists to cover. dotfiles-status
+# then reads `ok` for up to ten days, in the one mechanism built to notice this
+# script breaking.
+@test "a run that aborts mid-way records a fault rather than leaving the last one standing" {
+	printf '# fixture\ndate=%s\nresult=ok\ndetail=all fine\n' \
+		"$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$HOME/.local/state/dotfiles/last-check"
+	run_check DATE_EPOCH_FAILS=1
+	[ "$status" -ne 0 ]
+	# It has to have died before finishing, or this proves nothing about the
+	# trap: the summary line is the last thing a completed run prints.
+	[[ "$output" != *"vault item(s)"* ]]
+	rec="$HOME/.local/state/dotfiles/last-check"
+	grep -q '^result=fail$' "$rec"
+	! grep -q '^result=ok$' "$rec"
+}
+
 @test "the record carries no secret material" {
 	run_check
 	rec="$HOME/.local/state/dotfiles/last-check"
