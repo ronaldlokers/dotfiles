@@ -393,6 +393,33 @@ passes. That is right, not a gap — `ssh-agent load` would load the
 replacement exactly as well, so a title-based check would have reported a
 failure `proton-ssh-load` never had.
 
+### A run that dies has to say so where something can read it
+
+Everything `dotfiles-secrets-check` reports is ephemeral except the record it
+writes to `$XDG_STATE_HOME/dotfiles/last-check`. The toast is gone the moment
+you look away and never appears at all when the timer fires outside a graphical
+login; `systemctl --user --failed` is durable but answers only "did the last run
+fail", and a unit that has stopped running is indistinguishable there from one
+that runs and passes — both are absent. `dotfiles-status` reads the record to
+tell those apart, so anything that leaves the record wrong defeats the whole
+mechanism.
+
+The EXIT trap was the hole. It fired `alarm()` and stopped there, so a run that
+aborted before its summary — an unguarded command dying under `set -e`, a killed
+process — notified through the one channel that reaches nobody during an
+unattended run, and left the *previous* run's `result=ok` in place. A check that
+crashed every week read as healthy until the record went stale ten days later.
+The trap now records the fault before it alarms: a run that died is a fault
+about itself.
+
+Testing that needs a real abort rather than a simulated one, and the script is
+guarded thoroughly enough that there is exactly one unguarded call left to
+break: `date -u +%s`, in the PAT expiry arithmetic. `tests/helpers.bash` fails
+that one call under `DATE_EPOCH_FAILS`, scoped to `+%s` so `record_status` can
+still stamp its own date while the run is dying. If a future change guards it,
+the test stops crashing the script and fails loudly on its "it really did die"
+assertion rather than passing vacuously.
+
 ### Reading Proton Pass from a template
 
 `pass-cli` is a checksummed external rather than a mise pin, because Proton

@@ -308,6 +308,17 @@ done
 if [ -n "${want_date:-}" ]; then
 	exec "$real_date" "$@"
 fi
+# Crash injection. `date -u +%s` is the one call dotfiles-secrets-check makes
+# unguarded, so failing it aborts that script mid-run under `set -e` — which is
+# the only way to exercise its EXIT trap from outside. Scoped to +%s so
+# record_status can still stamp its own ISO date while the run is dying.
+if [ -n "${DATE_EPOCH_FAILS:-}" ]; then
+	for arg in "$@"; do
+		if [ "$arg" = "+%s" ]; then
+			exit 1
+		fi
+	done
+fi
 if [ -n "${NOW_EPOCH:-}" ]; then
 	printf '%s\n' "$NOW_EPOCH"
 	exit 0
