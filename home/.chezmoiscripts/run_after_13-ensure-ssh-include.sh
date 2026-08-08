@@ -8,7 +8,7 @@
 #
 # 13 and not 12: chezmoi strips the run_/onchange_/after_ attributes and orders
 # what is left, so every script here shares one numbering regardless of prefix.
-# This was 12 while run_onchange_after_12-enable-secrets-check also existed, and
+# This was 12 while run_after_12-enable-secrets-check also existed, and
 # which of the two ran first came down to alphabetics after the number rather
 # than to anyone's intent. See docs/design-notes.md, "One numbering, not two".
 set -eu

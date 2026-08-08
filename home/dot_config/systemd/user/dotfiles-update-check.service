@@ -5,7 +5,7 @@
 # PIN prompt with no terminal to answer it.
 #
 # Enabled automatically by
-# .chezmoiscripts/run_onchange_after_11-enable-update-check.sh.tmpl
+# .chezmoiscripts/run_after_11-enable-update-check.sh.tmpl
 [Unit]
 Description=Check whether the dotfiles repo has unapplied commits
 # No network ordering, and the two lines that used to claim it were removed

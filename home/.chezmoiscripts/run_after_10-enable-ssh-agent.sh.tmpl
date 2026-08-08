@@ -3,8 +3,15 @@
 # old "activate once per machine" manual step was easy to forget, which
 # left SSH_AUTH_SOCK (then set via environment.d) pointing at a dead
 # socket and broke DevPod's agent forwarding from Omarchy.
-# Re-runs whenever the unit file changes:
-# ssh-agent.service hash: {{ include "dot_config/systemd/user/ssh-agent.service" | sha256sum }}
+#
+# A plain `run_after`, not a `run_onchange`, for the same reason the host
+# package script is one: chezmoi records a run_onchange script's hash the moment
+# it exits 0 — including the exit 0 that means "no systemd here, did nothing" —
+# and never runs it again until the script itself changes. An apply from a
+# session-less context (a bootstrap over ssh, a first apply before the display
+# manager has started one) therefore skipped this permanently and silently.
+# Running every apply costs one probe and two systemctl calls, and lets a later
+# apply finish the job.
 set -eu
 
 # Only where a systemd user manager is running (hosts, not devpod
@@ -17,12 +24,12 @@ if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
     exit 0
 fi
 
-# Guarded for the same reason the enable below is, and it was the one call
-# here that was not. These are run_onchange scripts: a non-zero exit does not
-# merely skip this unit, it aborts the whole apply — chezmoi stops, and every
-# script numbered after this one (restoring the file secrets, installing the
-# host packages, configuring DevPod) never runs. A user manager that refuses a
-# reload is not a reason to leave the machine half-provisioned.
+# Guarded for the same reason the enable below is, and it was the one call here
+# that was not. A non-zero exit from a run_ script does not merely skip this
+# unit, it aborts the whole apply — chezmoi stops, and every script numbered
+# after this one (restoring the file secrets, installing the host packages,
+# configuring DevPod) never runs. A user manager that refuses a reload is not a
+# reason to leave the machine half-provisioned.
 if ! systemctl --user daemon-reload; then
     echo "Could not reload the systemd user manager; continuing." >&2
 fi
@@ -42,10 +49,10 @@ if ! systemctl --user cat ssh-agent.service >/dev/null 2>&1; then
     exit 0
 fi
 
-# Best-effort, like the siblings: this is a run_onchange, so a failure here must
-# cost the ssh-agent unit and not every script queued behind it. CI's
-# host-ssh-agent job asserts the unit is actually active afterwards, so a
-# silently swallowed failure still fails the build there.
+# Best-effort, like the siblings: a failure here must cost the ssh-agent unit
+# and not every script queued behind it. CI's host-ssh-agent job asserts the
+# unit is actually active afterwards, so a silently swallowed failure still
+# fails the build there.
 if ! systemctl --user enable --now ssh-agent.service; then
     echo "Could not enable ssh-agent.service; continuing." >&2
     echo "Enable it by hand with: systemctl --user enable --now ssh-agent.service" >&2

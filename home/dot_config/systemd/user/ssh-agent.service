@@ -3,7 +3,7 @@
 # it instead. SSH_AUTH_SOCK reaches shells via the guarded fallback in
 # .zshrc/.bashrc — deliberately NOT via environment.d, which would force
 # the socket on the whole session even when this unit isn't running.
-# Enabled automatically by .chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl
+# Enabled automatically by .chezmoiscripts/run_after_10-enable-ssh-agent.sh.tmpl
 [Unit]
 Description=SSH key agent
 

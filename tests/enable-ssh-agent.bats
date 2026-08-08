@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# run_onchange_after_10-enable-ssh-agent.sh.tmpl enables the systemd user
+# run_after_10-enable-ssh-agent.sh.tmpl enables the systemd user
 # ssh-agent. Nothing covered it before: CI's bootstrap job runs where there is
 # no user session at all (so only the skip branch runs), and CI's host-ssh-agent
 # job runs the happy path against a real session it built for the purpose. The
@@ -16,7 +16,7 @@ bats_require_minimum_version 1.5.0
 
 setup() {
 	load 'helpers'
-	TMPL="$BATS_TEST_DIRNAME/../home/.chezmoiscripts/run_onchange_after_10-enable-ssh-agent.sh.tmpl"
+	TMPL="$BATS_TEST_DIRNAME/../home/.chezmoiscripts/run_after_10-enable-ssh-agent.sh.tmpl"
 	HOME="$BATS_TEST_TMPDIR/home"
 	mkdir -p "$HOME"
 	BIN="$BATS_TEST_TMPDIR/bin"
