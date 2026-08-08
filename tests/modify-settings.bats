@@ -102,3 +102,32 @@ path_with() {
 	[ -z "$output" ]
 	[ -n "$stderr" ]
 }
+
+# --- the marketplace pins that were not pins (2026-08-08) --------------------
+#
+# The three third-party marketplaces carried a `ref` pinning each to a commit.
+# Nothing enforced it: after Claude Code's plugin sweep wiped them, the
+# supported repair (`claude plugin marketplace add <repo>`) has no way to
+# express a ref, and every restored clone came back on branch `main` at
+# upstream HEAD. A config field that reads as supply-chain control while
+# enforcing nothing is worse than an honest absence, so they were removed.
+#
+# This pins the removal: a ref reappearing means someone believes it does
+# something, and that belief needs re-testing against Claude Code rather than
+# assuming.
+@test "no marketplace declares a ref it cannot enforce" {
+	run bash "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	refs="$(printf '%s' "$output" | jq -r '[.extraKnownMarketplaces[].source.ref // empty] | length')"
+	[ "$refs" -eq 0 ]
+}
+
+# The marketplaces themselves must survive: dropping the ref must not drop the
+# declaration, or the plugins stop resolving entirely.
+@test "all four marketplaces are still declared" {
+	run bash "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	for m in claude-plugins-official caveman impeccable karpathy-skills; do
+		printf '%s' "$output" | jq -e --arg m "$m" '.extraKnownMarketplaces[$m].source.repo' >/dev/null
+	done
+}
