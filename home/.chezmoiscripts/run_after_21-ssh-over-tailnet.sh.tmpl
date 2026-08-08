@@ -34,6 +34,7 @@ fi
 # behaviour here is the fail-closed path and the idempotent compare, and neither
 # is reachable in a test that would need root to observe it.
 drop_in="${SSHD_DROPIN:-/etc/ssh/sshd_config.d/10-dotfiles-tailnet.conf}"
+unit_drop_in="${SSHD_UNIT_DROPIN:-/etc/systemd/system/sshd.service.d/10-wait-for-tailnet.conf}"
 
 if ! command -v sshd >/dev/null 2>&1; then
 	echo "[ssh-tailnet] openssh not installed yet; skipping." >&2
@@ -103,6 +104,67 @@ fi
 
 command -v systemctl >/dev/null 2>&1 || exit 0
 
+# The config above binds an address that does not exist yet at boot. tailscaled
+# assigns it some seconds in, and sshd's unit has no opinion about that, so on
+# 2026-08-08 this machine came up from a reboot with:
+#
+#   error: Bind to port 22 on 100.112.124.106 failed: Cannot assign requested
+#   address.
+#   sshd.service: Start request repeated too quickly.
+#
+# Five restarts inside one second, the start limit latched, sshd off for the
+# rest of the boot — and the address arrived moments later. Moshi reaches this
+# machine over SSH, so the effect was a phone that could not connect at all.
+#
+# The wait is on the address rather than on tailscaled or on tailscale0:
+# ordering after the daemon still races the address it hands out, and the
+# interface exists before it is configured. What sshd needs is precisely the
+# thing it is about to bind.
+#
+# No counter in the loop, deliberately. systemd expands `$i` in an Exec line as
+# a unit variable and would hand the shell an empty string, so the ceiling is
+# TimeoutStartSec — systemd's own, which is what bounds a hanging boot anyway.
+want_unit="$(
+	cat <<EOF
+# Managed by chezmoi: .chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl
+# Regenerated on every apply from \`tailscale ip -4\`. Edit the script, not this.
+#
+# sshd binds the tailnet address, which does not exist until tailscaled has
+# assigned it. Start sshd before that and the bind fails; retry it five times in
+# a second and the start limit latches it off for the whole boot.
+[Unit]
+After=tailscaled.service
+Wants=tailscaled.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStartPre=/bin/sh -c 'until ip -4 addr show | grep -q "inet $ts_ip/"; do sleep 1; done'
+TimeoutStartSec=120
+Restart=on-failure
+RestartSec=2
+EOF
+)"
+
+if [ -r "$unit_drop_in" ] && [ "$(cat "$unit_drop_in")" = "$want_unit" ]; then
+	unit_changed=0
+else
+	unit_changed=1
+fi
+
+if [ "$unit_changed" = 1 ]; then
+	echo "[ssh-tailnet] ordering sshd after the tailnet address" >&2
+	unit_dir="${unit_drop_in%/*}"
+	if ! sudo mkdir -p "$unit_dir" 2>/dev/null ||
+		! printf '%s\n' "$want_unit" | sudo tee "$unit_drop_in" >/dev/null 2>&1; then
+		echo "[ssh-tailnet] could not write $unit_drop_in; continuing." >&2
+		echo "[ssh-tailnet] Needs: sudo, and a re-run once available." >&2
+		exit 0
+	fi
+	sudo chmod 644 "$unit_drop_in" 2>/dev/null || true
+	sudo systemctl daemon-reload 2>/dev/null \
+		|| echo "[ssh-tailnet] daemon-reload failed; run: sudo systemctl daemon-reload" >&2
+fi
+
 # `sshd` on Arch is socket-activated by sshd.socket on some setups and a plain
 # service on others. Enabling the service is what this repo wants: mosh needs a
 # real sshd listening on the bound address, and socket activation would ignore
@@ -111,6 +173,16 @@ if ! systemctl is-enabled --quiet sshd.service 2>/dev/null; then
 	echo "[ssh-tailnet] enabling sshd.service" >&2
 	sudo systemctl enable --now sshd.service \
 		|| echo "[ssh-tailnet] failed; run: sudo systemctl enable --now sshd.service" >&2
+elif ! systemctl is-active --quiet sshd.service 2>/dev/null; then
+	# Enabled and down is the state the boot race leaves behind, and the drop-in
+	# above does nothing for the boot that already happened: a latched start
+	# limit stays latched until something clears it. Starting a daemon that is
+	# not running cuts no session, so unlike the reload branch this is safe to do
+	# unasked — and without it the fix only arrives at the next reboot.
+	echo "[ssh-tailnet] sshd is enabled but not running; starting it" >&2
+	sudo systemctl reset-failed sshd.service 2>/dev/null || true
+	sudo systemctl start sshd.service \
+		|| echo "[ssh-tailnet] start failed; run: sudo systemctl start sshd" >&2
 elif [ "$config_changed" = 1 ]; then
 	# Config moved under a running daemon: reload rather than restart, so an
 	# existing session — quite possibly the one running this apply — survives.

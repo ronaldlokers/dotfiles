@@ -31,4 +31,10 @@ ghostty.terminfo
 # And its counterpart, for the same reason: a container has no vault to restore
 # into and no removable medium to read the copy from.
 .local/bin/dotfiles-secrets-restore
+# The herdr shim exists for Moshi's launcher, which is host-only — same gate as
+# .chezmoiexternals/moshi-hook.toml. herdr itself is a mise tool and is on PATH
+# in a container anyway; what a container has no use for is a second name for it
+# on a PATH no phone will ever export. See docs/design-notes.md, "Moshi's
+# launcher cannot see a mise shim".
+.local/bin/herdr
 {{ end -}}
