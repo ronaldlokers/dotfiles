@@ -1,0 +1,43 @@
+{{- /* moshi-hook: the daemon that surfaces Claude Code's approvals and
+       completions on the phone. Host-only — a container has no agent session
+       anyone is watching from a phone, and no tailnet address to be reached on.
+
+       An external rather than a mise pin because there is no mise entry and no
+       GitHub repository at all: moshi-hook is closed-source, published to
+       cdn.getmoshi.app. Upstream's supported install is
+
+           curl -fsSL https://getmoshi.app/install.sh | sh
+
+       which this repo does not do. That installer resolves "latest" at run
+       time, so what lands depends on the day; it verifies a checksums.txt
+       fetched from the same host as the binary, which is trust-on-first-use
+       rather than provenance; and it silently skips verification entirely when
+       checksums.txt is unavailable. Pinning the version and the hash here
+       gives up its convenience and keeps the one property that matters: this
+       machine gets the same bytes every time, and a change is a failed apply
+       rather than a surprise.
+
+       Same caveat as devpod's hash next door, and worth repeating rather than
+       assuming a reader will go and look: the hash was taken from the served
+       artifact and cross-checked against upstream's own published
+       checksums.txt for v0.2.76. Those two agreeing proves the download was
+       not tampered with in transit today. It does not prove anything about
+       what upstream published, because both come from the same origin.
+
+       Bump by hand, version and hash together:
+           v=v0.2.76  # or whatever cdn.getmoshi.app/hook/latest/version.txt says
+           curl -fsSL "https://cdn.getmoshi.app/hook/$v/checksums.txt" \
+             | grep moshi-hook_Linux_x86_64.tar.gz
+
+       Renovate has no datasource for a bare CDN, so nothing proposes these —
+       which is the same position pass-cli is in, and the reason both say so. */ -}}
+{{- if and (eq (includeTemplate "is-container" .) "false") (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
+{{ $moshiHookVersion := "v0.2.76" }}
+[".local/bin/moshi-hook"]
+type = "archive-file"
+executable = true
+path = "moshi-hook"
+url = "https://cdn.getmoshi.app/hook/{{ $moshiHookVersion }}/moshi-hook_Linux_x86_64.tar.gz"
+checksum.sha256 = "3c13c4782b0580128514b8eb54ce52a4be245a1c33b3b2463b40e350710c3392"
+refreshPeriod = "168h"
+{{- end -}}

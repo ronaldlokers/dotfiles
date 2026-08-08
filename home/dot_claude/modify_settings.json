@@ -59,13 +59,110 @@ baseline() {
 {
   "includeCoAuthoredBy": false,
   "hooks": {
-    "PreToolUse": [
+    "PermissionRequest": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
-            "type": "command",
-            "command": "bash \"$HOME\"/.claude/hooks/rtk-rewrite.sh"
+            "async": false,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "AskUserQuestion"
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "bash \"$HOME\"/.claude/hooks/rtk-rewrite.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "AskUserQuestion"
+      },
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
           }
         ]
       }

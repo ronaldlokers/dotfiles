@@ -131,3 +131,56 @@ path_with() {
 		printf '%s' "$output" | jq -e --arg m "$m" '.extraKnownMarketplaces[$m].source.repo' >/dev/null
 	done
 }
+
+# --- Moshi's hooks live in the baseline, not on disk (2026-08-08) ------------
+#
+# `moshi-hook install` writes its hooks straight into ~/.claude/settings.json.
+# The merge here is managed-wins on every top-level key, and `hooks` is one of
+# them — so the next `chezmoi apply` would delete them, silently, and Moshi
+# would simply stop reporting anything with nothing to say why.
+#
+# The resolution is the one the merge was designed for: the repo is the sole
+# authority, so the hooks belong in the baseline. These pin that, because the
+# failure mode is invisible — everything keeps working except the phone.
+
+@test "the Moshi hooks survive an apply" {
+	run bash "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	n="$(printf '%s' "$output" | jq -r '[..|.command? // empty]|map(select(test("moshi-hook")))|length')"
+	[ "$n" -eq 9 ]
+}
+
+# Merging over a settings.json that has them must not drop them either — that
+# is the actual apply, and the case that would regress.
+@test "they survive merging over an on-disk copy that already has them" {
+	baseline="$(bash "$SCRIPT" </dev/null)"
+	run bash "$SCRIPT" <<<"$baseline"
+	[ "$status" -eq 0 ]
+	n="$(printf '%s' "$output" | jq -r '[..|.command? // empty]|map(select(test("moshi-hook")))|length')"
+	[ "$n" -eq 9 ]
+}
+
+# All seven categories, named. A partial set is the shape a bad merge leaves
+# behind, and it would look like "mostly working".
+@test "every hook category Moshi installs is present" {
+	run bash "$SCRIPT" </dev/null
+	for k in PermissionRequest PostToolUse PreToolUse SessionEnd SessionStart Stop UserPromptSubmit; do
+		printf '%s' "$output" | jq -e --arg k "$k" '.hooks[$k]' >/dev/null
+	done
+}
+
+# The rtk-rewrite hook was here first and shares PreToolUse with two of Moshi's.
+# Adding them must not have displaced it.
+@test "the rtk-rewrite hook still runs on Bash" {
+	run bash "$SCRIPT" </dev/null
+	printf '%s' "$output" | jq -e '.hooks.PreToolUse[]|select(.matcher=="Bash")|.hooks[]|select(.command|test("rtk-rewrite"))' >/dev/null
+}
+
+# moshi-hook install bakes in an absolute /home/<user>/ path. The baseline is
+# applied to whatever machine runs it, so the path has to be $HOME-relative or
+# it is wrong everywhere except the machine it was captured on.
+@test "no hook command hardcodes a home directory" {
+	run bash "$SCRIPT" </dev/null
+	[[ "$output" != *"/home/ronald"* ]]
+	printf '%s' "$output" | jq -e '[..|.command? // empty]|map(select(test("moshi-hook")))|all(test("\\$HOME"))' >/dev/null
+}
