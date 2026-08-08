@@ -56,6 +56,33 @@ if ! moshi-hook status 2>/dev/null | grep -q '^status: *paired'; then
 	exit 0
 fi
 
+# The drop-in that tells the daemon where herdr is has to be live before the
+# daemon is judged healthy.
+#
+# `service install` generates a unit hardcoding
+# `Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and herdr is a mise shim, so
+# without MOSHI_HERDR_PATH the daemon cannot resolve it. The symptom is silent:
+# no error anywhere, Moshi just reports no workspaces, which reads like herdr
+# being unsupported rather than not being found. dot_config/systemd/user/
+# moshi-hook.service.d/10-herdr-path.conf supplies it.
+#
+# Compared against the *running* unit rather than the file on disk, because
+# chezmoi having written the drop-in says nothing about whether the manager has
+# read it — that needs a daemon-reload, and the restart only matters when the
+# value actually differs.
+want_herdr="$HOME/.local/share/mise/shims/herdr"
+have_herdr="$(systemctl --user show moshi-hook.service -p Environment 2>/dev/null |
+	tr ' ' '\n' | sed -n 's/^\(Environment=\)\{0,1\}MOSHI_HERDR_PATH=//p' | head -1)"
+
+if [ "$have_herdr" != "$want_herdr" ] &&
+	systemctl --user is-active --quiet moshi-hook.service 2>/dev/null; then
+	echo "[moshi] picking up the herdr path" >&2
+	systemctl --user daemon-reload 2>/dev/null || true
+	systemctl --user restart moshi-hook.service 2>/dev/null \
+		|| echo "[moshi] restart failed; run: systemctl --user restart moshi-hook" >&2
+	exit 0
+fi
+
 # Idempotent: `service install` is the documented way to create and start the
 # unit, and re-running it on a healthy machine is a no-op. Report and continue
 # on failure, the rule the rest of the apply chain follows — a phone

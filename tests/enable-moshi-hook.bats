@@ -42,6 +42,7 @@ printf 'systemctl %s\n' "$*" >>"$LOG"
 for a in "$@"; do
 	case "$a" in
 	is-active) exit "${MOSHI_ACTIVE_RC:-1}" ;;
+	show) printf 'Environment=%s\n' "${MOSHI_ENV:-PATH=/usr/local/bin:/usr/bin:/bin}" ;;
 	esac
 done
 exit 0
@@ -53,7 +54,7 @@ STUB
 
 	SANDBOX="$BATS_TEST_TMPDIR/sandbox"
 	mkdir -p "$SANDBOX"
-	for t in sh grep printf env; do
+	for t in sh grep printf env tr sed head; do
 		src="$(type -P "$t" 2>/dev/null)" || continue
 		[ -n "$src" ] && ln -sf "$src" "$SANDBOX/$t"
 	done
@@ -131,4 +132,44 @@ run_script() {
 	run_script MOSHI_PAIRED=paired MOSHI_INSTALL_RC=1
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"could not start it"* ]]
+}
+
+# --- the herdr path (2026-08-08) ---------------------------------------------
+#
+# `moshi-hook service install` generates a unit hardcoding
+# `Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and herdr is a mise shim in
+# ~/.local/share/mise/shims. The daemon therefore cannot resolve `herdr` at all.
+#
+# Nothing errors. Moshi simply reports no workspaces, which reads like herdr
+# being unsupported rather than not being found — so this is worth a test even
+# though the fix is one Environment= line: the symptom points away from the
+# cause.
+
+@test "a daemon without the herdr path is restarted to pick it up" {
+	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"picking up the herdr path"* ]]
+	grep -q "daemon-reload" "$LOG"
+	grep -q "restart moshi-hook.service" "$LOG"
+}
+
+# ...and once it has it, nothing happens. Restarting the daemon on every apply
+# would drop the gateway connection each time.
+@test "a daemon that already has it is left alone" {
+	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0 \
+		MOSHI_ENV="MOSHI_HERDR_PATH=$HOME/.local/share/mise/shims/herdr"
+	[ "$status" -eq 0 ]
+	! grep -q "restart" "$LOG"
+}
+
+# The drop-in is what supplies the value, and it has to be a drop-in rather
+# than an edit to the unit: `service install` runs on every apply once paired
+# and regenerates the unit, which would discard anything written into it.
+@test "the value comes from a drop-in, not from the generated unit" {
+	f="$BATS_TEST_DIRNAME/../home/dot_config/systemd/user/moshi-hook.service.d/10-herdr-path.conf"
+	[ -f "$f" ]
+	grep -q "^Environment=MOSHI_HERDR_PATH=" "$f"
+	# %h, not a hardcoded home: the unit is applied to whatever machine runs it.
+	grep -q "%h/" "$f"
+	! grep -q "/home/" "$f"
 }

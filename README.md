@@ -312,6 +312,15 @@ default.
 `moshi-hook host enable-ssh` is macOS-only and does nothing here; sshd is
 enabled by the apply script above.
 
+**If Moshi shows no herdr workspaces**, the daemon cannot find the `herdr`
+binary. `moshi-hook service install` generates a unit hardcoding
+`Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and herdr is a mise shim, so
+it is not on that path — and nothing errors, the workspace list is just empty,
+which reads like herdr being unsupported. `dot_config/systemd/user/
+moshi-hook.service.d/10-herdr-path.conf` sets `MOSHI_HERDR_PATH` to fix it.
+A drop-in rather than an edit to the unit, because the unit is regenerated on
+every apply.
+
 Once paired, `run_after_22-enable-moshi-hook.sh.tmpl` starts the daemon on every
 apply. Before pairing it refuses and says so, because a daemon retrying against
 a gateway that will never accept it would sit in `systemctl --user --failed`,
