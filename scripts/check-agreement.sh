@@ -25,20 +25,47 @@
 # has drifted rather than only the first thing.
 set -eu
 
-root="${1:-.}"
-[ $# -eq 0 ] || shift
+# One list, read by the usage text, the argument handling and the default run
+# below. It was three, and they had already drifted: the usage text listed six
+# checks while the dispatch knew seven.
+all_checks="chezmoi-pins vault-name container-markers pat-expiry graphify-pin
+pat-path shellcheck-targets"
+
+is_check() {
+	for _ic in $all_checks; do
+		# `[ … ] && return 0` would be shorter and would exit the script under
+		# `set -e` the first time this is called outside a condition.
+		if [ "$_ic" = "$1" ]; then
+			return 0
+		fi
+	done
+	return 1
+}
 
 usage() {
-	cat <<'USAGE'
+	cat <<USAGE
 usage: scripts/check-agreement.sh [root] [check ...]
 
 Asserts the facts this repo states in more than one place still agree.
 
-Checks: chezmoi-pins, vault-name, container-markers, pat-expiry, graphify-pin,
-        pat-path, shellcheck-targets
+Checks: $(printf '%s' "$all_checks" | tr '\n' ' ')
 With no check named, runs all of them.
 USAGE
 }
+
+# The first argument is the root only when it is not the name of a check. It was
+# taken as the root unconditionally, so the invocation this script's own header
+# documents — `check-agreement.sh vault-name`, root defaulting to `.` — died
+# with "no such directory: vault-name". Nothing caught it because every caller
+# in the tree passes a root first; the broken form was the one a person types.
+#
+# A directory that happens to share a check's name is still reachable, by naming
+# it the way every caller already does: `check-agreement.sh ./vault-name`.
+root="."
+if [ $# -gt 0 ] && ! is_check "$1"; then
+	root="$1"
+	shift
+fi
 
 case "$root" in
 -h | --help)
@@ -268,8 +295,9 @@ check_shellcheck_targets() {
 }
 
 if [ $# -eq 0 ]; then
-	set -- chezmoi-pins vault-name container-markers pat-expiry graphify-pin \
-		pat-path shellcheck-targets
+	# Unquoted on purpose: the list is whitespace-separated and has no globs.
+	# shellcheck disable=SC2086
+	set -- $all_checks
 fi
 
 for want in "$@"; do

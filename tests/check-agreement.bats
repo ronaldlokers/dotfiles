@@ -293,3 +293,45 @@ run_check() {
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"no shellcheck invocation"* ]]
 }
+
+# --- the arguments it documents (M15) ----------------------------------------
+#
+# The header says `[root] [check ...]` with root defaulting to the current
+# directory, which reads as "naming a check runs only that one". It did not: the
+# first argument was taken as the root unconditionally, so
+# `scripts/check-agreement.sh vault-name` died with "no such directory:
+# vault-name". Every caller in the tree passes a root first, so nothing noticed
+# — the broken form was the one a person would type.
+
+@test "a bare check name runs that check against the current directory" {
+	run env -C "$TREE" sh "$SCRIPT" vault-name
+	[ "$status" -eq 0 ]
+}
+
+@test "a bare check name still fails when that check fails" {
+	printf 'vault="Personal"\n' >"$TREE/home/dot_local/bin/executable_a"
+	run env -C "$TREE" sh "$SCRIPT" vault-name
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"disagrees"* ]]
+}
+
+# ...and naming a check must not silently run every other one as well.
+@test "a bare check name runs only that check" {
+	printf 'chezmoi = "2.71.0"\n"pipx:graphifyy" = "0.9.30"\n' \
+		>"$TREE/home/dot_config/mise/config.toml"
+	run env -C "$TREE" sh "$SCRIPT" vault-name
+	[ "$status" -eq 0 ]
+}
+
+# The form every caller in the tree uses keeps working, since a root is not a
+# check name and a check name is not a root.
+@test "an explicit root still comes first" {
+	run sh "$SCRIPT" "$TREE" vault-name
+	[ "$status" -eq 0 ]
+}
+
+@test "a directory that shares a check's name is still reachable as a root" {
+	mkdir -p "$TREE/vault-name"
+	run sh "$SCRIPT" "$TREE" vault-name
+	[ "$status" -eq 0 ]
+}
