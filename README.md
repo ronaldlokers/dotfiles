@@ -36,7 +36,8 @@ expires.
 Applying pulls in the rest automatically:
 
 - **externals** (`.chezmoiexternals/`) — mise, pure, zsh/tmux plugins, tv
-  channels, k9s, pass-cli. Refreshed weekly; devpod and pass-cli are host-only.
+  channels, k9s, pass-cli, moshi-hook. Refreshed weekly; devpod, pass-cli and
+  moshi-hook are host-only.
 - **mise install** whenever `dot_config/mise/config.toml` changes — the pinned
   CLI/TUI tool list, applied to containers too.
 - **host packages** (`run_after_20-install-host-packages.sh.tmpl`) — desktop
@@ -254,6 +255,56 @@ work. Do the steps in this order:
 Until step 2 is done the template deliberately emits only the bounded entry —
 the vault still returns the retired key, and listing it twice, once unbounded,
 would give back exactly the forgery window the boundary closes.
+
+## Moshi
+
+Drives Claude Code from a phone: approvals, completions and the agent's status
+arrive as notifications, and you can answer them. It reaches this machine over
+the tailnet, never the open internet.
+
+Four pieces, three of them applied automatically:
+
+| Piece | Where |
+| --- | --- |
+| `moshi-hook` daemon | `.chezmoiexternals/moshi-hook.toml`, pinned and checksummed |
+| Claude Code hooks | `dot_claude/modify_settings.json` — nine entries, seven categories |
+| sshd on the tailnet | `.chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl` |
+| Pairing | by hand, once — see below |
+
+**The hooks live in this repo, not in `~/.claude/settings.json`.** `moshi-hook
+install` writes them there, and the merge in `modify_settings.json` is
+managed-wins on every top-level key — so the next `chezmoi apply` would delete
+them, silently, and the phone would go quiet with nothing saying why. They are
+in the baseline instead, `$HOME`-relative rather than the absolute path the
+installer bakes in. Do not run `moshi-hook install` to "fix" a phone that has
+stopped reporting; check the daemon first.
+
+**sshd answers on the tailnet address only.** Not a hardening extra — the
+default is every interface, which on a laptop means every network it joins. A
+machine that has not run `sudo tailscale up` gets no sshd at all rather than a
+config that listens everywhere. Tailscale's own SSH is deliberately unused:
+`RunSSH` stays false and authorisation stays in `authorized_keys`, which this
+repo can see.
+
+**Pairing is manual and needs two things from you:**
+
+```sh
+moshi-hook pair --token <token> --store file   # token: app -> Settings -> Integrations
+moshi-hook status                              # expect: status: paired
+```
+
+Then add the phone's public key — Moshi generates the pair, or imports one — to
+`~/.ssh/authorized_keys`. That file is deliberately unmanaged: it is the list of
+things allowed to log in, and a rebuild silently restoring an old one is the
+wrong default.
+
+Once paired, `run_after_22-enable-moshi-hook.sh.tmpl` starts the daemon on every
+apply. Before pairing it refuses and says so, because a daemon retrying against
+a gateway that will never accept it would sit in `systemctl --user --failed`,
+which this repo needs to keep meaning something.
+
+The pairing token, host ID and host secret are a credential — see
+[`docs/revocation.md`](docs/revocation.md).
 
 ## YubiKey
 

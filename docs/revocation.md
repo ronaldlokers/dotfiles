@@ -46,6 +46,7 @@ replaced.
 | **DevPod project tokens** | vault item `devpod project-tokens` | one repo each, fine-grained | yes |
 | **sugarrush config** | vault item `sugarrush config` | the sugarrush service | yes |
 | **`RENOVATE_TOKEN`** | GitHub Actions secret | this repo, as the Renovate bot | yes |
+| **Moshi pairing secret** | `moshi-hook` file store on the host | drives Claude Code on this machine from a paired phone | yes |
 
 `dotfiles-status` tells you the health of the first two. Nothing enumerates the
 rest automatically, because nothing can: half of them live in services this
@@ -102,6 +103,27 @@ The auth key is the painful one, because nothing here knows where it is
 trusted. Mint a new key, add it to the vault, load it, then work through every
 `authorized_keys` and every forge that has the old one — GitHub, any server, any
 CI. Remove the old key from the vault last, so you are not locked out midway.
+
+## If the Moshi pairing secret leaked
+
+Whoever holds it can drive Claude Code on this machine: approve tool calls,
+answer prompts, and read whatever the agent is doing. It is not a vault
+credential, but the agent it controls has your shell.
+
+1. Unpair the host in the Moshi app, which invalidates the host secret.
+2. Re-pair with a fresh token:
+   ```sh
+   moshi-hook pair --token <new-token> --store file
+   moshi-hook status
+   ```
+3. Check `~/.ssh/authorized_keys` while you are there — the phone's key is
+   what gets it onto the machine in the first place, and a lost phone means
+   both should go.
+
+Losing the phone is the likelier version of this than the secret leaking on
+its own. sshd answers only on the tailnet, so removing the device from the
+tailnet cuts access even before the key is removed — that is worth doing
+first, because it is one click and takes effect immediately.
 
 ## If a GitHub token leaked
 
