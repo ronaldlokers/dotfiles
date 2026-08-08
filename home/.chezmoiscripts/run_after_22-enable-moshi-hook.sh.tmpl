@@ -70,13 +70,35 @@ fi
 # chezmoi having written the drop-in says nothing about whether the manager has
 # read it — that needs a daemon-reload, and the restart only matters when the
 # value actually differs.
+moshi_log="${MOSHI_STATE_DIR:-$HOME/.local/state/moshi}/hook.log"
 want_herdr="$HOME/.local/share/mise/shims/herdr"
 have_herdr="$(systemctl --user show moshi-hook.service -p Environment 2>/dev/null |
 	tr ' ' '\n' | sed -n 's/^\(Environment=\)\{0,1\}MOSHI_HERDR_PATH=//p' | head -1)"
 
-if [ "$have_herdr" != "$want_herdr" ] &&
+# The daemon holds its pairing credentials in memory from the moment it
+# started, so re-pairing this host leaves it authenticating as a host that no
+# longer exists. It stays `active` while every publish is rejected with
+# "Invalid host secret" — the unit looks healthy, the phone shows nothing, and
+# the only evidence is a log nobody reads. Observed exactly that: daemon up at
+# 15:20, re-paired at 15:28, silent until restarted.
+#
+# So compare what the daemon connected as against what the host is paired as
+# now. `status` reads local state, and the log line the bridge writes on
+# connect carries the id actually in use.
+want_host="$(moshi-hook status 2>/dev/null | sed -n 's/^host id: *//p' | head -1)"
+have_host="$(grep -o 'hostId=host_[a-zA-Z0-9]*' "$moshi_log" 2>/dev/null |
+	tail -1 | sed 's/^hostId=//')"
+
+restart_why=""
+if [ "$have_herdr" != "$want_herdr" ]; then
+	restart_why="to pick up the herdr path"
+elif [ -n "$want_host" ] && [ -n "$have_host" ] && [ "$want_host" != "$have_host" ]; then
+	restart_why="because this host was re-paired since the daemon started"
+fi
+
+if [ -n "$restart_why" ] &&
 	systemctl --user is-active --quiet moshi-hook.service 2>/dev/null; then
-	echo "[moshi] picking up the herdr path" >&2
+	echo "[moshi] restarting the daemon $restart_why" >&2
 	systemctl --user daemon-reload 2>/dev/null || true
 	systemctl --user restart moshi-hook.service 2>/dev/null \
 		|| echo "[moshi] restart failed; run: systemctl --user restart moshi-hook" >&2
