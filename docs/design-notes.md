@@ -891,3 +891,21 @@ and on a machine with no cached token a prompt with no terminal to answer it. It
 say, and distinguishes a clean fast-forward from a diverged branch. Enabled by
 `run_after_11-enable-update-check.sh.tmpl`, which skips where no systemd
 user session exists — so containers don't get it.
+
+It also carries the daily health report, which is not about updates at all:
+`dotfiles-status --quiet` is silent and exits 0 unless something is *broken*,
+and this timer is the only thing on the machine that fires daily and knows how
+to reach a person. That half sits *above* the git work deliberately — below it,
+five ordinary early exits (no git, not a work tree, detached HEAD, no upstream,
+a failed fetch) each silently disabled the only automated word that the weekly
+check had stopped running.
+
+Testing that half needs two stubs and one deletion. `dotfiles-status` is stubbed
+because the real one answers from recorded state a test cannot arrange without
+also arranging whatever wrote it — and because a developer machine has a real
+one on `PATH`, which made the suite exercise *this* machine's health locally
+while CI, where nothing is installed, skipped the block outright. Both are wrong
+and they disagree, which is the worse property. `XDG_STATE_HOME` is cleared for
+the mirror-image reason: the debounce record lives under it, so a test that
+makes the check fail would otherwise write into the developer's real
+`~/.local/state` and read back whatever was already there.

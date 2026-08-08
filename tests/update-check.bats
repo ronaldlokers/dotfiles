@@ -126,14 +126,29 @@ make_tracked_clone() {
 # comparison. notify-send stays stubbed.
 run_against() {
 	local work="$1"
+	shift
 	local script="$BATS_TEST_TMPDIR/behaviour.sh"
 	local realbin="$BATS_TEST_TMPDIR/realbin"
 	mkdir -p "$realbin"
 	make_notify_send_stub "$realbin"
+	make_dotfiles_status_stub "$realbin"
 	render_template "$TMPL" "$script" "$PATH" "$work"
-	run env HOME="$HOME" NOTIFY_LOG="$NOTIFY_LOG" \
+	# -u XDG_STATE_HOME is not tidiness. The health block below writes its
+	# debounce record to $XDG_STATE_HOME/dotfiles/last-notified, and this
+	# desktop exports that variable — so without this a test that makes the
+	# check fail writes into the developer's real state directory, and reads
+	# back whatever is already there. Clearing it puts the record under the
+	# test HOME with everything else.
+	#
+	# The stub directory goes first for the mirror-image reason: a developer
+	# machine has a real dotfiles-status on PATH, which answers from the real
+	# machine's recorded state. These tests passed here and skipped the block
+	# entirely in CI, where nothing is installed.
+	run env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
+		-u XDG_CACHE_HOME \
+		HOME="$HOME" NOTIFY_LOG="$NOTIFY_LOG" \
 		DBUS_SESSION_BUS_ADDRESS="unix:path=$BATS_TEST_TMPDIR/fake-bus" \
-		PATH="$realbin:$PATH" bash "$script" </dev/null
+		PATH="$realbin:$PATH" "$@" bash "$script" </dev/null
 }
 
 @test "says how many commits are waiting" {
@@ -196,4 +211,93 @@ run_against() {
 	[ "$status" -eq 0 ]
 	[ "$(git -C "$work" rev-parse HEAD)" = "$before_head" ]
 	[ "$(git -C "$work" status --porcelain)" = "$before_tree" ]
+}
+
+# --- the health report it carries for dotfiles-status (M7) --------------------
+#
+# This half is not about the repo being behind at all. dotfiles-status --quiet
+# is silent and exits 0 unless something is *broken*, and this is the only thing
+# on the machine that fires daily and knows how to reach a person — so the daily
+# timer runs it and notifies. None of that had a test: the block was added whole
+# and the suite that lives next to it never mentioned dotfiles-status.
+#
+# Worse, on a developer machine the real one is on PATH and answers from the
+# real machine's state, so these tests would have exercised something different
+# here than in CI, where nothing is installed and the block is skipped outright.
+# The stub settles both.
+
+@test "a broken machine is reported, even with nothing to update" {
+	work="$(make_tracked_clone 0)"
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  secrets check     never ran'
+	[ "$status" -eq 0 ]
+	[[ "$(cat "$NOTIFY_LOG")" == *"secrets need attention"* ]]
+}
+
+@test "a healthy machine is not reported" {
+	work="$(make_tracked_clone 0)"
+	run_against "$work" DS_RC=0 DS_OUTPUT='ok    secrets check     2 day(s) ago'
+	[ "$status" -eq 0 ]
+	[ ! -s "$NOTIFY_LOG" ]
+}
+
+# H5, pinned. The report used to sit *below* five unconditional `exit 0`s — no
+# git, not a work tree, detached HEAD, no upstream, a failed fetch — so an
+# offline laptop or a checkout parked on a topic branch silently disabled the
+# only automated word that the weekly check had stopped running, while both
+# timers kept firing and both units kept passing.
+@test "the report survives a checkout the git half gives up on" {
+	work="$(make_tracked_clone 1)"
+	git -C "$work" branch --unset-upstream
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  secrets check     never ran'
+	[ "$status" -eq 0 ]
+	[[ "$(cat "$NOTIFY_LOG")" == *"secrets need attention"* ]]
+}
+
+# The body is the FAIL lines and only those. It used to be `head -2` of whatever
+# came out, so a toast titled "needs attention" could open with an `ok` line and
+# truncate the actual fault away.
+@test "the toast carries the faults, not the first two lines" {
+	work="$(make_tracked_clone 0)"
+	run_against "$work" DS_RC=1 \
+		DS_OUTPUT='ok    offline backup    made 3 day(s) ago\nwarn  something       pending\nFAIL  secrets check     never ran'
+	[ "$status" -eq 0 ]
+	notify_text="$(cat "$NOTIFY_LOG")"
+	[[ "$notify_text" == *"FAIL  secrets check"* ]]
+	[[ "$notify_text" != *"offline backup"* ]]
+}
+
+# Debounce. A fault that persists is still a fault, but an identical
+# notification every day is how the channel stops being read — and it is the
+# same channel that carries the ones that matter.
+@test "an unchanged fault does not notify again the next day" {
+	work="$(make_tracked_clone 0)"
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  secrets check     never ran'
+	[ -s "$NOTIFY_LOG" ]
+	: >"$NOTIFY_LOG"
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  secrets check     never ran'
+	[ "$status" -eq 0 ]
+	[ ! -s "$NOTIFY_LOG" ]
+}
+
+# ...but "a different thing is broken now" is exactly the event worth
+# interrupting for, which is why the debounce is keyed on the message and not on
+# a timestamp alone.
+@test "a fault that changes notifies at once" {
+	work="$(make_tracked_clone 0)"
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  secrets check     never ran'
+	: >"$NOTIFY_LOG"
+	run_against "$work" DS_RC=1 DS_OUTPUT='FAIL  offline backup    the key rotated'
+	[ "$status" -eq 0 ]
+	[[ "$(cat "$NOTIFY_LOG")" == *"offline backup"* ]]
+}
+
+# The machine that has no dotfiles-status at all — a container, or a host where
+# the applied copy has not landed yet. The block is skipped and the update half
+# still does its job.
+@test "no dotfiles-status installed is not a fault" {
+	work="$(make_tracked_clone 2)"
+	rm -f "$BATS_TEST_TMPDIR/realbin/dotfiles-status"
+	run_against "$work"
+	[ "$status" -eq 0 ]
+	[[ "$(cat "$NOTIFY_LOG")" == *"2 new commit(s)"* ]]
 }

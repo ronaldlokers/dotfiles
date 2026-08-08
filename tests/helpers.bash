@@ -188,6 +188,29 @@ STUB
 	chmod 755 "$bin/notify-send"
 }
 
+# Writes a fake dotfiles-status into $1 (a directory placed first on PATH).
+# dotfiles-update-check runs it to decide whether to notify, and the real one
+# reads recorded state that a test cannot arrange without also arranging the
+# thing that wrote it. Two knobs, which is all the caller reads:
+#
+#   DS_RC      exit code                        (default 0 — nothing is broken)
+#   DS_OUTPUT  what it prints on stdout, `\n` honoured, so a test can hand it
+#              the mix of ok/warn/FAIL lines the real one produces
+#
+# The stub must shadow a real dotfiles-status on the developer's PATH, so put
+# its directory first — and clear XDG_STATE_HOME while you are there, or the
+# caller's own state file lands in the real ~/.local/state.
+make_dotfiles_status_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/dotfiles-status" <<'STUB'
+#!/bin/sh
+[ -n "${DS_OUTPUT:-}" ] && printf '%b\n' "$DS_OUTPUT"
+exit "${DS_RC:-0}"
+STUB
+	chmod 755 "$bin/dotfiles-status"
+}
+
 # Writes a fake systemctl into $1 (a directory placed first on PATH) and records
 # every invocation to $SYSTEMCTL_LOG, one argv per line. The enable scripts all
 # decide what to do from systemctl's exit codes, so those are what a test needs
