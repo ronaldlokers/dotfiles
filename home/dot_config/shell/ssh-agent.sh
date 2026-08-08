@@ -36,6 +36,13 @@ unset _agent_link
 if _agent_live "${SSH_AUTH_SOCK:-}" &&
   ! SSH_AUTH_SOCK="$SSH_AUTH_SOCK" ssh-add -l > /dev/null 2>&1 &&
   command -v proton-ssh-load > /dev/null 2>&1; then
-  proton-ssh-load --quiet
+  # --timeout, and a short one: this is on the path between pressing the
+  # terminal key and getting a prompt, and it makes up to three network round
+  # trips to Proton. Unbounded, a Proton that was down or a half-up VPN stalled
+  # every new terminal for as long as the TCP stack cared to wait. Five seconds
+  # is longer than a healthy call and short enough not to be worth reading a
+  # message about; a call that hits it says so once per boot and gives the
+  # terminal back with no keys, which the next terminal will retry.
+  proton-ssh-load --quiet --timeout 5
 fi
 unset -f _agent_live

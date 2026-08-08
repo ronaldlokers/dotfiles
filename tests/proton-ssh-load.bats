@@ -640,3 +640,119 @@ EOF
 	[ "$(cat "$PAT_FILE")" = "pst_good" ]
 	[ ! -f "$PAT_FILE.rejected" ]
 }
+
+# --- Proton not answering (M17) ----------------------------------------------
+#
+# The shell rc calls this from every new terminal that finds a live but empty
+# agent, and until now not one pass-cli call had a bound of its own: `info`, the
+# `login` from the cached token, and the `ssh-agent load` itself. Three network
+# round trips on the path between pressing the terminal key and getting a
+# prompt. A Proton that is down, a captive portal, a VPN half-up — any of them
+# stalled every new terminal for as long as the TCP stack felt like waiting,
+# with nothing on screen to say why.
+#
+# The bound is per call rather than per run because that is what `timeout` can
+# express, and a timed-out call short-circuits the rest: a Proton that did not
+# answer the first question will not answer the second, and the point of the
+# exercise is a shell that comes up.
+#
+# Every case here wraps the run in a real `timeout` so a regression fails the
+# suite instead of hanging it.
+
+run_load_bounded() {
+	run timeout 20 env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" PATH="$BIN:$PATH" "$@"
+}
+
+@test "a Proton that does not answer gives the terminal back" {
+	run_load_bounded PASS_HANG_SECS=30 sh "$SCRIPT" --quiet --timeout 1
+	[ "$status" -eq 0 ]
+}
+
+@test "and says so, once, naming what to run by hand" {
+	run_load_bounded PASS_HANG_SECS=30 sh "$SCRIPT" --quiet --timeout 1
+	[[ "$output" == *"did not answer"* ]]
+	[[ "$output" == *"proton-ssh-load"* ]]
+	[ -e "$XDG_RUNTIME_DIR/proton-ssh-load.warned.unreachable" ]
+
+	run_load_bounded PASS_HANG_SECS=30 sh "$SCRIPT" --quiet --timeout 1
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+# The bound is on every call, not on the first one. A session that is alive
+# hands the run straight to `ssh-agent load`, which is the longest call of the
+# three and was every bit as unbounded.
+@test "the load call is bounded too, not just the session probe" {
+	run_load_bounded PASS_HANG_SECS=30 PASS_HANG_ONLY=ssh-agent \
+		sh "$SCRIPT" --quiet --timeout 1
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"did not answer"* ]]
+	grep -q '^info' "$STUB_LOG"
+}
+
+# ...and so is the login from the cached token, which is the call the unattended
+# path makes on every machine that has one.
+@test "the login from the cached token is bounded too" {
+	mkdir -p "$(dirname "$PAT_FILE")"
+	printf 'pst_cached\n' >"$PAT_FILE"
+	chmod 600 "$PAT_FILE"
+	run_load_bounded PASS_INFO_RC=1 PASS_HANG_SECS=30 PASS_HANG_ONLY=login \
+		sh "$SCRIPT" --quiet --timeout 1
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"did not answer"* ]]
+	# The cached token is not retired over an outage: a call that never got an
+	# answer has not been rejected.
+	[ -f "$PAT_FILE" ]
+	[ ! -e "$PAT_FILE.rejected" ]
+}
+
+@test "a machine that answers normally is unaffected" {
+	run_load_bounded sh "$SCRIPT" --quiet --timeout 1
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	grep -q 'ssh-agent load' "$STUB_LOG"
+}
+
+@test "--timeout wants a number, and says so" {
+	run_load_bounded sh "$SCRIPT" --timeout soon
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"--timeout"* ]]
+	[ ! -s "$STUB_LOG" ]
+}
+
+@test "a bare --timeout is refused rather than shifting off the end" {
+	run_load_bounded sh "$SCRIPT" --timeout
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"usage: proton-ssh-load"* ]]
+}
+
+# Where timeout(1) is absent the calls run unbounded, which is where this
+# started — nothing is lost by degrading to it, and a machine without coreutils
+# is not the machine this bound exists for.
+@test "no timeout(1) on PATH degrades to unbounded, it does not fail" {
+	# A PATH holding everything the script reaches for except timeout itself,
+	# which is the only way to exercise the branch: `command -v timeout` finds
+	# anything placed to shadow it.
+	nocoreutils="$BATS_TEST_TMPDIR/nocoreutils"
+	mkdir -p "$nocoreutils"
+	make_pass_cli_stub "$nocoreutils"
+	local tool path
+	for tool in sh cat mkdir mv chmod rm stty sleep; do
+		path="$(command -v "$tool")"
+		ln -sf "$path" "$nocoreutils/$tool"
+	done
+	[ ! -e "$nocoreutils/timeout" ]
+	run timeout 20 env HOME="$HOME" STUB_LOG="$STUB_LOG" \
+		XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+		PATH="$nocoreutils" sh "$SCRIPT" --quiet
+	[ "$status" -eq 0 ]
+	grep -q 'ssh-agent load' "$STUB_LOG"
+}
+
+# The caller this was built for. The rc is the only path that runs on every new
+# terminal, so it is the one that must not wait 30 seconds for an answer.
+@test "the shell rc asks for the short bound" {
+	rc="$BATS_TEST_DIRNAME/../home/dot_config/shell/ssh-agent.sh"
+	grep -qE 'proton-ssh-load --quiet --timeout [0-9]+' "$rc"
+}

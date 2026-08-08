@@ -16,11 +16,27 @@ run by hand.
   --prompt   ask for the bootstrap token when there is no session and a
              terminal to ask on. Only the apply path passes this: the shell rc
              must not, or every new terminal with an empty agent would block.
+  --timeout SECS
+             bound on each pass-cli call, not on the run (default 30). A call
+             that hits it means Proton is unreachable, and the run stops there.
+             The shell rc asks for a much shorter one — it is on the path
+             between pressing the terminal key and getting a prompt.
 USAGE
 }
 
 quiet=0
 prompt=0
+
+# Every pass-cli call here is a network round trip, and on the shell rc's path
+# there are three: `info`, the `login` from the cached token, and the
+# `ssh-agent load` itself. None had a bound of its own, so a Proton that was
+# down, a captive portal or a half-up VPN stalled *every new terminal* for as
+# long as the TCP stack cared to wait, with nothing on screen to say why.
+#
+# 30s by default, which is for a person who typed the command and can see it
+# working; the shell rc passes something far shorter, because nobody opening a
+# terminal is waiting on their SSH keys.
+pc_timeout=30
 while [ "$#" -gt 0 ]; do
 	case "$1" in
 	-h | --help)
@@ -31,6 +47,24 @@ while [ "$#" -gt 0 ]; do
 	# Only the apply path passes this. The shell rc must not, or every new
 	# terminal with an empty agent would block on the prompt.
 	--prompt) prompt=1 ;;
+	--timeout)
+		# Checked before shifting, the same way secrets-check checks --source:
+		# `shift 2` past the end is a shell error ("shift count out of range"),
+		# not this script's usage message.
+		if [ "$#" -lt 2 ]; then
+			usage >&2
+			exit 2
+		fi
+		case "$2" in
+		'' | *[!0-9]*)
+			echo "proton-ssh-load: --timeout wants whole seconds: $2" >&2
+			usage >&2
+			exit 2
+			;;
+		esac
+		pc_timeout="$2"
+		shift
+		;;
 	*)
 		echo "proton-ssh-load: unknown option: $1" >&2
 		usage >&2
@@ -83,6 +117,28 @@ warn_once() {
 		echo "$1" >&2
 		shift
 	done
+}
+
+# Where `timeout` is absent the calls run unbounded and the caller's patience is
+# the only backstop — which is where this started, so nothing is lost by
+# degrading to it.
+if command -v timeout >/dev/null 2>&1; then
+	pc() { timeout "$pc_timeout" pass-cli "$@"; }
+else
+	pc() { pass-cli "$@"; }
+fi
+
+# 124 is timeout(1)'s "I killed it", and it is worth telling apart from every
+# other failure: a call that never got an answer has not been refused. Nothing
+# is retired, nothing is re-asked, and the run stops rather than spending the
+# same wait again on the next call — a Proton that did not answer the first
+# question will not answer the second, and the point of the exercise is a shell
+# that comes up.
+unreachable() {
+	warn_once unreachable \
+		"proton-ssh-load: Proton Pass did not answer within ${pc_timeout}s — your SSH keys are not loaded." \
+		"proton-ssh-load: run 'proton-ssh-load' by hand once the network is back."
+	exit 0
 }
 
 command -v pass-cli >/dev/null 2>&1 || {
@@ -163,14 +219,28 @@ ask_pat() {
 }
 
 # Never as --personal-access-token: a flag value is visible in `ps`.
+#
+# The exit code is captured rather than returned directly so a timeout can be
+# told apart from a refusal here, where the caller cannot: "that token was
+# rejected" retires the cached copy and re-asks, and an outage must do neither.
 try_login() {
-	PROTON_PASS_PERSONAL_ACCESS_TOKEN="$1" pass-cli login >/dev/null 2>&1
+	_tl_rc=0
+	PROTON_PASS_PERSONAL_ACCESS_TOKEN="$1" pc login >/dev/null 2>&1 || _tl_rc=$?
+	if [ "$_tl_rc" = 124 ]; then
+		unreachable
+	fi
+	return "$_tl_rc"
 }
 
 # Authenticate if the session lapsed. Token comes from the environment on a
 # fresh machine and is cached at $pat_file after. Passed via the environment,
 # never as --personal-access-token, whose value shows up in `ps`.
-if ! pass-cli info >/dev/null 2>&1; then
+info_rc=0
+pc info >/dev/null 2>&1 || info_rc=$?
+if [ "$info_rc" = 124 ]; then
+	unreachable
+fi
+if [ "$info_rc" -ne 0 ]; then
 	pat="${PROTON_PASS_PERSONAL_ACCESS_TOKEN:-}"
 	cache_it=1
 	# Whether the token under test came out of the cache, which is the only
@@ -269,7 +339,12 @@ fi
 # Same rule as the rest: once per boot, on stderr, and the successful case stays
 # silent so a working terminal prints nothing.
 if [ "$quiet" = 1 ]; then
-	if ! load_err="$(pass-cli ssh-agent load --vault-name "$vault" 2>&1 >/dev/null)"; then
+	load_rc=0
+	load_err="$(pc ssh-agent load --vault-name "$vault" 2>&1 >/dev/null)" || load_rc=$?
+	if [ "$load_rc" = 124 ]; then
+		unreachable
+	fi
+	if [ "$load_rc" -ne 0 ]; then
 		warn_once load-failed \
 			"proton-ssh-load: the Proton Pass session is alive but loading the SSH keys failed." \
 			"proton-ssh-load: run 'proton-ssh-load' by hand to see why."
@@ -282,5 +357,14 @@ if [ "$quiet" = 1 ]; then
 		exit 0
 	fi
 else
-	pass-cli ssh-agent load --vault-name "$vault"
+	# Bounded here too, and a timeout says the same thing it says everywhere
+	# else rather than surfacing as a bare exit 124 nobody can read.
+	load_rc=0
+	pc ssh-agent load --vault-name "$vault" || load_rc=$?
+	if [ "$load_rc" = 124 ]; then
+		unreachable
+	fi
+	if [ "$load_rc" -ne 0 ]; then
+		exit "$load_rc"
+	fi
 fi
