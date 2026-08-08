@@ -37,6 +37,7 @@ replaced.
 | Credential | Lives in | Reaches | Re-issuable? |
 | --- | --- | --- | --- |
 | **Proton bootstrap PAT** | `~/.config/pass-cli-bootstrap-pat`, vault item `bootstrap PAT` | the whole vault, therefore everything below | yes — see [Renewing the bootstrap PAT](../README.md#renewing-the-bootstrap-pat) |
+| **retired bootstrap PATs** | `~/.config/pass-cli-bootstrap-pat.rejected` on any machine that had one refused | whatever that token still opens — the same whole vault, if it was refused for a reason other than revocation | n/a — delete it, or revoke the token it holds |
 | **`sops age keys`** | vault, `~/.config/sops/age/keys.txt` | every SOPS-encrypted file in the homelab repo | **no** |
 | **git signing key** | vault (ssh-key item), the ssh-agent | commit signatures | yes, with an `allowed_signers` boundary |
 | **ssh auth key** | vault (ssh-key item), the ssh-agent | every forge and host that trusts it | yes, painfully — every `authorized_keys` |
@@ -65,7 +66,12 @@ entire vault.
    pass-cli pat delete --personal-access-token-name <name>
    ```
 2. Mint a replacement and put it in `~/.config/pass-cli-bootstrap-pat` (0600) on
-   each machine, plus the `bootstrap PAT` vault item.
+   each machine, plus the `bootstrap PAT` vault item. Check each machine for a
+   `~/.config/pass-cli-bootstrap-pat.rejected` while you are there and delete
+   it: `proton-ssh-load` renames rather than deletes a token Proton refused, so
+   that a ten-second outage cannot destroy the only copy a machine has — which
+   means a refused token can sit there indefinitely, and "refused" is not the
+   same as "revoked".
 3. Update `bootstrap_pat_expiry` and the README date — `mise run lint` asserts
    they agree.
 4. **Then treat everything in the inventory as exposed**, in the order below.

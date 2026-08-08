@@ -209,6 +209,20 @@ check_pat_path() {
 	elif [ "$n" -ne 1 ]; then
 		fail "the cached bootstrap PAT path disagrees: $(printf '%s' "$paths" | tr '\n' ' ')"
 	fi
+
+	# The copy the retirement leaves behind. proton-ssh-load renames a rejected
+	# token to `<path>.rejected` rather than deleting it, because a failed login
+	# cannot tell "revoked" from "Proton was unreachable for ten seconds" — so
+	# there is a second file on disk holding a vault-wide credential, 0600 and
+	# indefinitely. docs/revocation.md is the file that answers "what do I have
+	# to revoke", and it knew only about the live path.
+	#
+	# Keyed on the code, not on the doc: a tree that stops retiring tokens
+	# should not be asked to document one.
+	if grep -rq '\.rejected' "$root/home/dot_local/bin" 2>/dev/null &&
+		! grep -q '\.rejected' "$root/docs/revocation.md" 2>/dev/null; then
+		fail "a rejected token is left at <pat_file>.rejected and docs/revocation.md does not list it"
+	fi
 }
 
 # --- every shell script is shellchecked --------------------------------------
