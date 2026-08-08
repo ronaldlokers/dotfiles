@@ -19,6 +19,13 @@ yq = "4.53.3"
 jq = "1.8.2"
 delta = "0.19.2"
 zoxide = "0.10.0"
+# Runtime for coding agents. The mise registry entry resolves through
+# `ogulcancelik/herdr`, which is a rename that redirects to `herdrdev/herdr` —
+# same repository, same 25.7k stars, same creation date, verified against the
+# API rather than assumed. Worth writing down because a registry name pointing
+# at a different owner than the project is exactly the shape a squat would
+# take, and the next person to look will have the same doubt.
+herdr = "0.8.0"
 gh = "2.96.0"
 tmux = "3.7b"
 # Picker over tmux sessions plus zoxide's frecency list. Not in the mise
