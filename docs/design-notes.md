@@ -77,11 +77,37 @@ The test before adding `exact_` anywhere is `chezmoi apply --dry-run --verbose
 
 The `run_after_*` and `run_onchange_*` scripts look like two sequences and are
 one. chezmoi treats `run_`, `onchange_` and `after_` as attributes, strips them,
-and orders what is left — so `run_onchange_after_10-enable-ssh-agent` and
-`run_after_14-restore-secrets` sort against each other as `10-…` and `14-…`,
-and every `run_onchange_after_1x` runs *before* `run_after_20-install-host-
-packages`. Confirmed by running four scripts with deliberately crossed prefixes
-and numbers against a throwaway HOME, not inferred from the docs.
+and orders what is left — so `run_onchange_after_30-configure-devpod` and
+`run_after_14-restore-secrets` sort against each other as `30-…` and `14-…`,
+and every `run_after_1x` runs *before* `run_onchange_after_30`. Confirmed by
+running four scripts with deliberately crossed prefixes and numbers against a
+throwaway HOME, not inferred from the docs.
+
+### Why the enable scripts are not `run_onchange`
+
+The three that enable systemd user units — ssh-agent, update-check,
+secrets-check — all skip when no user manager is running, which is right:
+containers and CI have none. As `run_onchange` scripts that skip was permanent.
+chezmoi records the hash the moment the script exits 0, and "no systemd here,
+did nothing" exits 0 like anything else, so one apply from a session-less
+context (a bootstrap over ssh, a first apply before the display manager has
+started a session, a machine restored from a container image) meant those timers
+were never enabled again — not on the tenth apply, not ever, until the script's
+own contents changed.
+
+Nothing surfaced it. The scripts print their skip to stderr on that one apply
+and are silent forever after; `systemctl --user --failed` says nothing about a
+unit that was never enabled; and `dotfiles-status` reports "the secrets check
+has never recorded a run on this machine", which is true and reads exactly like
+a timer that broke.
+
+They are plain `run_after` now, the same call the host package script made for
+the same reason. The cost is one socket probe and two idempotent `systemctl`
+calls per apply — `enable --now` on an enabled unit is a no-op — and the gain is
+that a machine which grows a session later finishes the job on its next apply.
+`tests/enable-scripts-retry.bats` drives two real applies into one HOME, since
+the bug lived in what chezmoi remembers between runs rather than in either
+script.
 
 Two consequences worth keeping in mind. Reading the prefixes as phases is wrong:
 there is one pool, and the number is the only thing deciding order. And two
@@ -836,5 +862,5 @@ unattended `chezmoi update` would restart services and re-run scripts at an
 arbitrary moment, including the secret restore — which now means a vault fetch,
 and on a machine with no cached token a prompt with no terminal to answer it. It stays silent when there's nothing to
 say, and distinguishes a clean fast-forward from a diverged branch. Enabled by
-`run_onchange_after_11-enable-update-check.sh.tmpl`, which skips where no systemd
+`run_after_11-enable-update-check.sh.tmpl`, which skips where no systemd
 user session exists — so containers don't get it.

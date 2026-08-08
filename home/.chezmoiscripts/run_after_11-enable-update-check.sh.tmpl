@@ -1,10 +1,10 @@
 #!/bin/sh
 # Enable the timer that notifies when this machine's dotfiles are behind the
-# remote. Same shape as the ssh-agent enable script next door.
-# Re-runs whenever any of the three pieces changes:
-# service hash: {{ include "dot_config/systemd/user/dotfiles-update-check.service" | sha256sum }}
-# timer hash:   {{ include "dot_config/systemd/user/dotfiles-update-check.timer" | sha256sum }}
-# script hash:  {{ include "dot_local/bin/executable_dotfiles-update-check.tmpl" | sha256sum }}
+# remote. Same shape as the ssh-agent enable script next door, including why it
+# is a plain `run_after`: a run_onchange records its hash on the exit 0 that
+# means "no systemd here, did nothing", so one session-less apply skipped this
+# timer for the life of the machine. Running every apply is what lets a later
+# one finish the job.
 set -eu
 
 # Only where a systemd user manager is running — hosts, not devpod containers.
@@ -16,12 +16,12 @@ if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
     exit 0
 fi
 
-# Guarded for the same reason the enable below is, and it was the one call
-# here that was not. These are run_onchange scripts: a non-zero exit does not
-# merely skip this unit, it aborts the whole apply — chezmoi stops, and every
-# script numbered after this one (restoring the file secrets, installing the
-# host packages, configuring DevPod) never runs. A user manager that refuses a
-# reload is not a reason to leave the machine half-provisioned.
+# Guarded for the same reason the enable below is, and it was the one call here
+# that was not. A non-zero exit from a run_ script does not merely skip this
+# unit, it aborts the whole apply — chezmoi stops, and every script numbered
+# after this one (restoring the file secrets, installing the host packages,
+# configuring DevPod) never runs. A user manager that refuses a reload is not a
+# reason to leave the machine half-provisioned.
 if ! systemctl --user daemon-reload; then
     echo "Could not reload the systemd user manager; continuing." >&2
 fi
