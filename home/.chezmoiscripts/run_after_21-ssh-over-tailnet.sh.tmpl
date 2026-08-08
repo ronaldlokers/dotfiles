@@ -1,0 +1,119 @@
+#!/bin/sh
+# Let sshd answer on the tailnet, and nowhere else.
+#
+# This exists so Moshi can reach the machine from a phone: it authenticates over
+# SSH and then moves to mosh's own UDP channel. Both ride the tailnet.
+#
+# The binding is the whole point. sshd's default is every interface, which on a
+# laptop means every café network it ever joins. `ListenAddress` set to the
+# Tailscale address means the socket is only reachable by devices already
+# authenticated into the tailnet — a second factor that does not depend on
+# anyone's key hygiene.
+#
+# Tailscale's own SSH (`tailscale set --ssh=true`) would be the alternative and
+# is deliberately not used: `RunSSH` is false on this machine, key auth is the
+# model here, and moving authorisation into tailnet ACLs would put it somewhere
+# this repo does not manage.
+#
+# 21 and not 20: chezmoi strips the run_/onchange_/after_ attributes and sorts
+# what remains in one pool, so this lands immediately after
+# 20-install-host-packages — which is where mosh and openssh come from. See
+# docs/design-notes.md, "One numbering, not two".
+#
+# A plain run_after, not run_onchange: the Tailscale address is not a fact about
+# this repo, so there is nothing to hash. It has to be re-checked every apply.
+set -eu
+
+# Containers get none of this: no tailnet, no sshd, nothing to bind.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+# Overridable so the branches below can be tested against a temp path rather
+# than /etc. Same reason dotfiles-secrets-check takes --source: the interesting
+# behaviour here is the fail-closed path and the idempotent compare, and neither
+# is reachable in a test that would need root to observe it.
+drop_in="${SSHD_DROPIN:-/etc/ssh/sshd_config.d/10-dotfiles-tailnet.conf}"
+
+if ! command -v sshd >/dev/null 2>&1; then
+	echo "[ssh-tailnet] openssh not installed yet; skipping." >&2
+	exit 0
+fi
+
+if ! command -v tailscale >/dev/null 2>&1; then
+	echo "[ssh-tailnet] tailscale not installed yet; skipping." >&2
+	exit 0
+fi
+
+# Resolved at run time rather than baked in by a template, for two reasons. A
+# chezmoi `output` call aborts the entire apply on a non-zero exit — the lesson
+# .chezmoitemplates/signing-pubkey records — and the address is per-machine
+# state that can change, so re-reading it every apply is the correct behaviour
+# rather than a compromise.
+ts_ip="$(tailscale ip -4 2>/dev/null | head -1 || true)"
+
+# Fail closed, and this is the important branch. A machine that has not run
+# `sudo tailscale up` has no tailnet address, and the tempting fallback —
+# binding every interface so it works anyway — is precisely the exposure this
+# script exists to prevent. Better to leave sshd off and say so.
+if [ -z "$ts_ip" ]; then
+	echo "[ssh-tailnet] no Tailscale address; not enabling sshd." >&2
+	echo "[ssh-tailnet] Join the tailnet first: sudo tailscale up" >&2
+	exit 0
+fi
+
+want="$(
+	cat <<EOF
+# Managed by chezmoi: .chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl
+# Regenerated on every apply from \`tailscale ip -4\`. Edit the script, not this.
+#
+# sshd answers on the tailnet address only. Devices not on the tailnet cannot
+# reach the port at all, which is a stronger statement than any auth setting.
+ListenAddress $ts_ip
+
+# Keys only. The phone's public key goes in ~/.ssh/authorized_keys; Moshi
+# generates the pair or imports one.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+EOF
+)"
+
+# Compare before writing so a settled machine needs no sudo at all — the same
+# reason restore-secrets compares before replacing. An apply that asks for a
+# password every time is an apply people stop running.
+if [ -r "$drop_in" ] && [ "$(cat "$drop_in")" = "$want" ]; then
+	config_changed=0
+else
+	config_changed=1
+fi
+
+if [ "$config_changed" = 1 ]; then
+	echo "[ssh-tailnet] binding sshd to $ts_ip" >&2
+	# Report and continue: a machine where sudo needs a password with no TTY is
+	# the documented case in run_after_20, and it must not take the rest of the
+	# apply down with it.
+	if ! printf '%s\n' "$want" | sudo tee "$drop_in" >/dev/null 2>&1; then
+		echo "[ssh-tailnet] could not write $drop_in; continuing." >&2
+		echo "[ssh-tailnet] Needs: sudo, and a re-run once available." >&2
+		exit 0
+	fi
+	sudo chmod 644 "$drop_in" 2>/dev/null || true
+fi
+
+command -v systemctl >/dev/null 2>&1 || exit 0
+
+# `sshd` on Arch is socket-activated by sshd.socket on some setups and a plain
+# service on others. Enabling the service is what this repo wants: mosh needs a
+# real sshd listening on the bound address, and socket activation would ignore
+# the ListenAddress above in favour of the socket unit's own.
+if ! systemctl is-enabled --quiet sshd.service 2>/dev/null; then
+	echo "[ssh-tailnet] enabling sshd.service" >&2
+	sudo systemctl enable --now sshd.service \
+		|| echo "[ssh-tailnet] failed; run: sudo systemctl enable --now sshd.service" >&2
+elif [ "$config_changed" = 1 ]; then
+	# Config moved under a running daemon: reload rather than restart, so an
+	# existing session — quite possibly the one running this apply — survives.
+	sudo systemctl reload sshd.service 2>/dev/null \
+		|| echo "[ssh-tailnet] reload failed; run: sudo systemctl reload sshd" >&2
+fi
