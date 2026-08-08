@@ -1,0 +1,69 @@
+#!/bin/sh
+# Start the moshi-hook daemon, but only once this machine is paired.
+#
+# The daemon holds the WebSocket to Moshi and the local socket the Claude Code
+# hooks talk to. Without it the hooks still fire and simply find nothing
+# listening, so the phone stays silent — the failure is quiet either way, which
+# is why this is a script rather than a line in a README.
+#
+# Pairing is deliberately not automated. `moshi-hook pair --token <token>`
+# needs a token minted in the phone app, and the alternative to typing it is
+# this repo holding it — which it can do, via the vault, but only after a human
+# has put it there once. Until then this exits 0 and says what is missing.
+#
+# 22 and not 21: chezmoi strips the run_/onchange_/after_ attributes and sorts
+# what remains in one pool, so this lands after 21-ssh-over-tailnet, which is
+# the transport the phone arrives over. See docs/design-notes.md, "One
+# numbering, not two".
+#
+# A plain run_after, not run_onchange: whether this machine is paired is state
+# on the machine, not a fact about this repo, so there is nothing to hash and it
+# has to be re-checked every apply.
+set -eu
+
+# Containers get none of this: no phone watching, no tailnet address to be
+# reached on, and .chezmoiexternals/moshi-hook.toml does not fetch the binary
+# there either.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+
+if ! command -v moshi-hook >/dev/null 2>&1; then
+	echo "[moshi] moshi-hook is not installed yet; skipping." >&2
+	exit 0
+fi
+
+# Same probe the enable scripts for the other user units use, and for the same
+# reason: devcontainer images ship a systemctl shim that exits 0 while printing
+# "systemd is not running", so trusting its exit code enables a unit that never
+# runs. Ask the manager's own socket instead.
+if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
+	echo "[moshi] no systemd user session; skipping." >&2
+	exit 0
+fi
+
+# Paired or not is the whole gate. `moshi-hook service install` on an unpaired
+# host would leave a daemon retrying against a gateway that will never accept
+# it — a unit in the failed state, in the same `systemctl --user --failed` this
+# repo relies on meaning something.
+if ! moshi-hook status 2>/dev/null | grep -q '^status: *paired'; then
+	echo "[moshi] not paired; the phone will stay silent until it is." >&2
+	echo "[moshi] Get a token from the app (Settings -> Integrations), then:" >&2
+	echo "[moshi]   moshi-hook pair --token <token> --store file" >&2
+	echo "[moshi] See README, 'Moshi'." >&2
+	exit 0
+fi
+
+# Idempotent: `service install` is the documented way to create and start the
+# unit, and re-running it on a healthy machine is a no-op. Report and continue
+# on failure, the rule the rest of the apply chain follows — a phone
+# notification daemon must not decide whether the machine finishes provisioning.
+if systemctl --user is-active --quiet moshi-hook.service 2>/dev/null; then
+	exit 0
+fi
+
+echo "[moshi] starting the moshi-hook daemon" >&2
+moshi-hook service install >/dev/null 2>&1 \
+	|| echo "[moshi] could not start it; run: moshi-hook service install" >&2

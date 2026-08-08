@@ -46,6 +46,7 @@ replaced.
 | **DevPod project tokens** | vault item `devpod project-tokens` | one repo each, fine-grained | yes |
 | **sugarrush config** | vault item `sugarrush config` | the sugarrush service | yes |
 | **`RENOVATE_TOKEN`** | GitHub Actions secret | this repo, as the Renovate bot | yes |
+| **Moshi pairing secret** | `moshi-hook` file store on the host | drives Claude Code on this machine from a paired phone | yes |
 
 `dotfiles-status` tells you the health of the first two. Nothing enumerates the
 rest automatically, because nothing can: half of them live in services this
@@ -102,6 +103,33 @@ The auth key is the painful one, because nothing here knows where it is
 trusted. Mint a new key, add it to the vault, load it, then work through every
 `authorized_keys` and every forge that has the old one — GitHub, any server, any
 CI. Remove the old key from the vault last, so you are not locked out midway.
+
+## If the Moshi pairing secret leaked
+
+Whoever holds it can drive Claude Code on this machine: approve tool calls,
+answer prompts, and read whatever the agent is doing. It is not a vault
+credential, but the agent it controls has your shell.
+
+1. **Remove the device from the tailnet first.** sshd answers only on the
+   Tailscale address, so this cuts access immediately and takes one click —
+   before any key or secret is touched.
+2. Revoke the SSH pairing on the host:
+   ```sh
+   moshi-hook host list             # find the pairing id
+   moshi-hook host revoke <id>      # removes its key from authorized_keys
+   ```
+3. Unpair the host in the Moshi app, which invalidates the daemon secret.
+4. Re-pair when you want it back — Easy Pair does both halves at once:
+   ```sh
+   moshi-hook host setup --host <magicdns-name> --port 22 --user "$USER"
+   moshi-hook status
+   ```
+
+Losing the phone is the likelier version of this than the secret leaking on
+its own, which is why the order above starts with the tailnet rather than with
+the credential. Two things get the phone in — the SSH key in
+`authorized_keys` and the daemon secret — and they are revoked separately, so
+doing only one leaves the other live.
 
 ## If a GitHub token leaked
 
