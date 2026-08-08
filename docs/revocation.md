@@ -110,20 +110,26 @@ Whoever holds it can drive Claude Code on this machine: approve tool calls,
 answer prompts, and read whatever the agent is doing. It is not a vault
 credential, but the agent it controls has your shell.
 
-1. Unpair the host in the Moshi app, which invalidates the host secret.
-2. Re-pair with a fresh token:
+1. **Remove the device from the tailnet first.** sshd answers only on the
+   Tailscale address, so this cuts access immediately and takes one click —
+   before any key or secret is touched.
+2. Revoke the SSH pairing on the host:
    ```sh
-   moshi-hook pair --token <new-token> --store file
+   moshi-hook host list             # find the pairing id
+   moshi-hook host revoke <id>      # removes its key from authorized_keys
+   ```
+3. Unpair the host in the Moshi app, which invalidates the daemon secret.
+4. Re-pair when you want it back — Easy Pair does both halves at once:
+   ```sh
+   moshi-hook host setup --host <magicdns-name> --port 22 --user "$USER"
    moshi-hook status
    ```
-3. Check `~/.ssh/authorized_keys` while you are there — the phone's key is
-   what gets it onto the machine in the first place, and a lost phone means
-   both should go.
 
 Losing the phone is the likelier version of this than the secret leaking on
-its own. sshd answers only on the tailnet, so removing the device from the
-tailnet cuts access even before the key is removed — that is worth doing
-first, because it is one click and takes effect immediately.
+its own, which is why the order above starts with the tailnet rather than with
+the credential. Two things get the phone in — the SSH key in
+`authorized_keys` and the daemon secret — and they are revoked separately, so
+doing only one leaves the other live.
 
 ## If a GitHub token leaked
 

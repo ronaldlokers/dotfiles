@@ -286,17 +286,31 @@ config that listens everywhere. Tailscale's own SSH is deliberately unused:
 `RunSSH` stays false and authorisation stays in `authorized_keys`, which this
 repo can see.
 
-**Pairing is manual and needs two things from you:**
+**Pairing is one command.** Easy Pair does both halves — SSH/Mosh host access
+*and* the agent-hooks daemon — in a single QR:
 
 ```sh
-moshi-hook pair --token <token> --store file   # token: app -> Settings -> Integrations
-moshi-hook status                              # expect: status: paired
+moshi-hook host setup --host <magicdns-name> --port 22 --user "$USER"
+moshi-hook status                       # expect: status: paired
 ```
 
-Then add the phone's public key — Moshi generates the pair, or imports one — to
-`~/.ssh/authorized_keys`. That file is deliberately unmanaged: it is the list of
-things allowed to log in, and a rebuild silently restoring an old one is the
-wrong default.
+Pass `--host` rather than letting it detect. sshd answers on the Tailscale
+address *only*, so a QR advertising a LAN or public address points the phone at
+a socket that will not answer — and the Moshi guide rules those out anyway. The
+MagicDNS name is what `tailscale status` shows for this machine.
+
+**Treat the QR as a short-lived credential.** Anyone who scans it before it
+expires claims SSH access and pairs the daemon for this host. Do not screenshot
+it or share the screen while it is up.
+
+Easy Pair writes the phone's public key to `~/.ssh/authorized_keys` itself —
+`moshi-hook host list` shows what is paired, `host revoke <id>` removes one.
+That file stays unmanaged by chezmoi deliberately: it is the list of things
+allowed to log in, and a rebuild silently restoring an old one is the wrong
+default.
+
+`moshi-hook host enable-ssh` is macOS-only and does nothing here; sshd is
+enabled by the apply script above.
 
 Once paired, `run_after_22-enable-moshi-hook.sh.tmpl` starts the daemon on every
 apply. Before pairing it refuses and says so, because a daemon retrying against
