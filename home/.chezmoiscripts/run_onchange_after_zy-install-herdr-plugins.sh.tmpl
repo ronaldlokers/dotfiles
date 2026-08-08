@@ -1,0 +1,76 @@
+#!/bin/sh
+# Install the herdr plugins this machine expects, pinned to a commit.
+#
+# herdr keeps its plugin state in ~/.config/herdr, which chezmoi does not
+# manage: plugins.json is a derived cache holding absolute paths and the whole
+# expanded manifest, regenerated on every install. Tracking that file would be
+# tracking a build artifact. So the declaration lives here instead — the list
+# below is the source of truth, and `herdr plugin install` is idempotent, so
+# re-running this is a no-op once settled.
+#
+# The alternative was leaving it manual, and the argument against that was made
+# for us: Claude Code's plugin sweep on 2026-08-08 removed three marketplaces
+# that only existed because someone had typed a command once, and nothing in
+# the tree recorded that they should exist. A plugin nobody declared is a
+# plugin that disappears on the next rebuild and is not missed until it is.
+#
+# `zy-` and not a number, which is the one interesting thing about this file.
+# chezmoi strips the run_/onchange_/after_ attributes and sorts what is left in
+# one shared pool — so digits sort before letters, and any `NN-` name would run
+# *before* `install_packages`, the script that installs herdr in the first
+# place. On a fresh machine that means the guard below fires, the plugins are
+# skipped, and they appear only on a second apply. `zy-` puts this after
+# install_packages and before zz-atuin-import, which is where it belongs: this
+# is the only script here whose prerequisite is a mise tool rather than a
+# pacman package. See docs/design-notes.md, "One numbering, not two".
+#
+# Re-runs when the pinned list below changes:
+# plugins hash: {{ list "rjyo/herdr-window-title-sync@b07f1140b7308d66487b2f4be546c0c7db065569" | join "\n" | sha256sum }}
+set -eu
+
+# Each entry is `owner/repo@commit`. Pinned because herdr supports it — unlike
+# Claude Code, whose marketplace `ref` field turned out to be decoration (see
+# dot_claude/modify_settings.json). A pin that is actually honoured is worth
+# having: these run on every pane and workspace event.
+PLUGINS="rjyo/herdr-window-title-sync@b07f1140b7308d66487b2f4be546c0c7db065569"
+
+# herdr arrives as a mise tool, so it is on PATH in containers too — but a
+# container has no terminal window to retitle and no herdr server running. Not
+# an error, just nothing to do.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+# mise shims live here and this script may run before the shell rc has put them
+# on PATH.
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+
+if ! command -v herdr >/dev/null 2>&1; then
+	echo "[herdr-plugins] herdr is not installed yet; skipping." >&2
+	exit 0
+fi
+
+# bun is what the plugins actually execute. Without it they install cleanly and
+# then fail on every event, which is the failure mode worth pre-empting rather
+# than discovering from a log. Installed by
+# run_after_20-install-host-packages.sh.tmpl, which runs before this one.
+if ! command -v bun >/dev/null 2>&1; then
+	echo "[herdr-plugins] bun is missing; the plugins would fail on every event." >&2
+	echo "[herdr-plugins] Skipping. Install bun and re-apply." >&2
+	exit 0
+fi
+
+for entry in $PLUGINS; do
+	repo="${entry%@*}"
+	ref="${entry#*@}"
+
+	# Report and continue, the same rule the rest of the apply chain follows: a
+	# terminal-title plugin failing to install must not stop the scripts queued
+	# behind it. `--yes` because there is no tty here; without it herdr refuses
+	# outright rather than prompting into the void.
+	if herdr plugin install "$repo" --ref "$ref" --yes >/dev/null 2>&1; then
+		echo "[herdr-plugins] $repo @ ${ref%"${ref#????????}"}"
+	else
+		echo "[herdr-plugins] could not install $repo; continuing." >&2
+	fi
+done

@@ -33,6 +33,12 @@ REPO_PACKAGES=(
 	# is only a fallback. From pacman, not mise: a login shell must be in
 	# /etc/shells and running before mise activates.
 	zsh
+	# JavaScript runtime, here only because the herdr window-title-sync plugin
+	# runs `bun sync-title.js` on every pane and workspace event. Without it the
+	# plugin installs cleanly and then fails silently on every event, which is
+	# the worst of the three possible outcomes. From pacman rather than mise: it
+	# is a dependency of a thing the desktop runs, not a tool typed at a prompt.
+	bun
 )
 
 # AUR packages. Building these runs upstream PKGBUILDs as arbitrary code, so
