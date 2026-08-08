@@ -553,6 +553,13 @@ of the README is a date nobody reads). `scripts/check-agreement.sh`, run by
 drives each check against a tree with the drift deliberately introduced —
 because a checker nobody has watched fail is not a checker.
 
+It also asserts one thing that is a list rather than a duplicated fact: every
+shell script in the tree is named on the `shellcheck` line. That list is kept by
+hand deliberately — a glob wide enough to catch `setup` and `tests/helpers.bash`
+would drag in vendored trees — and a hand-kept list goes stale in silence, which
+is how `scripts/check-shells.sh` came to have a bats suite of its own and no
+shellcheck at all.
+
 `check` overlaps CI without matching it, in both directions. CI runs two jobs
 `check` has no way to: `host-ssh-agent`
 brings up a real systemd user session, and `container-gates` runs inside an Arch

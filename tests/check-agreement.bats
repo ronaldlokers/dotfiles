@@ -55,6 +55,15 @@ make_tree() {
 		printf 'if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then :; fi\n' >"$f"
 	done
 
+	# The lint task's shellcheck invocation, and three files it covers: one by
+	# name, one through a glob, and `setup`, which is only recognisable as a
+	# shell script by its shebang.
+	mkdir -p "$TREE/scripts"
+	printf '#!/bin/sh\n' >"$TREE/setup"
+	printf '#!/bin/sh\n' >"$TREE/scripts/check-agreement.sh"
+	printf '\t"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl scripts/check-agreement.sh",\n' \
+		>>"$TREE/mise.toml"
+
 	printf 'bootstrap_pat_expiry="2027-07-29"\n' \
 		>"$TREE/home/dot_local/bin/executable_dotfiles-secrets-check"
 	printf -- '- **The bootstrap token expires** 2027-07-29. After that...\n' \
@@ -243,4 +252,44 @@ run_check() {
 	run_check pat-path
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"the scan broke"* ]]
+}
+
+# --- every shell script is shellchecked --------------------------------------
+#
+# The lint task names its targets by hand, so a script added later is simply
+# absent from it — silently, and with nothing else in the repo to notice.
+# scripts/check-shells.sh was exactly that: tested by its own bats file, never
+# once shellchecked. The list is worth keeping by hand (globs would drag in
+# vendored trees), so this is what stops it going stale.
+
+@test "a shell script nobody shellchecks is caught" {
+	printf '#!/bin/sh\n' >"$TREE/scripts/orphan.sh"
+	run_check shellcheck-targets
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"orphan.sh"* ]]
+}
+
+# A script is not always recognisable by its name: `setup` has no extension and
+# only its shebang says what it is.
+@test "a shebang-only script nobody shellchecks is caught too" {
+	printf '#!/usr/bin/env bash\n' >"$TREE/scripts/bootstrap"
+	run_check shellcheck-targets
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"bootstrap"* ]]
+}
+
+# The same floor every other scan here has: a moved directory must not pass by
+# finding nothing to disagree with.
+@test "finding almost no shell scripts at all is a failure, not agreement" {
+	rm -f "$TREE/setup" "$TREE/scripts/check-agreement.sh"
+	run_check shellcheck-targets
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"the scan broke"* ]]
+}
+
+@test "a lint task with no shellcheck invocation is a failure, not agreement" {
+	printf 'chezmoi = "2.70.5"\n' >"$TREE/mise.toml"
+	run_check shellcheck-targets
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"no shellcheck invocation"* ]]
 }
