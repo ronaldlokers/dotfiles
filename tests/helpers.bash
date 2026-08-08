@@ -42,6 +42,12 @@
 #   PASS_ITEM_DIR  directory of files named after item titles; the matching
 #                  file's contents are what `item view` prints. A title with no
 #                  file prints nothing, which is the "came back empty" case.
+#   PASS_HANG_SECS how long every call sleeps before answering — Proton
+#                  unreachable, or answering far too slowly to wait for, which
+#                  is the same thing to a caller on a shell startup path
+#   PASS_HANG_ONLY restricts the sleep to one verb (`info`, `login`,
+#                  `ssh-agent`), so a test can prove the bound is on every call
+#                  rather than only the first one
 make_pass_cli_stub() {
 	local bin="$1"
 	mkdir -p "$bin"
@@ -59,6 +65,13 @@ make_pass_cli_stub() {
 # saw nothing to match.
 # Record the full argv. The token-never-in-argv assertion reads this.
 [ -n "${STUB_LOG:-}" ] && printf '%s\n' "$*" >>"$STUB_LOG"
+
+# Proton not answering. The call is logged first, on purpose: a test asserting
+# which calls were bounded needs to see that this one was attempted.
+if [ -n "${PASS_HANG_SECS:-}" ] &&
+	{ [ -z "${PASS_HANG_ONLY:-}" ] || [ "${PASS_HANG_ONLY}" = "$1" ]; }; then
+	sleep "$PASS_HANG_SECS"
+fi
 
 case "$1" in
 info)

@@ -213,6 +213,29 @@ test that does not override `$XDG_RUNTIME_DIR` writes into the developer's real
 already-warned branch. Redirecting `HOME` does not cover it — the same trap as
 `XDG_STATE_HOME` in the secrets-export tests.
 
+### The shell rc is a latency budget, not just a caller
+
+The same rc path makes up to three network round trips to Proton — `info`, the
+`login` from the cached token, and the `ssh-agent load` — and none of them had a
+bound. A Proton that was down, a captive portal, a half-up VPN: every new
+terminal stalled for as long as the TCP stack cared to wait, with nothing on
+screen to say why. The failure is invisible in exactly the way that matters,
+because the thing it delays is the prompt you are waiting for.
+
+So each call goes through `timeout`, and the bound is an option rather than a
+constant: 30 seconds by default, for a person who typed the command and can see
+it working, and `--timeout 5` from the rc, where nobody opening a terminal is
+waiting on their SSH keys. Where `timeout` is absent the calls run unbounded,
+which is where this started — nothing is lost by degrading to it.
+
+A timed-out call is told apart from a failed one, and that distinction is the
+whole reason the exit code is captured rather than passed through. `timeout`
+exits 124; every other non-zero exit from `pass-cli login` means the token was
+*refused*, which retires the cached copy and re-asks. An outage must do neither
+— a call that never got an answer has not been rejected — so 124 warns once per
+boot, gives the terminal back, and stops the run rather than spending the same
+wait again on a question the network will not answer either.
+
 ## Shell keys: who owns what
 
 Five pickers coexist because they reach different things: `cd` (zoxide) jumps to
