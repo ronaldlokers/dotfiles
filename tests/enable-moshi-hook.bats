@@ -30,7 +30,10 @@ setup() {
 #!/bin/sh
 printf 'moshi-hook %s\n' "$*" >>"$LOG"
 case "$1" in
-status) printf 'status: %s\n' "${MOSHI_PAIRED:-unpaired}" ;;
+status)
+	printf 'status: %s\n' "${MOSHI_PAIRED:-unpaired}"
+	printf 'host id: %s\n' "${MOSHI_HOST_ID:-host_aaa}"
+	;;
 service) [ -n "${MOSHI_INSTALL_RC:-}" ] && exit "$MOSHI_INSTALL_RC" ;;
 esac
 exit 0
@@ -52,9 +55,14 @@ STUB
 	# A directory shaped like a live user-manager runtime dir.
 	RUNTIME="$(make_fake_runtime_dir "$BATS_TEST_TMPDIR/run")"
 
+	# The daemon's log is where the id it actually connected as is recorded.
+	MOSHI_STATE="$BATS_TEST_TMPDIR/state"
+	mkdir -p "$MOSHI_STATE"
+	printf 'msg="ws bridge connected" hostId=host_aaa\n' >"$MOSHI_STATE/hook.log"
+
 	SANDBOX="$BATS_TEST_TMPDIR/sandbox"
 	mkdir -p "$SANDBOX"
-	for t in sh grep printf env tr sed head; do
+	for t in sh grep printf env tr sed head tail; do
 		src="$(type -P "$t" 2>/dev/null)" || continue
 		[ -n "$src" ] && ln -sf "$src" "$SANDBOX/$t"
 	done
@@ -66,6 +74,7 @@ STUB
 
 run_script() {
 	run env HOME="$HOME" LOG="$LOG" PATH="$BIN:$SANDBOX" \
+		MOSHI_STATE_DIR="$MOSHI_STATE" \
 		XDG_RUNTIME_DIR="$RUNTIME" "$@" sh "$SCRIPT"
 }
 
@@ -148,7 +157,7 @@ run_script() {
 @test "a daemon without the herdr path is restarted to pick it up" {
 	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0
 	[ "$status" -eq 0 ]
-	[[ "$output" == *"picking up the herdr path"* ]]
+	[[ "$output" == *"to pick up the herdr path"* ]]
 	grep -q "daemon-reload" "$LOG"
 	grep -q "restart moshi-hook.service" "$LOG"
 }
@@ -172,4 +181,40 @@ run_script() {
 	# %h, not a hardcoded home: the unit is applied to whatever machine runs it.
 	grep -q "%h/" "$f"
 	! grep -q "/home/" "$f"
+}
+
+# --- a re-paired host (2026-08-08) -------------------------------------------
+#
+# The daemon holds its pairing credentials from the moment it started, so
+# re-pairing leaves it authenticating as a host that no longer exists. It stays
+# `active` while every publish is rejected with "Invalid host secret" — the
+# unit looks healthy, the phone shows nothing, and the only evidence is a log
+# nobody reads. Observed exactly that before this check existed.
+
+@test "a daemon still using the old host id is restarted" {
+	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0 \
+		MOSHI_HOST_ID=host_bbb \
+		MOSHI_ENV="MOSHI_HERDR_PATH=$HOME/.local/share/mise/shims/herdr"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"re-paired"* ]]
+	grep -q "restart moshi-hook.service" "$LOG"
+}
+
+@test "a daemon on the current host id is left alone" {
+	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0 \
+		MOSHI_HOST_ID=host_aaa \
+		MOSHI_ENV="MOSHI_HERDR_PATH=$HOME/.local/share/mise/shims/herdr"
+	[ "$status" -eq 0 ]
+	! grep -q "restart" "$LOG"
+}
+
+# A log with no connect line yet — a daemon that has never reached the gateway
+# — must not be read as a mismatch and restarted in a loop.
+@test "an empty log is not treated as a stale pairing" {
+	: >"$MOSHI_STATE/hook.log"
+	run_script MOSHI_PAIRED=paired MOSHI_ACTIVE_RC=0 \
+		MOSHI_HOST_ID=host_bbb \
+		MOSHI_ENV="MOSHI_HERDR_PATH=$HOME/.local/share/mise/shims/herdr"
+	[ "$status" -eq 0 ]
+	! grep -q "restart" "$LOG"
 }

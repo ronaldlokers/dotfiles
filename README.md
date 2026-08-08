@@ -312,6 +312,14 @@ default.
 `moshi-hook host enable-ssh` is macOS-only and does nothing here; sshd is
 enabled by the apply script above.
 
+**If the phone shows nothing at all** — no events, no workspaces — check the
+daemon's log at `~/.local/state/moshi/hook.log` for `Invalid host secret`. The
+daemon holds its pairing credentials from the moment it started, so re-pairing
+the host leaves it authenticating as a host that no longer exists: the unit
+stays `active`, every publish is rejected, and nothing surfaces that. A
+`systemctl --user restart moshi-hook` fixes it, and the apply script now
+notices the mismatch and restarts on its own.
+
 **If Moshi shows no herdr workspaces**, the daemon cannot find the `herdr`
 binary. `moshi-hook service install` generates a unit hardcoding
 `Environment=PATH=/usr/local/bin:/usr/bin:/bin`, and herdr is a mise shim, so
