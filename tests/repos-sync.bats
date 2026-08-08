@@ -42,7 +42,23 @@ exit 0
 STUB
 	chmod 755 "$BIN/git"
 
-	export HOME GIT_LOG
+	# zoxide, stubbed for the reason git is: the real one writes a database,
+	# and the database it writes is this developer's. The stub models the leak
+	# faithfully — the file lands wherever XDG_DATA_HOME points, exactly like
+	# the real `zoxide add` — so a test can assert where that is.
+	ZOXIDE_LOG="$BATS_TEST_TMPDIR/zoxide.log"
+	: >"$ZOXIDE_LOG"
+	cat >"$BIN/zoxide" <<'STUB'
+#!/bin/sh
+[ -n "${ZOXIDE_LOG:-}" ] && printf '%s\n' "$*" >>"$ZOXIDE_LOG"
+db="${XDG_DATA_HOME:-$HOME/.local/share}/zoxide"
+mkdir -p "$db"
+printf '%s\n' "$*" >>"$db/db.zo"
+exit 0
+STUB
+	chmod 755 "$BIN/zoxide"
+
+	export HOME GIT_LOG ZOXIDE_LOG
 }
 
 # Everything before a literal `--` is an env assignment; everything after is an
@@ -53,7 +69,17 @@ run_sync() {
 		if [ "$arg" = "--" ]; then past=1; continue; fi
 		if [ "$past" = 0 ]; then envs+=("$arg"); else args+=("$arg"); fi
 	done
-	run env HOME="$HOME" PATH="$BIN:$PATH" GIT_LOG="$GIT_LOG" \
+	# -u XDG_DATA_HOME is the load-bearing one: repos-sync seeds zoxide after a
+	# clone, and zoxide's database lives under XDG_DATA_HOME. This desktop
+	# exports it, so the suite wrote entries into the developer's real zoxide
+	# database — every fixture path from every run, in the picker afterwards.
+	# Redirecting HOME does not cover it, the same way it did not for
+	# XDG_STATE_HOME in the export tests or XDG_RUNTIME_DIR in the Proton ones.
+	# The rest go with it so nothing else reaches past the test HOME.
+	run env -u XDG_DATA_HOME -u XDG_CONFIG_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME \
+		HOME="$HOME" PATH="$BIN:$PATH" GIT_LOG="$GIT_LOG" \
+		ZOXIDE_LOG="$ZOXIDE_LOG" \
 		XDG_PROJECTS_DIR="$ROOT" ${envs[@]+"${envs[@]}"} \
 		bash "$SCRIPT" ${args[@]+"${args[@]}"} </dev/null
 }
@@ -155,4 +181,45 @@ run_sync() {
 	[ "$status" -ne 0 ]
 	[ -d "$ROOT/github.com/ronaldlokers/homelab/.git" ]
 	[ -d "$ROOT/github.com/ronaldlokers/Zenith/.git" ]
+}
+
+# --- what it seeds, and where it does not write (M16) -------------------------
+#
+# repos-sync seeds zoxide after each clone, so a fresh checkout is in the sesh
+# picker before anyone has cd'd into it. That was untested, and the way it was
+# untested had teeth: zoxide's database lives under $XDG_DATA_HOME, this desktop
+# exports that variable, and the suite passed it straight through. Every run
+# wrote its fixture paths — /tmp/bats-run-*/Projects/… — into the developer's
+# real zoxide database, where they stayed, in the picker.
+#
+# Redirecting HOME does not cover it. Same trap as XDG_STATE_HOME in the
+# secrets-export tests and XDG_RUNTIME_DIR in the Proton ones: a variable that
+# outranks HOME, for the third time.
+
+@test "a fresh clone is seeded into zoxide" {
+	run_sync --
+	[ "$status" -eq 0 ]
+	grep -q "add $ROOT/github.com/ronaldlokers/homelab" "$ZOXIDE_LOG"
+}
+
+# A repo that is already checked out is skipped entirely, seeding included:
+# zoxide already knows about a directory you have been working in.
+@test "a repo that was already there is not re-seeded" {
+	mkdir -p "$ROOT/github.com/ronaldlokers/homelab/.git"
+	run_sync --
+	[ "$status" -eq 0 ]
+	! grep -q "add $ROOT/github.com/ronaldlokers/homelab$" "$ZOXIDE_LOG"
+}
+
+# The leak itself. XDG_DATA_HOME is exported into the suite's own environment
+# here, standing in for the developer's, and nothing under it may be touched.
+@test "the suite writes no zoxide database outside its own HOME" {
+	canary="$BATS_TEST_TMPDIR/canary"
+	mkdir -p "$canary"
+	export XDG_DATA_HOME="$canary"
+	run_sync --
+	[ "$status" -eq 0 ]
+	[ -z "$(ls -A "$canary")" ]
+	# ...and it did seed one, somewhere that belongs to the test.
+	[ -f "$HOME/.local/share/zoxide/db.zo" ]
 }

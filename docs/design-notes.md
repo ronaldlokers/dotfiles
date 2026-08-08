@@ -236,6 +236,27 @@ exits 124; every other non-zero exit from `pass-cli login` means the token was
 boot, gives the terminal back, and stops the run rather than spending the same
 wait again on a question the network will not answer either.
 
+### A redirected HOME is not an isolated one
+
+That trap has now been walked into three times, in three suites, and it is worth
+stating as a rule rather than as three separate notes. Every `XDG_*` variable
+this desktop exports **outranks `HOME`**: a script that resolves a path through
+`${XDG_DATA_HOME:-$HOME/.local/share}` reads the variable first, so a test that
+sets only `HOME` reaches straight past its own fixture into the real machine.
+
+The three, each found after it had already been writing for a while:
+
+| Suite | Variable | What it reached |
+| --- | --- | --- |
+| secrets-export | `XDG_STATE_HOME` | the real backup manifest |
+| proton-ssh-load | `XDG_RUNTIME_DIR` | the real warn-once markers, silencing later cases |
+| repos-sync | `XDG_DATA_HOME` | the real zoxide database — every fixture path, in the picker |
+
+So a runner that redirects `HOME` clears the `XDG_*` set with it, `env -u`, and
+a suite that has a reason to keep one says which and why. `mise run verify`
+already did this for `chezmoi` and named the reason; the test suites are the
+same problem one layer down.
+
 ## Shell keys: who owns what
 
 Five pickers coexist because they reach different things: `cd` (zoxide) jumps to
