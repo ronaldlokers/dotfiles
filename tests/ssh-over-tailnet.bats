@@ -26,6 +26,7 @@ setup() {
 	LOG="$BATS_TEST_TMPDIR/calls.log"
 	: >"$LOG"
 	DROPIN="$BATS_TEST_TMPDIR/10-dotfiles-tailnet.conf"
+	UNIT_DROPIN="$BATS_TEST_TMPDIR/unit.d/10-wait-for-tailnet.conf"
 
 	# `sudo` that records what it was asked to do and then does it, so the test
 	# can both assert on intent and observe the effect.
@@ -42,6 +43,7 @@ printf 'systemctl %s\n' "$*" >>"$LOG"
 for a in "$@"; do
 	case "$a" in
 	is-enabled) exit "${SSHD_ENABLED_RC:-1}" ;;
+	is-active) exit "${SSHD_ACTIVE_RC:-0}" ;;
 	esac
 done
 exit 0
@@ -65,7 +67,7 @@ STUB
 	# address and asserted nothing. Symlink in exactly what the script needs.
 	SANDBOX="$BATS_TEST_TMPDIR/sandbox"
 	mkdir -p "$SANDBOX"
-	for t in sh cat head printf tee chmod env grep; do
+	for t in sh cat head printf tee chmod mkdir env grep; do
 		src="$(type -P "$t" 2>/dev/null)" || continue
 		[ -n "$src" ] && ln -sf "$src" "$SANDBOX/$t"
 	done
@@ -77,6 +79,7 @@ STUB
 
 run_script() {
 	run env HOME="$HOME" LOG="$LOG" SSHD_DROPIN="$DROPIN" \
+		SSHD_UNIT_DROPIN="$UNIT_DROPIN" \
 		PATH="$BIN:$SANDBOX" TS_IP="${TS_IP-100.64.0.1}" "$@" sh "$SCRIPT"
 }
 
@@ -158,6 +161,99 @@ run_script() {
 	SSHD_ENABLED_RC=0 run_script
 	grep -q "systemctl reload sshd.service" "$LOG"
 	! grep -q "restart" "$LOG"
+}
+
+# --- the boot race -----------------------------------------------------------
+#
+# `ListenAddress <tailnet ip>` is a bind to an address that does not exist until
+# tailscaled has brought the interface up. On 2026-08-08 this machine came up
+# from a reboot with sshd dead:
+#
+#   error: Bind to port 22 on 100.112.124.106 failed: Cannot assign requested
+#   address.
+#   sshd.service: Start request repeated too quickly.
+#
+# Five restarts inside one second, the start limit latched, and sshd stayed off
+# for the rest of the boot — while the tailnet address appeared moments later.
+# Moshi, which reaches this machine over SSH, could not connect at all. The unit
+# drop-in below is what stops the config from being self-defeating on every
+# reboot, so it is written from the same script and pinned by the same suite.
+
+@test "the unit waits for tailscaled before starting sshd" {
+	run_script
+	[ "$status" -eq 0 ]
+	grep -qx "After=tailscaled.service" "$UNIT_DROPIN"
+	grep -qx "Wants=tailscaled.service" "$UNIT_DROPIN"
+}
+
+# Ordering after tailscaled is necessary and not sufficient: the unit is up
+# before the address is assigned. What sshd actually needs is the address it was
+# told to bind, so that — not the interface, not the daemon — is what is waited
+# for.
+@test "the unit waits for the bound address itself, not merely the daemon" {
+	run_script
+	grep -q "ExecStartPre=" "$UNIT_DROPIN"
+	grep -q "inet 100.64.0.1/" "$UNIT_DROPIN"
+}
+
+@test "a changed Tailscale address is picked up by the unit too" {
+	run_script
+	TS_IP=100.64.0.99 run_script
+	grep -q "inet 100.64.0.99/" "$UNIT_DROPIN"
+	! grep -q "inet 100.64.0.1/" "$UNIT_DROPIN"
+}
+
+# The failure that made this a total outage rather than a slow start: the
+# retries burned the start limit, so the one attempt that would have succeeded
+# never happened.
+@test "the start limit cannot latch sshd off for the boot" {
+	run_script
+	grep -qx "StartLimitIntervalSec=0" "$UNIT_DROPIN"
+	grep -q "^Restart=" "$UNIT_DROPIN"
+}
+
+# A wait with no ceiling is a boot that hangs. systemd's own timeout bounds it,
+# so the loop needs no counter — and a counter would need a `$` that systemd
+# would try to expand as a variable.
+@test "the wait is bounded" {
+	run_script
+	grep -q "^TimeoutStartSec=" "$UNIT_DROPIN"
+}
+
+# The drop-in fixes the next boot. This fixes the one that already went wrong,
+# which is the machine the apply is running on.
+@test "an enabled sshd that is not running is started" {
+	SSHD_ENABLED_RC=0 SSHD_ACTIVE_RC=3 run_script
+	grep -q "systemctl reset-failed sshd.service" "$LOG"
+	grep -q "systemctl start sshd.service" "$LOG"
+}
+
+@test "a running sshd is never started or restarted out from under a session" {
+	SSHD_ENABLED_RC=0 SSHD_ACTIVE_RC=0 run_script
+	! grep -q "systemctl start sshd" "$LOG"
+	! grep -q "restart" "$LOG"
+}
+
+@test "writing the unit drop-in reloads systemd" {
+	run_script
+	grep -q "systemctl daemon-reload" "$LOG"
+}
+
+@test "an unchanged unit drop-in reloads nothing and needs no sudo" {
+	run_script
+	: >"$LOG"
+	run_script
+	[ "$status" -eq 0 ]
+	! grep -q "daemon-reload" "$LOG"
+	! grep -q "sudo tee" "$LOG"
+}
+
+# Fail closed all the way down: with no tailnet address there is no address to
+# wait for, and nothing about sshd should be touched.
+@test "no Tailscale address writes no unit drop-in either" {
+	TS_IP="" run_script
+	[ ! -e "$UNIT_DROPIN" ]
+	! grep -q "daemon-reload" "$LOG"
 }
 
 # --- the guards --------------------------------------------------------------

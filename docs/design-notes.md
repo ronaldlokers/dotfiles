@@ -723,6 +723,63 @@ A successful clone is also added to zoxide's database, which is what puts a
 brand-new checkout in the `sesh` picker before anyone has ever `cd`'d into it —
 zoxide is the only source of directories sesh has.
 
+## Moshi over the tailnet
+
+### sshd waits for the address it binds
+
+`ListenAddress <tailnet ip>` is the whole security argument for reaching this
+machine from a phone — the port is unanswerable to anything not already on the
+tailnet — and it is also a bind to an address that does not exist at boot.
+tailscaled assigns it some seconds in. `sshd.service` knows nothing about that,
+so on 8 August 2026 the machine came up with sshd dead:
+
+```
+error: Bind to port 22 on 100.112.124.106 failed: Cannot assign requested address.
+sshd.service: Start request repeated too quickly.
+```
+
+Five restarts inside one second, the start limit latched, and sshd stayed off
+for the rest of the boot — while the address it wanted appeared moments later.
+Nothing was misconfigured; the config was simply self-defeating on every reboot.
+The visible symptom was Moshi, which reaches this machine over SSH, unable to
+connect at all, with a `moshi-hook` daemon reporting itself perfectly healthy —
+paired, bridge connected, usage syncing. The daemon is not the SSH path, so it
+had nothing to complain about.
+
+`run_after_21` now writes a second file, `/etc/systemd/system/sshd.service.d/
+10-wait-for-tailnet.conf`, regenerated from `tailscale ip -4` alongside the sshd
+config so the two can never disagree about the address.
+
+Three decisions in it:
+
+**Wait on the address, not on tailscaled and not on tailscale0.** Ordering after
+the daemon still races the address it hands out, and the interface exists before
+it is configured. What sshd needs is the exact thing it is about to bind, so the
+`ExecStartPre` polls for `inet <ip>/` and nothing else.
+
+**No counter in the wait loop.** systemd expands `$i` in an `Exec` line as a unit
+variable and would hand the shell an empty string, quietly turning the loop into
+something else. The ceiling is `TimeoutStartSec` instead — systemd's own, which
+is what bounds a hanging boot anyway.
+
+**`StartLimitIntervalSec=0`.** The outage was not the failed bind; it was the
+rate limiter deciding, correctly by its own rules, that a unit failing five
+times in a second should stop being retried. With a real precondition in front
+of the bind, an attempt now costs up to two minutes rather than 200ms, so there
+is nothing left for the limiter to protect against.
+
+A drop-in also fixes only the *next* boot, and the machine that runs the apply is
+the one already broken — a latched start limit stays latched. So the script
+starts sshd when it finds it enabled but not running, which is safe unasked in a
+way the existing reload branch is not: starting a daemon that is down cuts no
+session. `chezmoi apply` is therefore also the recovery, which is the property
+worth having, since it is the thing a person reaches for anyway.
+
+Not chosen: `net.ipv4.ip_nonlocal_bind=1`, one sysctl line that lets sshd bind an
+address before it exists. It is smaller, and it is global — every process on the
+machine gains the ability to bind any address, to fix an ordering problem in one
+unit.
+
 ## Updates
 
 `dotfiles-update-check` **only notifies**; it never pulls and never applies. An

@@ -286,6 +286,14 @@ config that listens everywhere. Tailscale's own SSH is deliberately unused:
 `RunSSH` stays false and authorisation stays in `authorized_keys`, which this
 repo can see.
 
+**If the phone cannot connect at all after a reboot**, check `systemctl status
+sshd` before anything Moshi-side. Binding the tailnet address means sshd cannot
+start until tailscaled has assigned it, and the raw unit will burn its start
+limit trying. `run_after_21` writes a `sshd.service.d` drop-in that waits for the
+address, and starts sshd if it finds it enabled but down — so `chezmoi apply` is
+also the recovery. See `docs/design-notes.md`, "sshd waits for the address it
+binds".
+
 **Pairing is one command.** Easy Pair does both halves — SSH/Mosh host access
 *and* the agent-hooks daemon — in a single QR:
 
