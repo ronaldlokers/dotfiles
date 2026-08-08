@@ -32,6 +32,26 @@
 
 current="$(cat)"
 
+# The three third-party marketplaces used to carry a `ref` pinning each to a
+# commit. Those pins were removed on 2026-08-08 because they were not enforced
+# by anything, and a config field that reads as supply-chain control while
+# enforcing nothing is worse than an honest absence.
+#
+# What the evidence showed. After Claude Code's plugin sweep wiped the three
+# non-official marketplaces, the supported repair -- `claude plugin marketplace
+# add <repo>` -- has no way to express a ref at all, and every restored clone
+# came back on branch `main` at upstream HEAD rather than detached at the
+# pinned commit. karpathy-skills *appeared* pinned only because its HEAD had
+# not moved since the pin was taken. Settings alone did not actuate a clone
+# either: all three sat declared-but-absent until the CLI was run by hand.
+# Even if a first-ever clone honoured the ref, the clone tracks `main`, so
+# `marketplace update` discards it with no signal.
+#
+# The commits that were pinned, kept as a record of what had been reviewed:
+#   caveman          JuliusBrussee/caveman             0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0
+#   impeccable       pbakaus/impeccable                5e572c8b8af3e108ab52ce4180adb4d6eb1c2ebc
+#   karpathy-skills  multica-ai/andrej-karpathy-skills 2c606141936f1eeef17fa3043a72095b4765b9c2
+#
 # Quoted heredoc delimiter ('EOF') so nothing in this JSON is shell-expanded
 # -- it contains literal-looking "$HOME" references inside command strings.
 baseline() {
@@ -79,15 +99,13 @@ baseline() {
     "karpathy-skills": {
       "source": {
         "source": "github",
-        "repo": "multica-ai/andrej-karpathy-skills",
-        "ref": "2c606141936f1eeef17fa3043a72095b4765b9c2"
+        "repo": "multica-ai/andrej-karpathy-skills"
       }
     },
     "caveman": {
       "source": {
         "source": "github",
-        "repo": "JuliusBrussee/caveman",
-        "ref": "0d95a81d35a9f2d123a5e9430d1cfc43d55f1bb0"
+        "repo": "JuliusBrussee/caveman"
       }
     },
     "claude-plugins-official": {
@@ -99,8 +117,7 @@ baseline() {
     "impeccable": {
       "source": {
         "source": "github",
-        "repo": "pbakaus/impeccable",
-        "ref": "5e572c8b8af3e108ab52ce4180adb4d6eb1c2ebc"
+        "repo": "pbakaus/impeccable"
       }
     }
   },

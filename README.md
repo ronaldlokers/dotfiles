@@ -512,6 +512,15 @@ mise run prune             # needs a human: shows a dry run, then asks
   [`assets/README.md`](assets/README.md)), and `/plugin` enable/disable in
   Claude Code (edit `dot_claude/modify_settings.json`). `~/.ssh/config` and
   `~/.devpod/config.yaml` are deliberately unmanaged for the same reason.
+- **Claude Code's plugin cache can lose your marketplaces.** A sweep on
+  2026-08-08 removed the three non-official ones from
+  `~/.claude/plugins/known_marketplaces.json` while `settings.json` still
+  declared all four, and nothing reconciled the two — the plugins simply stopped
+  existing. Settings alone do not actuate a clone. Restore with
+  `claude plugin marketplace add <owner/repo>` then `claude plugin install
+  <name>@<marketplace>`, or check with `claude plugin marketplace list`.
+  Marketplace `ref` pins are *not* enforced: clones track `main`, so what you
+  get is upstream HEAD whatever the settings say.
 - **Aliases don't apply in scripts.** `du`, `df`, `top` are aliased to `dust`,
   `duf`, `btop` in interactive shells only.
 - **A completion that never appears may be a permissions problem.** `compinit`
