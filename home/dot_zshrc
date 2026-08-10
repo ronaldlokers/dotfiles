@@ -243,57 +243,11 @@ if command -v yazi > /dev/null ; then
 fi
 
 
-# ~~~~~~~~~~~~~~~ Aliases ~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~ Shared aliases ~~~~~~~~~~~~~~~~~
 
-
-# defined after omarchy's so ls/v here win over its eza/vim
-
-if command -v nvim > /dev/null ; then
-  alias v="nvim"
-fi
-
-if command -v git > /dev/null ; then
-  alias gp="git pull"
-fi
-
-if command -v lazygit > /dev/null ; then
-  alias lg="lazygit"
-fi
-
-if command -v kubectl > /dev/null ; then
-  alias k="kubectl"
-fi
-
-if command -v bat > /dev/null ; then
-  alias cat="bat"
-fi
-
-if command -v lsd > /dev/null ; then
-  alias ls="lsd"
-  alias ll="ls -lgh"
-  alias la='ls -lathr'
-  alias lla='ls -lgha'
-  alias lt='ls --tree'
-  # `tree` isn't installed anywhere here, so this fills a gap rather than
-  # shadowing a real command — same engine as lt, under the name muscle memory
-  # reaches for.
-  alias tree='ls --tree'
-fi
-
-# Coreutils replacements under the original names. Interactive-only, so scripts
-# still get coreutils. Not aliased: `sed`→sd (incompatible arguments) and
-# `ping`→gping (plots a graph rather than standing in).
-if command -v dust > /dev/null ; then
-  alias du="dust"
-fi
-
-if command -v duf > /dev/null ; then
-  alias df="duf"
-fi
-
-if command -v btop > /dev/null ; then
-  alias top="btop"
-fi
+# Defined after Omarchy's aliases so these win over its eza/vim defaults.
+[ -r "$HOME/.config/shell/interactive-aliases.sh" ] && \
+  . "$HOME/.config/shell/interactive-aliases.sh"
 
 
 # ~~~~~~~~~~~~~~~ Plugins ~~~~~~~~~~~~~~~~~~~~~~~~

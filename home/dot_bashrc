@@ -209,55 +209,10 @@ if command -v zoxide > /dev/null ; then
   alias z="cd"
 fi
 
-# Kept in step with .zshrc by hand; add to both. Each is guarded on its tool.
-# Last on purpose: the dircolors block above also aliases `ls`, and the later
-# definition wins.
-
-if command -v nvim > /dev/null ; then
-  alias v="nvim"
-fi
-
-if command -v git > /dev/null ; then
-  alias gp="git pull"
-fi
-
-if command -v lazygit > /dev/null ; then
-  alias lg="lazygit"
-fi
-
-if command -v kubectl > /dev/null ; then
-  alias k="kubectl"
-fi
-
-if command -v bat > /dev/null ; then
-  alias cat="bat"
-fi
-
-if command -v lsd > /dev/null ; then
-  alias ls="lsd"
-  alias ll="ls -lgh"
-  alias la='ls -lathr'
-  alias lla='ls -lgha'
-  alias lt='ls --tree'
-  # `tree` isn't installed anywhere here, so this fills a gap rather than
-  # shadowing a real command.
-  alias tree='ls --tree'
-fi
-
-# The coreutils replacements under their predecessors' names, same as in
-# .zshrc — see the comment there for why this is safe despite the flag
-# differences, and why sd and gping are deliberately left alone.
-if command -v dust > /dev/null ; then
-  alias du="dust"
-fi
-
-if command -v duf > /dev/null ; then
-  alias df="duf"
-fi
-
-if command -v btop > /dev/null ; then
-  alias top="btop"
-fi
+# Shared aliases are kept in one applied file so Bash and Zsh cannot drift.
+# This comes after the distro aliases above so our `ls` definition wins.
+[ -r "$HOME/.config/shell/interactive-aliases.sh" ] && \
+  . "$HOME/.config/shell/interactive-aliases.sh"
 
 # tv's pickers, mirroring .zshrc — see the comments there, including why the
 # Ctrl-T menu is two `tv` calls rather than the `channels` meta-channel. Bound

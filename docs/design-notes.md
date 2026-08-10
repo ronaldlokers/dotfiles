@@ -40,14 +40,16 @@ repo root.
 it has to be read before the root is descended into. It names `2.70.5`, the same
 version `home/dot_config/mise/config.toml` pins, because that pin is the only
 chezmoi CI and every machine actually exercises. A fresh machine satisfies the
-floor regardless: `setup` installs latest from `get.chezmoi.io`.
+floor regardless: `setup` and CI install that pinned release through the
+official `get.chezmoi.io` installer.
 
-Three files now carry that number — `.chezmoiversion`, the machine pin in
-`home/dot_config/mise/config.toml`, and this repo's own pin in `mise.toml` (the
-suite renders a script template, so the tests need the binary) — so `mise run
-lint` asserts all three agree. Renovate bumps the pins on its own schedule; the
-failing assertion is what says "bump the floor too" rather than letting them
-drift apart silently.
+Five places now carry that number — `.chezmoiversion`, the machine pin in
+`home/dot_config/mise/config.toml`, this repo's own pin in `mise.toml` (the
+suite renders a script template, so the tests need the binary), and the release
+tags in `setup` and CI — so `mise run lint` asserts they agree. Renovate bumps
+the numeric pins on its own schedule; the failing assertion is what says
+"bump the floor and bootstrap too" rather than letting them drift apart
+silently.
 
 ### `exact_` on two directories, not six
 

@@ -7,11 +7,17 @@
 # one finish the job.
 set -eu
 
+pending() {
+	command -v dotfiles-pending >/dev/null 2>&1 && dotfiles-pending "$@" || true
+}
+pending clear update-check
+
 # Only where a systemd user manager is running — hosts, not devpod containers.
 # Probe the manager's own socket rather than systemctl's exit code: devcontainer
 # images ship a systemctl shim that exits 0 while printing "systemd is not
 # running", so trusting the exit code enables a timer that will never fire.
 if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
+	pending set update-check "no systemd user session; re-run chezmoi apply in a login session"
     echo "No systemd user session, skipping update-check timer." >&2
     exit 0
 fi
@@ -35,6 +41,7 @@ fi
 # That is a property of the test setup, not a broken machine, so don't fail the
 # apply over it. Check visibility first and say plainly why it was skipped.
 if ! systemctl --user cat dotfiles-update-check.timer >/dev/null 2>&1; then
+	pending set update-check "unit is not visible to the user manager; apply from its owning HOME"
     echo "Timer unit not visible to the user manager, skipping enable." >&2
     echo "Expected when applying to a HOME the manager doesn't own." >&2
     exit 0
@@ -46,6 +53,7 @@ fi
 # Best-effort for the same reason — a notification timer is not worth aborting
 # an apply for, and this script re-runs whenever its inputs change.
 if ! systemctl --user enable --now dotfiles-update-check.timer; then
+	pending set update-check "systemctl could not enable dotfiles-update-check.timer"
     echo "Could not enable dotfiles-update-check.timer; continuing." >&2
     echo "Enable it by hand with: systemctl --user enable --now dotfiles-update-check.timer" >&2
 fi

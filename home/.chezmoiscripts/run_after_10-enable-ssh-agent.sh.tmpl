@@ -14,12 +14,18 @@
 # apply finish the job.
 set -eu
 
+pending() {
+	command -v dotfiles-pending >/dev/null 2>&1 && dotfiles-pending "$@" || true
+}
+pending clear ssh-agent
+
 # Only where a systemd user manager is running (hosts, not devpod
 # containers — there the agent is forwarded in, not started locally).
 # Probe the manager's own socket, not `systemctl` exit codes: devcontainer
 # images ship a systemctl shim that exits 0 with a "systemd is not
 # running" notice.
 if [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/systemd/private" ]; then
+	pending set ssh-agent "no systemd user session; re-run chezmoi apply in a login session"
     echo "No systemd user session, skipping ssh-agent service enable." >&2
     exit 0
 fi
@@ -44,6 +50,7 @@ fi
 #
 # Same guard, same wording as the two sibling scripts next door.
 if ! systemctl --user cat ssh-agent.service >/dev/null 2>&1; then
+	pending set ssh-agent "unit is not visible to the user manager; apply from its owning HOME"
     echo "Unit not visible to the user manager, skipping enable." >&2
     echo "Expected when applying to a HOME the manager doesn't own." >&2
     exit 0
@@ -54,6 +61,7 @@ fi
 # unit is actually active afterwards, so a silently swallowed failure still
 # fails the build there.
 if ! systemctl --user enable --now ssh-agent.service; then
+	pending set ssh-agent "systemctl could not enable ssh-agent.service"
     echo "Could not enable ssh-agent.service; continuing." >&2
     echo "Enable it by hand with: systemctl --user enable --now ssh-agent.service" >&2
 fi

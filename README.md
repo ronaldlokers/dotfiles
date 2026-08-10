@@ -3,6 +3,11 @@
 Personal dotfiles, managed with [chezmoi](https://chezmoi.io). Arch/Omarchy host
 plus [DevPod](https://devpod.sh) containers, one source tree for both.
 
+The fully supported environments are Linux `x86_64` Omarchy/Arch hosts and the
+Linux `x86_64` DevPod containers they create. Other Linux distributions and
+architectures are best-effort: shared files and mise tools may work, while
+Arch/AUR packages and Linux-amd64 host externals are intentionally skipped.
+
 How to install, restore and use it. Why it is built this way lives in
 [`docs/design-notes.md`](docs/design-notes.md); what to do when a credential
 leaks is [`docs/revocation.md`](docs/revocation.md).
@@ -13,13 +18,14 @@ are relative to it — `dot_zshrc` is `home/dot_zshrc` on disk.
 ## Fresh machine
 
 ```sh
-sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
+sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -t v2.70.5 init --apply https://github.com/ronaldlokers/dotfiles.git
 chezmoi apply                                             # asks for the PAT if needed
 PROTON_PASS_PERSONAL_ACCESS_TOKEN='pst_…' chezmoi apply   # or supply it up front
 ```
 
 Or run [`setup`](setup), which does the same and makes zsh the login shell. Both
-are safe to re-run. The first apply installs `pass-cli`, the second derives
+are safe to re-run. The bootstrap pins chezmoi to `v2.70.5`, matching the
+repository's version floor. The first apply installs `pass-cli`, the second derives
 everything.
 
 <a name="bootstrapping"></a>
@@ -90,6 +96,9 @@ fingerprint and prints only the *public* half. It writes nothing unless asked:
 ```sh
 dotfiles-secrets-restore --write <file>   # put the key back, on the bad day
 ```
+
+The recovery path is also exercised locally with `mise run recovery`; it uses
+stubbed Proton and age commands, so it never touches the real vault or key.
 
 Run the verify occasionally. The weekly check confirms a *record* exists and
 that the vault's key has not rotated since — it never opens the backup, so it

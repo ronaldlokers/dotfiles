@@ -85,20 +85,35 @@ fail() {
 	rc=1
 }
 
-# --- the three chezmoi versions ---------------------------------------------
-# The .chezmoiversion floor, the pin every machine installs, and this repo's own
-# pin (the tests render a script template, so they need the binary). Renovate
-# bumps the pins; this is what says "bump the floor too".
+# --- the chezmoi versions ----------------------------------------------------
+# The .chezmoiversion floor, the machine pin, this repo's own pin, and the
+# bootstrap/CI installer tags. Renovate bumps the numeric pins; this is what
+# says "bump the floor and bootstrap too".
 check_chezmoi_pins() {
 	v="$(cat "$root/.chezmoiversion" 2>/dev/null || true)"
 	p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' "$root/home/dot_config/mise/config.toml" 2>/dev/null || true)"
 	r="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' "$root/mise.toml" 2>/dev/null || true)"
 	if [ -z "$v" ] || [ -z "$p" ] || [ -z "$r" ]; then
-		fail "could not read all three chezmoi versions (floor '$v', machine '$p', repo '$r')"
+		fail "could not read all chezmoi versions (floor '$v', machine '$p', repo '$r')"
 		return
 	fi
 	if [ "$v" != "$p" ] || [ "$v" != "$r" ]; then
-		fail ".chezmoiversion ($v), the machine pin ($p) and this repo's pin ($r) disagree"
+		fail ".chezmoiversion ($v), machine pin ($p) and repo pin ($r) disagree"
+	fi
+	# Small fixture trees used by this check's own tests predate bootstrap/CI
+	# pinning. Enforce the extra copies whenever they exist, while retaining the
+	# useful three-file check for a minimal source tree.
+	if [ -f "$root/setup" ] && grep -q '^CHEZMOI_VERSION=' "$root/setup" 2>/dev/null; then
+		s="$(sed -n 's/^CHEZMOI_VERSION="v\(.*\)"$/\1/p' "$root/setup" 2>/dev/null || true)"
+		if [ -z "$s" ] || [ "$v" != "$s" ]; then
+			fail ".chezmoiversion ($v) and setup pin (${s:-missing}) disagree"
+		fi
+	fi
+	if [ -f "$root/.github/workflows/ci.yaml" ] && grep -q '^  CHEZMOI_VERSION:' "$root/.github/workflows/ci.yaml" 2>/dev/null; then
+		c="$(sed -n 's/^  CHEZMOI_VERSION: v//p' "$root/.github/workflows/ci.yaml" 2>/dev/null || true)"
+		if [ -z "$c" ] || [ "$v" != "$c" ]; then
+			fail ".chezmoiversion ($v) and CI pin (${c:-missing}) disagree"
+		fi
 	fi
 }
 
