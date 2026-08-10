@@ -72,7 +72,7 @@ rtk = "0.43.0"
 age = "1.3.1"
 # nvim-treesitter (main branch) shells out to the tree-sitter CLI to
 # compile parsers; without it :TSUpdate fails and parsers go stale
-tree-sitter = "0.26.11"
+tree-sitter = "0.26.12"
 uv = "0.11.32"
 # uvx_args: pomo imports typing_extensions but doesn't declare it; on
 # python >=3.14 nothing pulls it in transitively anymore.
