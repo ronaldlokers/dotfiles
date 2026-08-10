@@ -6,6 +6,11 @@
 
 set -euo pipefail
 
+# Keep bootstrap on the same tested release as `.chezmoiversion`. The official
+# installer defaults to latest, which can move independently of this source
+# tree and turn a recovery into an untested upgrade.
+CHEZMOI_VERSION="v2.70.5"
+
 # Make zsh the login shell, unless it already is (avoids a needless
 # sudo prompt on re-runs). On a genuinely fresh machine zsh isn't
 # installed yet at this point, so this no-ops and the host package script
@@ -23,5 +28,5 @@ fi
 # yet. Everything else (mise, packages, the pure prompt) is pulled in
 # by chezmoi's externals and run_onchange scripts during apply.
 if ! command -v chezmoi >/dev/null; then
-    sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply https://github.com/ronaldlokers/dotfiles.git
+    sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -t "$CHEZMOI_VERSION" init --apply https://github.com/ronaldlokers/dotfiles.git
 fi

@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Keep CI on the same chezmoi release as `.chezmoiversion` and the bootstrap
+  # instructions. The installer otherwise defaults to latest.
+  CHEZMOI_VERSION: v2.70.5
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -24,6 +29,20 @@ jobs:
       # contributor had locally — the validator in particular passed here and
       # failed on a developer machine with a stale npx cache.
       - uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+      - name: shellcheck rendered templates
+        run: |
+          set -eu
+          render_dir="$(mktemp -d)"
+          trap 'rm -rf "$render_dir"' EXIT
+          n=0
+          for src in home/.chezmoiscripts/*.sh.tmpl home/dot_local/bin/*.tmpl; do
+            [ -f "$src" ] || continue
+            out="$render_dir/$n.sh"
+            chezmoi execute-template --source "$PWD" <"$src" >"$out"
+            shellcheck --severity=warning "$out"
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ]
       - name: lint
         run: mise run lint
 
@@ -59,7 +78,7 @@ jobs:
       - name: install zsh
         run: sudo apt-get update -q && sudo apt-get install -y -q zsh
       - name: install chezmoi
-        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/bin"
+        run: sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -t "$CHEZMOI_VERSION" -b "$RUNNER_TEMP/bin"
       - name: bootstrap into a clean HOME
         run: |
           export PATH="$RUNNER_TEMP/bin:$PATH"
@@ -236,7 +255,7 @@ jobs:
           test -S "$rt/systemd/private" \
             || { echo "::error::user systemd session never came up"; exit 1; }
       - name: install chezmoi
-        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$RUNNER_TEMP/bin"
+        run: sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -t "$CHEZMOI_VERSION" -b "$RUNNER_TEMP/bin"
       - name: place the unit and run the real enable script
         run: |
           export PATH="$RUNNER_TEMP/bin:$PATH"
@@ -306,7 +325,7 @@ jobs:
           fi
           command -v pacman >/dev/null || { echo "::error::pacman missing; skip could be for the wrong reason"; exit 1; }
       - name: install chezmoi
-        run: sh -c "$(curl -fsLS get.chezmoi.io)" -- -b /usr/local/bin
+        run: sh -c "$(curl -fsLS https://get.chezmoi.io)" -- -t "$CHEZMOI_VERSION" -b /usr/local/bin
       - name: devpod external renders to nothing
         run: |
           out="$(chezmoi execute-template --source "$PWD" < home/.chezmoiexternals/devpod.toml)"

@@ -1,0 +1,37 @@
+#!/bin/sh
+# Local ledger for work intentionally deferred by a chezmoi apply.
+set -eu
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+state_file="$state_dir/pending"
+usage() {
+	cat <<'USAGE'
+usage: dotfiles-pending {set|clear|show} [action] [reason]
+USAGE
+}
+[ $# -ge 1 ] || { usage >&2; exit 2; }
+mkdir -p "$state_dir" 2>/dev/null || exit 0
+case "$1" in
+set)
+	[ $# -ge 3 ] || { usage >&2; exit 2; }
+	tmp="$state_file.$$"
+	{
+		[ -f "$state_file" ] && grep -v "^$2	" "$state_file" || true
+		printf '%s\t%s\n' "$2" "$3"
+	} >"$tmp"
+	mv -f "$tmp" "$state_file"
+	chmod 600 "$state_file" 2>/dev/null || true
+	;;
+clear)
+	[ $# -eq 2 ] || { usage >&2; exit 2; }
+	[ -f "$state_file" ] || exit 0
+	tmp="$state_file.$$"
+	grep -v "^$2	" "$state_file" >"$tmp" || true
+	if [ -s "$tmp" ]; then mv -f "$tmp" "$state_file"; else rm -f "$tmp" "$state_file"; fi
+	;;
+show)
+	[ $# -eq 1 ] || { usage >&2; exit 2; }
+	[ -f "$state_file" ] && cat "$state_file"
+	;;
+*) usage >&2; exit 2 ;;
+esac

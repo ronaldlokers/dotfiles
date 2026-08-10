@@ -1,0 +1,204 @@
+#!/bin/sh
+# Read-only readiness report for a machine managed by this repository.
+#
+# The doctor intentionally does not apply changes, contact Proton by default,
+# or print secret material. It answers the first troubleshooting question:
+# "what is missing, skipped, or unhealthy on this machine, and what should I
+# run next?"
+set -u
+
+usage() {
+	cat <<'USAGE'
+usage: dotfiles-doctor [--live]
+
+Reports the local readiness of this dotfiles installation. Checks the platform,
+chezmoi/mise, host/container prerequisites, user services, externals, and
+secret/recovery state without changing anything.
+
+  --live    also ask Proton Pass whether the current session is usable. This
+            may contact the network and is bounded by a short timeout.
+
+Exit status is 0 when no fault is found, 1 when something needs attention, and
+2 for invalid arguments.
+USAGE
+}
+
+live=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-h | --help) usage; exit 0 ;;
+	--live) live=1 ;;
+	*) echo "dotfiles-doctor: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+	esac
+	shift
+done
+
+rc=0
+lines=""
+say() {
+	lines="$lines$1\n"
+}
+ok() { say "OK    $1"; }
+warn() { say "WARN  $1"; }
+fail() { say "FAIL  $1"; rc=1; }
+skip() { say "SKIP  $1"; }
+
+is_container=0
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	is_container=1
+fi
+
+os="$(uname -s 2>/dev/null || echo unknown)"
+arch="$(uname -m 2>/dev/null || echo unknown)"
+if [ "$os" = "Linux" ] && [ "$arch" = "x86_64" ]; then
+	if [ "$is_container" -eq 1 ]; then ok "platform: $os/$arch container (supported)"; else ok "platform: $os/$arch host (supported)"; fi
+else
+	warn "platform: $os/$arch (best effort; host externals are Linux amd64 only)"
+fi
+
+# The source tree is outside the applied home because .chezmoiroot points at
+# home/. Resolve it when possible so the report can show which source is being
+# diagnosed, but do not make a broken chezmoi installation fatal here.
+source_dir=""
+if command -v chezmoi >/dev/null 2>&1; then
+	version="$(chezmoi --version 2>/dev/null | sed -n 's/^chezmoi version v\{0,1\}\([^, ]*\).*/\1/p')"
+	if [ "$version" = "2.70.5" ]; then
+		ok "chezmoi: $version"
+	else
+		fail "chezmoi: ${version:-unavailable} (expected 2.70.5; run 'mise install chezmoi')"
+	fi
+	source_dir="$(chezmoi source-path 2>/dev/null || true)"
+else
+	fail "chezmoi: command not found (bootstrap or install chezmoi)"
+fi
+
+if command -v mise >/dev/null 2>&1; then
+	mise_config="${MISE_GLOBAL_CONFIG_FILE:-$HOME/.config/mise/config.toml}"
+	if [ -r "$mise_config" ]; then
+		missing="$(cd / && MISE_GLOBAL_CONFIG_FILE="$mise_config" mise ls --missing 2>/dev/null || true)"
+		if [ -n "$missing" ]; then
+			fail "mise: configured tools missing; run 'mise install'"
+			say "      ${missing%%\n*}"
+		else
+			ok "mise: all configured tools installed"
+		fi
+	else
+		fail "mise: config missing at $mise_config"
+	fi
+else
+	fail "mise: command not found"
+fi
+
+if [ "$is_container" -eq 1 ]; then
+	skip "host packages and Proton Pass checks: container"
+else
+	if command -v pacman >/dev/null 2>&1; then
+		ok "pacman: available"
+	else
+		warn "pacman: unavailable; host package installation is skipped"
+	fi
+	if command -v yay >/dev/null 2>&1 || command -v paru >/dev/null 2>&1; then
+		ok "AUR helper: available"
+	else
+		warn "AUR helper: neither yay nor paru is installed"
+	fi
+	if command -v pass-cli >/dev/null 2>&1; then
+		ok "pass-cli: installed"
+	else
+		fail "pass-cli: command not found; secrets cannot be restored"
+	fi
+fi
+
+if [ -n "$source_dir" ]; then
+	case "$source_dir" in
+	*/home) : ;;
+	*) warn "chezmoi source: $source_dir (expected a source tree ending in /home)" ;;
+	esac
+	if [ -d "$source_dir/.chezmoiexternals" ]; then
+		ok "externals: source definitions present"
+	else
+		fail "externals: source definitions missing under $source_dir"
+	fi
+else
+	warn "externals: source path could not be resolved"
+fi
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+pending_file="$state_dir/pending"
+if [ -s "$pending_file" ]; then
+	fail "deferred actions recorded by the last apply"
+	while IFS='	' read -r action reason; do
+		[ -n "$action" ] || continue
+		say "      $action: $reason"
+	done <"$pending_file"
+else
+	ok "deferred actions: none recorded"
+fi
+
+if [ -x "$HOME/.local/bin/dotfiles-status" ]; then
+	status_output="$(dotfiles-status 2>&1 || true)"
+	if printf '%s\n' "$status_output" | grep -q '^FAIL'; then
+		fail "recorded health: dotfiles-status reports a fault"
+		printf '%s\n' "$status_output" | while IFS= read -r line; do say "      $line"; done
+	else
+		ok "recorded health: dotfiles-status reports no fault"
+	fi
+else
+	warn "recorded health: dotfiles-status is not installed"
+fi
+
+if [ "$is_container" -eq 1 ]; then
+	skip "systemd user services: container"
+elif command -v systemctl >/dev/null 2>&1; then
+	if systemctl --user show-environment >/dev/null 2>&1; then
+		ok "systemd user manager: reachable"
+		for unit in dotfiles-secrets-check.timer dotfiles-update-check.timer; do
+			if systemctl --user is-enabled --quiet "$unit" 2>/dev/null; then
+				ok "user timer: $unit enabled"
+			else
+				fail "user timer: $unit is not enabled (run 'chezmoi apply' in a session)"
+			fi
+		done
+	else
+		warn "systemd user manager: unavailable in this session"
+	fi
+else
+	warn "systemd: systemctl unavailable"
+fi
+
+if [ "$is_container" -eq 0 ]; then
+	pat_file="$HOME/.config/pass-cli-bootstrap-pat"
+	if [ -f "$pat_file" ]; then
+		mode="$(stat -c '%a' "$pat_file" 2>/dev/null || stat -f '%Lp' "$pat_file" 2>/dev/null || echo unknown)"
+		case "$mode" in
+		600 | 400) ok "bootstrap PAT: cached with restrictive mode $mode" ;;
+		*) fail "bootstrap PAT: cached file mode is $mode (run 'chmod 600 $pat_file')" ;;
+		esac
+	else
+		warn "bootstrap PAT: not cached; the next apply needs PROTON_PASS_PERSONAL_ACCESS_TOKEN"
+	fi
+
+	if [ -r "$HOME/.config/sops/age/keys.txt" ]; then
+		ok "age identity: present"
+	else
+		fail "age identity: $HOME/.config/sops/age/keys.txt is missing"
+	fi
+	if [ -f "$state_dir/secrets-backup" ]; then
+		ok "offline backup: recorded"
+	else
+		warn "offline backup: no manifest; run 'dotfiles-secrets-export <destination>'"
+	fi
+
+	if [ "$live" -eq 1 ] && command -v pass-cli >/dev/null 2>&1; then
+		if command -v timeout >/dev/null 2>&1; then
+			if timeout 5 pass-cli info >/dev/null 2>&1; then ok "Proton Pass: live session usable"; else fail "Proton Pass: live session unavailable"; fi
+		elif pass-cli info >/dev/null 2>&1; then
+			ok "Proton Pass: live session usable"
+		else
+			fail "Proton Pass: live session unavailable"
+		fi
+	fi
+fi
+
+printf '%b' "$lines"
+exit "$rc"

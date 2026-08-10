@@ -1,5 +1,11 @@
 #!/bin/bash
+# shellcheck disable=SC1083
 set -euo pipefail
+
+pending() {
+	command -v dotfiles-pending >/dev/null 2>&1 && dotfiles-pending "$@" || true
+}
+pending clear host-packages
 
 # Desktop applications for the host: things needing a display or a system
 # package manager. CLI tools go in dot_config/mise/config.toml instead.
@@ -7,57 +13,14 @@ set -euo pipefail
 # A plain run_after, not run_onchange, so a skipped run is retried later rather
 # than remembered as done. Arch-only; exits cleanly elsewhere.
 
-# Shipped by the distro's own repos.
+# Package policy is data in .chezmoitemplates, separate from installer logic.
 REPO_PACKAGES=(
-	discord
-	# Needs a display, so not mise. Which terminal Super+Return opens is set
-	# by dot_config/xdg-terminals.list.
-	ghostty
-	obsidian
-	proton-vpn-gtk-app
-	prusa-slicer
-	rpi-imager
-	signal-desktop
-	# Mesh VPN. Host-only: owns machine-wide routing, which containers inherit.
-	tailscale
-	# Touch-to-sudo; pulls in libfido2, also needed for ed25519-sk keys.
-	pam-u2f
-	# YubiKey: pcscd smartcard daemon plus the ykman CLI.
-	pcsclite
-	yubikey-manager
-	# udev rules for the OTP/HID interface; without them ykman otp fails with a
-	# misleading "connection type not supported".
-	yubikey-personalization
-	# The login shell, and the one this repo actually configures — dot_zshrc holds
-	# the prompt, autosuggestions, fzf-tab and completion setup, while dot_bashrc
-	# is only a fallback. From pacman, not mise: a login shell must be in
-	# /etc/shells and running before mise activates.
-	zsh
-	# Roaming-tolerant remote shell. Moshi drives the phone client over mosh with
-	# an SSH fallback, and a phone changing networks is exactly the case mosh
-	# exists for. Needs openssh underneath: mosh authenticates by running
-	# mosh-server over SSH, then moves to its own UDP channel.
-	mosh
-	openssh
-	# JavaScript runtime, here only because the herdr window-title-sync plugin
-	# runs `bun sync-title.js` on every pane and workspace event. Without it the
-	# plugin installs cleanly and then fails silently on every event, which is
-	# the worst of the three possible outcomes. From pacman rather than mise: it
-	# is a dependency of a thing the desktop runs, not a tool typed at a prompt.
-	bun
+# shellcheck disable=SC1083
+{{ includeTemplate "host-repo-packages" . }}
 )
-
-# AUR packages. Building these runs upstream PKGBUILDs as arbitrary code, so
-# curate the list by hand. yay/paru check binary repos first, which also covers
-# packages served from a custom repo on some machines.
 AUR_PACKAGES=(
-	bambustudio-bin
-	chirp-next
-	claude-desktop
-	proton-pass-bin
-	spotify
-	winbox
-	zen-browser-bin
+# shellcheck disable=SC1083
+{{ includeTemplate "host-aur-packages" . }}
 )
 
 # Containers get none of this. Unquoted on purpose, and the pragmas are
@@ -66,10 +29,12 @@ AUR_PACKAGES=(
 is_container={{ includeTemplate "is-container" . }}
 # shellcheck disable=SC2154
 if [ "$is_container" = "true" ]; then
+	pending set host-packages "container; host packages are intentionally skipped"
 	exit 0
 fi
 
 if ! command -v pacman >/dev/null 2>&1; then
+	pending set host-packages "pacman is unavailable"
 	echo "[packages] no pacman on this system; skipping host packages." >&2
 	exit 0
 fi
@@ -77,6 +42,7 @@ fi
 # Probe with `sudo -n` first: a non-interactive apply has no TTY, and a
 # password prompt would hang forever.
 if ! sudo -n true 2>/dev/null && [ ! -t 0 ]; then
+	pending set host-packages "sudo requires a TTY; re-run chezmoi apply interactively"
 	echo "[packages] no TTY and sudo needs a password; skipping host packages." >&2
 	echo "[packages] Run 'chezmoi apply' from an interactive shell to install them." >&2
 	exit 0
@@ -227,6 +193,7 @@ fi
 # every later step of the apply over one flaky AUR build, and because this is a
 # plain run_after the next apply retries whatever didn't land.
 if [ ${#failed[@]} -gt 0 ]; then
+	pending set host-packages "failed to install: ${failed[*]}"
 	echo "[packages] failed to install: ${failed[*]}" >&2
 	echo "[packages] re-run 'chezmoi apply', or install by hand to see the error." >&2
 fi

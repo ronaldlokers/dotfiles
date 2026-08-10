@@ -24,7 +24,7 @@ run = [
 	# shellcheck-targets` asserts the list is complete, which is what stops a
 	# hand-kept list going stale: scripts/check-shells.sh had a bats file of its
 	# own and was never once shellchecked.
-	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_13-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_dotfiles-secrets-restore home/dot_local/bin/executable_dotfiles-status home/dot_local/bin/executable_dotfiles-update-check.tmpl home/dot_local/bin/executable_proton-ssh-load home/dot_local/bin/executable_repos-sync home/dot_claude/hooks/executable_rtk-rewrite.sh scripts/check-agreement.sh scripts/check-shells.sh tests/helpers.bash",
+	"shellcheck --severity=warning setup home/.chezmoiscripts/*.sh.tmpl home/.chezmoiscripts/run_after_13-ensure-ssh-include.sh home/dot_claude/executable_statusline.sh home/dot_claude/modify_settings.json home/dot_config/shell/interactive-aliases.sh home/dot_config/shell/ssh-agent.sh home/dot_config/shell/github-token.sh home/dot_local/share/exact_devcontainer-template/post-create.sh home/dot_local/bin/executable_devcontainer-init home/dot_local/bin/executable_devpod home/dot_local/bin/executable_dotfiles-doctor home/dot_local/bin/executable_dotfiles-pending home/dot_local/bin/executable_dotfiles-secrets-check home/dot_local/bin/executable_dotfiles-secrets-export home/dot_local/bin/executable_dotfiles-secrets-restore home/dot_local/bin/executable_dotfiles-status home/dot_local/bin/executable_dotfiles-update-check.tmpl home/dot_local/bin/executable_proton-ssh-load home/dot_local/bin/executable_repos-sync home/dot_claude/hooks/executable_rtk-rewrite.sh scripts/check-agreement.sh scripts/check-shells.sh tests/helpers.bash",
 	# The workflows lint themselves: a typo in a job key or a bad `needs:`
 	# reference otherwise only shows up as a skipped job on a green PR.
 	"actionlint",
@@ -134,6 +134,13 @@ description = "check every secret in Proton Pass is still readable"
 # silent until a machine is rebuilt. Reports lengths only, never contents.
 run = "sh home/dot_local/bin/executable_dotfiles-secrets-check --source ."
 
+[tasks.recovery]
+description = "exercise the offline age-key export and restore paths"
+# These suites stub Proton, age and terminal prompts. They prove recovery does
+# not print private key material, leaves no partial artifact after failure, and
+# restores only with an explicit --write.
+run = "bats --print-output-on-failure tests/secrets-export.bats tests/secrets-restore.bats"
+
 [tasks.prune]
 description = "remove mise tool installs no longer referenced by any tracked config"
 # Never run from a chezmoi apply: a machine that has not opened a project
@@ -165,4 +172,4 @@ description = "everything CI runs, in one command"
 # install actually produces rather than a HOME with years of accumulated state.
 # It stays here as well: this is the copy that catches a change before it is
 # pushed.
-depends = ["lint", "test", "secrets", "verify", "shells"]
+depends = ["lint", "test", "recovery", "secrets", "verify", "shells"]
