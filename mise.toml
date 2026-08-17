@@ -12,7 +12,7 @@ bats = "1.14.0"
 # The suite renders a script template, so the tests need chezmoi itself. Kept at
 # the same version as the machines install; the lint task below asserts all
 # three copies of this number agree.
-chezmoi = "2.70.5"
+chezmoi = "2.72.0"
 # renovate stays an `npx --yes` call rather than a mise tool: it is run by this
 # one lint line only.
 
