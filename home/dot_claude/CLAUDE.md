@@ -41,6 +41,29 @@ Overrides: `/model-policy` command edits this block + persists (`chezmoi apply`)
 Plain chat requests ("stop using Fable", "save tokens") = session-only, write
 nothing.
 
+## Mutation proof for delegated tests
+
+Every subagent dispatched to write or change tests must prove each test fails
+against the code it claims to cover, and must report the exact assertion-failure
+output it observed. Carry this requirement in the dispatch prompt itself — it is
+not enough to assume the subagent does TDD.
+
+A compile error does not count as proof. `undefined: Foo` shows the symbol is
+absent, not that the behaviour is pinned. The failure has to be an assertion
+failing in code that compiles and runs, which means the proof for a wiring or
+integration test is reverting the wiring, not deleting the function.
+
+Why: across three phases of the squirrel project this exact defect recurred at
+least six times — an end-to-end wiring test that passed with the wiring removed,
+a once-a-day budget test that passed with the budget removed, a presence test
+that counted rows before the drain could have written one. Each cost a full
+review round to catch, and the last one only surfaced because a reviewer thought
+to mutate rather than read. Reviewers should mutation-test the highest-risk
+claims for the same reason.
+
+Applies to fix rounds as much as first drafts: a fix that no test would notice
+being reverted is an unpinned fix.
+
 ## RTK (Rust Token Killer)
 
 Token-optimized CLI proxy (60-90% savings on dev operations). A `PreToolUse`
