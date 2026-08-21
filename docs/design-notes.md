@@ -158,6 +158,43 @@ writes `contains " host "` and a profile named `ghost` cannot answer for `host`.
 A gate that silently matches the wrong machine is worse than one that never
 matches, and `tests/profiles.bats` pins that case specifically.
 
+### The vault a machine reads
+
+A work machine reads a **separate Proton Pass vault**, `Work`, and that is the
+first thing a profile actually decides. Not the same vault with different items:
+the bootstrap PAT is vault-scoped, so "same vault, different items" would put
+the personal signing key, ssh auth key and gh token within reach of a machine an
+employer can image, monitor or repossess. Two vaults, two PATs, no overlap.
+
+The name is decided in `.chezmoitemplates/vault-name` and reaches its consumers
+two ways, which is the only interesting part. Templates call it directly —
+`signing-pubkey` builds its `pass://` URI from it, and the restore script is a
+template too. The other three consumers are *not* templates: `proton-ssh-load`,
+`dotfiles-secrets-check` and `dotfiles-secrets-export` are plain files, and
+`mise run secrets-check` runs one straight out of the source tree, so making
+them templates to interpolate a name would break how they are run and tested.
+
+So chezmoi renders `~/.config/dotfiles/machine.env`, which carries the profile
+set and the vault name, and those scripts source it. That file is also the
+answer to a problem the container gate solved twice by hand: it is how *runtime*
+code learns what kind of machine it is on, rather than re-probing for markers.
+
+Every consumer falls back to `Dotfiles` when the file is missing, unreadable or
+carries an empty name, and that is not defensive programming: the secret restore
+runs from the same apply that writes the file, so a machine part-way through its
+first bootstrap genuinely has no copy yet. An empty vault name would ask Proton
+for items in a vault called `""` and report every one of them missing — a
+failure that reads as "the vault is empty" rather than "the question was wrong".
+
+`check-agreement`'s vault check inverted rather than relaxed when the second
+vault arrived. It used to assert the tree named exactly one vault; it now
+asserts **no script names one at all** — every `vault=` reads `DOTFILES_VAULT`,
+every fallback equals what `vault-name` calls personal, `machine.env.tmpl` still
+carries the variable, and `signing-pubkey` still calls the template. A hardcoded
+name is the failure that matters here precisely because it keeps working on a
+personal machine: it would only ever be caught on the work one, in the form of
+reading the wrong vault.
+
 **The trap worth knowing about.** `run_onchange_after_install_packages` re-runs
 `mise install` when its *rendered* contents change, and it reads the tool list
 with `include`, which returns the file **unrendered**. So a machine switching

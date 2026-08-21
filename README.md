@@ -148,6 +148,13 @@ Items in the **Dotfiles vault**, written by
 `.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl`. Nothing secret is in this
 repo.
 
+A **work machine reads the `Work` vault instead** — a separate vault, not the
+same one with different items, because the bootstrap PAT is vault-scoped and
+would otherwise reach the personal signing key and ssh auth key from a machine
+your employer controls. The name comes from this machine's profiles and is
+written to `~/.config/dotfiles/machine.env`, which the scripts source; missing
+or empty means `Dotfiles`.
+
 | Secret | Target | Vault item |
 | --- | --- | --- |
 | sops age keys | `~/.config/sops/age/keys.txt` | `sops age keys` |

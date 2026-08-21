@@ -49,6 +49,10 @@ replaced.
 | **`RENOVATE_TOKEN`** | GitHub Actions secret | this repo, as the Renovate bot | yes |
 | **Moshi pairing secret** | `moshi-hook` file store on the host | drives Claude Code on this machine from a paired phone | yes |
 
+Every row above is the **`Dotfiles`** vault, the personal one. A work machine
+reads a separate `Work` vault with its own PAT and its own copies; nothing in
+this table is reachable from it, which is the whole reason the split exists.
+
 `dotfiles-status` tells you the health of the first two. Nothing enumerates the
 rest automatically, because nothing can: half of them live in services this
 repo has no API to.

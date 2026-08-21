@@ -1,0 +1,17 @@
+{{- /* Which Proton Pass vault this machine's secrets live in.
+
+       One name per role, and they are separate vaults rather than one shared
+       one on purpose: a work machine holding the personal signing key, ssh
+       auth key and gh token is the thing the split exists to prevent, and
+       "same vault, different items" would not prevent it — a vault-scoped PAT
+       reads all of it.
+
+       Read two ways, which is why it is a template rather than a constant:
+       templates call it directly, and dot_config/dotfiles/machine.env.tmpl
+       renders it into a file the plain scripts source, since three of the four
+       vault consumers are not templates. */ -}}
+{{- if contains " work " (includeTemplate "profiles" .) -}}
+Work
+{{- else -}}
+Dotfiles
+{{- end -}}
