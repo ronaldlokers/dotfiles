@@ -67,6 +67,20 @@ gping = "1.20.4"
 # name collision noted in dot_claude/CLAUDE.md: reachingforthejack/rtk is a
 # different tool ("Rust Type Kit"). `rtk gain` working is the cheap check.
 rtk = "0.43.0"
+# Terminal music player, Winamp 2.x in a TUI. `github:`, not the registry —
+# bjarneo/cliamp is not in it — and the release carries bare per-platform
+# binaries rather than tarballs, which the github backend handles: the install
+# verifies GitHub artifact attestations and SLSA provenance, same as sugarrush.
+#
+# The prebuilt binary is what makes this a plain pin: building from source
+# wants Go 1.25.5 and ALSA development headers, and neither belongs on a
+# machine that only wants to play a file.
+#
+# ffmpeg and yt-dlp are optional runtime dependencies (AAC/ALAC/Opus/WMA, and
+# the streaming providers). Both are already on this host as Omarchy
+# dependencies and neither is pinned here, so a machine without them gets a
+# player that handles local MP3/FLAC and says so on the formats it cannot.
+"github:bjarneo/cliamp" = "1.63.2"
 # General-purpose file encryption. Not used by this repo's own secrets, which
 # come from Proton Pass.
 age = "1.3.1"
