@@ -36,7 +36,7 @@
        session and an unreadable item all arrive here as empty output and take
        the agent fallback, which is the right answer in a container
        anyway. */ -}}
-{{- $uri := "pass://Dotfiles/git signing key/public_key" -}}
+{{- $uri := printf "pass://%s/git signing key/public_key" (includeTemplate "vault-name" .) -}}
 {{- $p := splitList "/" (trimPrefix "pass://" $uri) -}}
 {{- $key := output "sh" "-c" `pass-cli item view --vault-name "$1" --item-title "$2" --field "$3" 2>/dev/null || true` "sh" (index $p 0) (index $p 1) (index $p 2) | trim -}}
 {{- if $key -}}

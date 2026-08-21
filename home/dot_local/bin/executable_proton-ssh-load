@@ -154,7 +154,19 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
 
-vault="Dotfiles"
+# The vault this machine's secrets live in. chezmoi writes the name to
+# machine.env, because this script is not a template and cannot ask the profile
+# set itself. Absent, unreadable or empty means the personal vault: the secret
+# restore runs from the same apply that writes that file, so a machine part-way
+# through its first bootstrap genuinely has no copy yet, and asking Proton for
+# items in a vault named "" would report every one of them missing.
+machine_env="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/machine.env"
+if [ -r "$machine_env" ]; then
+	# shellcheck source=/dev/null
+	. "$machine_env"
+fi
+vault="${DOTFILES_VAULT:-Dotfiles}"
+[ -n "$vault" ] || vault="Dotfiles"
 pat_file="$HOME/.config/pass-cli-bootstrap-pat"
 
 # ask_pat assigns here; declared up front because it is also the flow's
