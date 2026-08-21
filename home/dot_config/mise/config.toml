@@ -26,7 +26,7 @@ zoxide = "0.10.0"
 # at a different owner than the project is exactly the shape a squat would
 # take, and the next person to look will have the same doubt.
 herdr = "0.8.0"
-gh = "2.96.0"
+gh = "2.97.0"
 tmux = "3.7b"
 # Picker over tmux sessions plus zoxide's frecency list. Not in the mise
 # registry, so the github backend fetches the release binary.
