@@ -4,6 +4,19 @@
 {{- if stdinIsATTY -}}
 {{-   $email = promptStringOnce . "email" "Git email address" $email -}}
 {{- end -}}
+{{- /* The one thing a machine cannot work out about itself. Everything else in
+       .chezmoitemplates/profiles is detected (container, OS) or comes from the
+       project's environment (DOTFILES_PROFILES); this is the answer no probe
+       can give, so it is asked once and remembered here.
+
+       Default `personal`, and that is what every non-TTY apply gets: CI, `mise
+       run verify`, `devpod up`. A work machine is a deliberate answer, never
+       something a silent apply falls into. */ -}}
+{{- $role := "personal" -}}
+{{- if stdinIsATTY -}}
+{{-   $role = promptStringOnce . "role" "Machine role (personal or work)" $role -}}
+{{- end -}}
 
 [data]
     email = {{ $email | quote }}
+    role = {{ $role | quote }}

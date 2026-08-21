@@ -91,7 +91,7 @@ fail() {
 # bumps the pins; this is what says "bump the floor too".
 check_chezmoi_pins() {
 	v="$(cat "$root/.chezmoiversion" 2>/dev/null || true)"
-	p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' "$root/home/dot_config/mise/config.toml" 2>/dev/null || true)"
+	p="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' "$root/home/dot_config/mise/config.toml.tmpl" 2>/dev/null || true)"
 	r="$(sed -n 's/^chezmoi = "\(.*\)"$/\1/p' "$root/mise.toml" 2>/dev/null || true)"
 	if [ -z "$v" ] || [ -z "$p" ] || [ -z "$r" ]; then
 		fail "could not read all three chezmoi versions (floor '$v', machine '$p', repo '$r')"
@@ -187,7 +187,7 @@ check_pat_expiry() {
 check_graphify_pin() {
 	s="$(cat "$root/home/dot_claude/skills/graphify/dot_graphify_version" 2>/dev/null || true)"
 	p="$(sed -n 's/^"pipx:graphifyy" = "\(.*\)"$/\1/p' \
-		"$root/home/dot_config/mise/config.toml" 2>/dev/null || true)"
+		"$root/home/dot_config/mise/config.toml.tmpl" 2>/dev/null || true)"
 	if [ -z "$s" ] || [ -z "$p" ]; then
 		fail "could not read the graphify versions (vendored skill '$s', mise pin '$p')"
 	elif [ "$s" != "$p" ]; then

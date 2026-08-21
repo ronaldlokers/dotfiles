@@ -32,7 +32,7 @@ make_tree() {
 
 	printf '2.70.5\n' >"$TREE/.chezmoiversion"
 	printf 'chezmoi = "2.70.5"\n"pipx:graphifyy" = "0.9.30"\n' \
-		>"$TREE/home/dot_config/mise/config.toml"
+		>"$TREE/home/dot_config/mise/config.toml.tmpl"
 	printf 'chezmoi = "2.70.5"\n' >"$TREE/mise.toml"
 	printf '0.9.30' >"$TREE/home/dot_claude/skills/graphify/dot_graphify_version"
 
@@ -103,7 +103,7 @@ run_check() {
 
 @test "a machine pin ahead of the version floor is caught" {
 	printf 'chezmoi = "2.71.0"\n"pipx:graphifyy" = "0.9.30"\n' \
-		>"$TREE/home/dot_config/mise/config.toml"
+		>"$TREE/home/dot_config/mise/config.toml.tmpl"
 	run_check chezmoi-pins
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"disagree"* ]]
@@ -206,7 +206,7 @@ run_check() {
 
 @test "a tool bump without re-vendoring the skill is caught" {
 	printf 'chezmoi = "2.70.5"\n"pipx:graphifyy" = "0.9.32"\n' \
-		>"$TREE/home/dot_config/mise/config.toml"
+		>"$TREE/home/dot_config/mise/config.toml.tmpl"
 	run_check graphify-pin
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"re-vendor"* ]]
@@ -225,7 +225,7 @@ run_check() {
 # round trip is minutes.
 @test "every drift is reported, not just the first" {
 	printf 'chezmoi = "2.71.0"\n"pipx:graphifyy" = "0.9.30"\n' \
-		>"$TREE/home/dot_config/mise/config.toml"
+		>"$TREE/home/dot_config/mise/config.toml.tmpl"
 	printf 'vault="Personal"\n' >"$TREE/home/dot_local/bin/executable_a"
 	run_check
 	[ "$status" -ne 0 ]
@@ -325,7 +325,7 @@ run_check() {
 # ...and naming a check must not silently run every other one as well.
 @test "a bare check name runs only that check" {
 	printf 'chezmoi = "2.71.0"\n"pipx:graphifyy" = "0.9.30"\n' \
-		>"$TREE/home/dot_config/mise/config.toml"
+		>"$TREE/home/dot_config/mise/config.toml.tmpl"
 	run env -C "$TREE" sh "$SCRIPT" vault-name
 	[ "$status" -eq 0 ]
 }

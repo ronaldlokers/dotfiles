@@ -1,7 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-# packages hash: {{ include "dot_config/mise/config.toml" | sha256sum }}
+# packages hash: {{ include "dot_config/mise/config.toml.tmpl" | sha256sum }}
+# profiles:      {{ includeTemplate "profiles" . }}
+#
+# Both lines, and the second is not decoration. chezmoi re-runs a run_onchange
+# script when its *rendered* contents change, while `include` returns the tool
+# list unrendered — so a machine switching from personal to work, or a container
+# from go to typescript, would get a different tool list applied while this
+# script's own contents never moved. It would not re-run, and the new profile's
+# tools would never be installed: the same shape as the enable scripts' sticky
+# skip, arriving through a different door. The profile set being part of the
+# hash is what makes a profile change a change.
 
 # mise must resolve by name: tool backends spawn children that call `mise`.
 export PATH="$HOME/.local/bin:$PATH"

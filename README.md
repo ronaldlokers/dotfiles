@@ -38,8 +38,9 @@ Applying pulls in the rest automatically:
 - **externals** (`.chezmoiexternals/`) — mise, pure, zsh/tmux plugins, tv
   channels, k9s, pass-cli, moshi-hook. Refreshed weekly; devpod, pass-cli and
   moshi-hook are host-only.
-- **mise install** whenever `dot_config/mise/config.toml` changes — the pinned
-  CLI/TUI tool list, applied to containers too.
+- **mise install** whenever `dot_config/mise/config.toml.tmpl` or this machine's
+  profiles change — the pinned CLI/TUI tool list, applied to containers too
+  except where a tool is gated.
 - **host packages** (`run_after_20-install-host-packages.sh.tmpl`) — desktop
   apps. Skipped in containers, without `pacman`, and when sudo needs a password
   with no TTY.
@@ -412,7 +413,7 @@ for a touch — but `sudo -v` then a non-interactive apply works.
 | `dot_zshrc` | zsh: pure prompt, vi mode, mise/direnv, zoxide `cd`, atuin, tv pickers, fzf-tab, aliases |
 | `dot_bashrc` | bash fallback: hands over to zsh on Omarchy, otherwise mirrors zsh's keys and aliases. Kept in step by hand |
 | `dot_tmux.conf` | tmux; `prefix o` opens the tv sesh channel |
-| `dot_config/mise/config.toml` | globally installed CLI/TUI tools, pinned |
+| `dot_config/mise/config.toml.tmpl` | globally installed CLI/TUI tools, pinned; a few gated by profile |
 | `dot_config/git/` | git defaults, delta pager, global ignores |
 | `dot_config/lazygit/` | lazygit, delta as diff pager |
 | `dot_config/atuin/` | atuin history; sync off |
@@ -424,10 +425,39 @@ for a touch — but `sudo -v` then a non-interactive apply works.
 | `.chezmoiexternals/` | pinned downloads, every one checksummed |
 | `assets/` (repo root) | source artwork; never copied into `$HOME` |
 
-Anything that runs in a terminal goes in `dot_config/mise/config.toml` so
+Anything that runs in a terminal goes in `dot_config/mise/config.toml.tmpl` so
 containers get it too; desktop apps go in the host package script.
 Project-specific tooling belongs in that project's own `mise.toml`. Repo-only
 files sit outside `home/` and need no `.chezmoiignore` entry.
+
+### Profiles
+
+A machine has a *set* of profiles, and anything that should not be everywhere
+gates on one of them:
+
+| | Values | Where it comes from |
+| --- | --- | --- |
+| detected | `host` / `container` | `.chezmoitemplates/is-container` |
+| detected | `linux` / `darwin` | chezmoi |
+| asked once | `personal` / `work` | first interactive `chezmoi init`; default `personal` |
+| environment | anything | `DOTFILES_PROFILES=typescript,web`, set by a project's `devcontainer.json` |
+
+```sh
+chezmoi execute-template '{{ includeTemplate "profiles" . }}'   # what am I?
+```
+
+Gate a tool by wrapping it, and say why in a comment — most tools want no gate
+at all, since a TUI is as welcome in a container as on the host:
+
+```
+{{ if contains " work " (includeTemplate "profiles" .) -}}
+"github:ankitpokhrel/jira-cli" = "1.7.0"   # work machines only
+{{ end -}}
+```
+
+To change a machine's role, re-run `chezmoi init` and answer again.
+`docs/design-notes.md` has the reasoning, including why the split cannot live in
+mise itself.
 
 ## Keybindings
 
