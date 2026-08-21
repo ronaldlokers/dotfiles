@@ -64,6 +64,19 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
 
+# The same facts file the secrets scripts read, for the same reason: this is not
+# a template and cannot ask the profile set itself. Unset means personal, which
+# is what every machine was before the split.
+machine_env="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/machine.env"
+if [ -r "$machine_env" ]; then
+	# shellcheck source=/dev/null
+	. "$machine_env"
+fi
+case "${DOTFILES_PROFILES:- personal }" in
+*" personal "*) is_personal=1 ;;
+*) is_personal=0 ;;
+esac
+
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
 check_status="$state_dir/last-check"
 backup_manifest="$state_dir/secrets-backup"
@@ -177,7 +190,14 @@ fi
 # itself uses: an untouched key means a two-year-old copy is still a perfectly
 # good copy, and nagging about its age would only teach you to ignore the line.
 # What matters is whether one exists at all.
-if [ ! -f "$backup_manifest" ]; then
+if [ "$is_personal" != 1 ]; then
+	# A work machine has no age key to copy: the Work vault holds none, the
+	# export script is not installed there, and the weekly check skips this half
+	# too. Saying nothing is the honest answer — the alternative is a warn line
+	# on every run about a copy that can never be made, which is exactly the
+	# noise the warn tier exists to avoid.
+	:
+elif [ ! -f "$backup_manifest" ]; then
 	# A warning, not a fault, and the distinction is the whole reason the two
 	# tiers exist. This condition has been true since the machine was built, it
 	# needs a USB stick physically present to resolve, and as a fault it

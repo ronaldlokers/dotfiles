@@ -158,6 +158,40 @@ writes `contains " host "` and a profile named `ghost` cannot answer for `host`.
 A gate that silently matches the wrong machine is worse than one that never
 matches, and `tests/profiles.bats` pins that case specifically.
 
+### What a work machine's vault holds
+
+`gh hosts.yml` and `sugarrush config`, and nothing else. The `Work` vault has no
+`sops age keys` and neither DevPod token, and four things had to agree about
+that or the weekly report fills with faults nobody can act on:
+
+1. the restore list restores two items there, five here;
+2. the check derives what it *watches* from that same list, so it asks for two;
+3. the offline-copy half of the check goes quiet, since it is entirely about the
+   age key;
+4. `dotfiles-status` says nothing about a backup, and `dotfiles-secrets-export`
+   and `dotfiles-secrets-restore` are not installed at all.
+
+Getting three of those four right is how a check starts crying wolf: a work
+machine would report the age key missing every Sunday, correctly, forever.
+
+**The marker, and why it is not a template conditional.** A restore line may
+carry a fourth field naming the one profile it belongs to:
+
+```sh
+restore "sops age keys" "$HOME/.config/sops/age/keys.txt" 600 personal
+```
+
+The obvious alternative — wrapping the block in a template `if` — does not
+survive `shellcheck`, which reads this file as shell and cannot parse a template
+action at statement position. The lint that would have to be silenced is the one
+that checks the file at all, so the gate moved into data the shell can read.
+
+Two readers honour it: `restore()` skips a marked item on a machine without that
+profile, and the check's derivation drops it from the watch list. That is a
+duplicated rule, deliberately — the alternative is the check rendering the
+script to find out, which makes a read-only reporter depend on chezmoi being
+installed and on the source tree being present, neither of which it needs today.
+
 ### What goes where
 
 The rule that decides a tag, in one line: **gate on what a thing belongs to, not

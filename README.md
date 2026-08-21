@@ -148,26 +148,36 @@ Items in the **Dotfiles vault**, written by
 `.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl`. Nothing secret is in this
 repo.
 
-A **work machine reads the `Work` vault instead** — a separate vault, not the
-same one with different items, because the bootstrap PAT is vault-scoped and
-would otherwise reach the personal signing key and ssh auth key from a machine
-your employer controls. The name comes from this machine's profiles and is
+A **work machine reads the `Work` vault instead**, which holds only
+`gh hosts.yml` and `sugarrush config` — the other three lines carry a fourth
+field naming the profile they belong to, and a work machine neither restores nor
+watches them. It gets no offline-copy machinery either, since that exists to
+protect the age key it has not got.
+
+That vault is separate rather than the same one with different items, because
+the bootstrap PAT is vault-scoped: one vault would put the personal signing key
+and ssh auth key within reach of a machine your employer controls. The name comes from this machine's profiles and is
 written to `~/.config/dotfiles/machine.env`, which the scripts source; missing
 or empty means `Dotfiles`.
 
-| Secret | Target | Vault item |
-| --- | --- | --- |
-| sops age keys | `~/.config/sops/age/keys.txt` | `sops age keys` |
-| `gh` token | `~/.config/gh/hosts.yml` | `gh hosts.yml` |
-| sugarrush config | `~/.config/sugarrush/config.toml` | `sugarrush config` |
-| DevPod container token | `~/.config/devpod/dotfiles-env` | `devpod dotfiles-env` |
-| DevPod project tokens | `~/.config/devpod/project-tokens` | `devpod project-tokens` |
+| Secret | Target | Vault item | Where |
+| --- | --- | --- | --- |
+| `gh` token | `~/.config/gh/hosts.yml` | `gh hosts.yml` | both |
+| sugarrush config | `~/.config/sugarrush/config.toml` | `sugarrush config` | both |
+| sops age keys | `~/.config/sops/age/keys.txt` | `sops age keys` | personal |
+| DevPod container token | `~/.config/devpod/dotfiles-env` | `devpod dotfiles-env` | personal |
+| DevPod project tokens | `~/.config/devpod/project-tokens` | `devpod project-tokens` | personal |
+
+The last column is the fourth field on the `restore` line. Unmarked means every
+machine; marked means only that profile restores it — and only that profile
+watches it, since `dotfiles-secrets-check` derives its list from the same lines.
 
 Fetched every apply, rewritten only when changed, so a rotation in the vault
 propagates. A failed or empty fetch leaves the existing file alone.
 
 **Adding one:** create a note item whose body is the file content, then add a
-`restore "<item title>" "<target>" 600` line to the script.
+`restore "<item title>" "<target>" 600` line to the script — plus a trailing
+`personal` if the Work vault will not hold it.
 
 **Checking it still works:** `mise run secrets-check` verifies every item is
 readable *and* that every template naming a `pass://` URI still renders — two

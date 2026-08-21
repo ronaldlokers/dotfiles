@@ -41,7 +41,13 @@ backup() {
 }
 
 run_status() {
-	run env -u XDG_STATE_HOME HOME="$HOME" sh "$SCRIPT" "$@"
+	# XDG_CONFIG_HOME goes with XDG_STATE_HOME, and the reason is the rule in
+	# docs/design-notes.md: every XDG_* variable outranks HOME. The script reads
+	# ~/.config/dotfiles/machine.env through ${XDG_CONFIG_HOME:-$HOME/.config},
+	# so leaving it set had a test writing a fixture into its own HOME while the
+	# script read this desktop's real one.
+	run env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" sh "$SCRIPT" "$@"
 }
 
 @test "a recent healthy run and a recorded backup exit 0" {
@@ -287,4 +293,48 @@ run_status() {
 	# exists in the source rather than faking the filesystem root.
 	grep -q '/\.dockerenv' "$SCRIPT"
 	grep -q '/run/\.containerenv' "$SCRIPT"
+}
+
+# --- a work machine has no offline copy to report on -------------------------
+#
+# The backup line asks about the age key, which lives only in the personal
+# vault. On a work machine there is nothing to export, dotfiles-secrets-export
+# is not even installed, and the weekly check skips that half too — so a warn
+# line here would repeat on every run about a copy that can never be made. That
+# is the noise the warn tier was invented to avoid, arriving from the other
+# side.
+
+work_machine() {
+	mkdir -p "$HOME/.config/dotfiles"
+	printf 'DOTFILES_PROFILES=" host work linux "\nDOTFILES_VAULT="Work"\n' \
+		>"$HOME/.config/dotfiles/machine.env"
+}
+
+@test "a work machine says nothing about an offline backup" {
+	work_machine
+	record 2 ok
+	run_status
+	[ "$status" -eq 0 ]
+	[[ "$output" != *"offline backup"* ]]
+	# ...and still reports the half that does apply.
+	[[ "$output" == *"secrets check"* ]]
+}
+
+@test "a personal machine still warns when no copy was ever made" {
+	record 2 ok
+	rm -f "$MANIFEST"
+	run_status
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"offline backup"* ]]
+	[[ "$output" == *"warn"* ]]
+}
+
+# The facts file being absent must not silence it: every machine was personal
+# before the split, and a missing file is not a statement that this one is not.
+@test "no facts file at all is still a personal machine" {
+	rm -rf "$HOME/.config/dotfiles"
+	record 2 ok
+	rm -f "$MANIFEST"
+	run_status
+	[[ "$output" == *"offline backup"* ]]
 }
