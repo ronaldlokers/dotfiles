@@ -978,6 +978,33 @@ The screensaver branding is co-owned in the same sense:
 `dot_config/omarchy/branding/` manages, so anything it does is undone by the next
 apply. Change the source art in `assets/` and regenerate instead.
 
+`dot_config/hypr/monitors.lua` is the third of these, and it is managed because
+of what happened when it was not. Omarchy 4 moved Hyprland's config from `.conf`
+to Lua, and its migration replaced this machine's hand-tuned `monitors.conf`
+with the stock template — silently, and with no backup of the `.conf` beside the
+`.lua` it wrote. The stock template ships `scale = "auto"`, and the
+`omarchy.monitor` bar widget then resolved that to 1.6 and wrote the number back
+into the file (`~/.local/state/omarchy/monitor-scaling.log` records the
+resolution, which is how this was reconstructed at all). Two writers, one of
+them a GUI, and a display that came back 28% larger than it went away.
+
+So this repo pins the literal — 1.25, one of only two fractional scales that
+divide 3440x1440 into whole pixels — and the consequence is the same as for
+`enabledPlugins`: a scale changed from the bar's Display widget is reverted by
+the next apply, and a lasting change is an edit to the source file. `GDK_SCALE`
+is pinned to 1 rather than Omarchy 4's default of 2, which is the retina-class
+value and double-scales GTK apps on top of a 1.25 monitor scale.
+
+Only this one file, not `~/.config/hypr` wholesale. Everything else there —
+`bindings.lua`, `input.lua`, `looknfeel.lua`, `autostart.lua` — is byte-identical
+to Omarchy's own template, and managing a copy of someone else's defaults buys
+nothing while guaranteeing a fight with the next migration. The rule is also a
+catch-all rather than a `desc:`-matched monitor, because `GDK_SCALE` is a single
+process-global env: a second display at a different DPI could not get its own
+value however the `hl.monitor` line were keyed, so keying it would imply a
+precision that isn't there. That is why the ignore gate is `personal`, not
+`host` — the scale is a fact about one desk.
+
 ## Project checkouts
 
 The `host/owner/repo` layout is more depth than six GitHub repos need, but it's
