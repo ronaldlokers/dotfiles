@@ -103,27 +103,87 @@ check_chezmoi_pins() {
 }
 
 # --- the vault name ----------------------------------------------------------
-# Written in five places: `vault="Dotfiles"` in four scripts, and the
-# `pass://Dotfiles/...` URI in signing-pubkey. A rename that misses one fails
-# here rather than at 3am on a rebuild.
+# There are two vaults now — `Dotfiles` for a personal machine, `Work` for a
+# work one — so the old assertion ("the tree names exactly one vault") had to
+# invert rather than relax.
 #
-# The URI pattern is deliberately narrower than the one dotfiles-secrets-check
-# derives items with: this scan reads the source tree, where
-# `pass://<vault>/<title>/<field>` appears in prose and `pass://[^/"[:space:]]+/`
-# appears as that script's own regex literal. Both match a permissive pattern
-# and neither is a vault name.
+# The name is decided in one place, .chezmoitemplates/vault-name, and reaches
+# the plain scripts through dot_config/dotfiles/machine.env. So what this
+# asserts is that nobody writes a vault name down anywhere else:
+#
+#   1. every `vault=` assignment reads DOTFILES_VAULT, never a literal. A
+#      hardcoded name keeps working on a personal machine and silently reads
+#      the wrong vault on a work one, which is the precise failure the split
+#      exists to prevent — and the one a test on this developer's laptop would
+#      never catch.
+#   2. the fallback each of them carries is the same name vault-name calls
+#      personal. They drift, and a machine whose facts file has not been
+#      written yet reads one vault while every other path reads another.
+#   3. machine.env.tmpl still carries the name at all, since it is the only
+#      thing feeding those scripts.
+#
+# The floor is the same one every other scan here has: fewer consumers than
+# expected means the scan broke, not that the tree got tidier.
 check_vault_name() {
-	names="$( {
-		grep -rhoE '^vault="[^"]+"' "$root/home/.chezmoiscripts" "$root/home/dot_local/bin" 2>/dev/null |
-			sed 's/^vault="//; s/"$//'
-		grep -rhoE 'pass://[A-Za-z0-9._-]+/' "$root/home" 2>/dev/null |
-			sed 's|^pass://||; s|/$||'
-	} | sort -u)"
-	n="$(printf '%s\n' "$names" | grep -c . || true)"
-	if [ "$n" -eq 0 ]; then
-		fail "found no vault references at all — the scan broke, not the tree"
-	elif [ "$n" -ne 1 ]; then
-		fail "the vault name disagrees across the tree: $(printf '%s' "$names" | tr '\n' ' ')"
+	assignments="$(grep -rhoE '^[[:space:]]*vault="[^"]*"' \
+		"$root/home/.chezmoiscripts" "$root/home/dot_local/bin" 2>/dev/null |
+		sed 's/^[[:space:]]*vault="//; s/"$//')"
+	n="$(printf '%s\n' "$assignments" | grep -c . || true)"
+	if [ "$n" -lt 3 ]; then
+		fail "only $n script(s) name a vault; expected at least 3 — the scan broke, not the tree"
+		return
+	fi
+
+	# What vault-name calls a personal machine's vault: the `else` branch, which
+	# is the fallback every script has to agree with.
+	# The name may sit on the else line itself or on the line below it,
+	# depending on how the template is wrapped; both forms are ordinary.
+	personal="$(awk '
+		/\{\{[-[:space:]]*else/ {
+			sub(/.*else[-[:space:]]*\}\}/, "")
+			if ($0 !~ /^[[:space:]]*$/) { sub(/\{\{.*/, ""); print; exit }
+			if ((getline line) > 0) { sub(/\{\{.*/, "", line); print line; exit }
+		}' "$root/home/.chezmoitemplates/vault-name" 2>/dev/null |
+		sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+	if [ -z "$personal" ]; then
+		fail "could not read the personal vault name from .chezmoitemplates/vault-name"
+		return
+	fi
+
+	old_ifs="$IFS"
+	IFS='
+'
+	for a in $assignments; do
+		case "$a" in
+		'${DOTFILES_VAULT:-'*'}')
+			got="${a#\$\{DOTFILES_VAULT:-}"
+			got="${got%\}}"
+			if [ "$got" != "$personal" ]; then
+				fail "a vault fallback ($got) disagrees with vault-name's personal vault ($personal)"
+			fi
+			;;
+		*'{{'*)
+			# A template calling vault-name directly, which is the restore
+			# script: nothing hardcoded, nothing to compare.
+			;;
+		*)
+			fail "a script hardcodes the vault name ($a); read DOTFILES_VAULT from machine.env instead"
+			;;
+		esac
+	done
+	IFS="$old_ifs"
+
+	if ! grep -q 'DOTFILES_VAULT=' \
+		"$root/home/dot_config/dotfiles/machine.env.tmpl" 2>/dev/null; then
+		fail "machine.env.tmpl does not carry DOTFILES_VAULT, so the scripts have nothing to read"
+	fi
+
+	# The one template that reads the vault directly. A vault spelled into its
+	# URI is the same drift wearing template clothes — it keeps working on a
+	# personal machine and reads the personal signing key on a work one.
+	if [ -f "$root/home/.chezmoitemplates/signing-pubkey" ] &&
+		! grep -q 'vault-name' "$root/home/.chezmoitemplates/signing-pubkey"; then
+		fail "signing-pubkey names a vault itself instead of calling vault-name"
 	fi
 }
 
