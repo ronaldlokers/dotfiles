@@ -8,18 +8,22 @@ set -euo pipefail
 # than remembered as done. Arch-only; exits cleanly elsewhere.
 
 # Shipped by the distro's own repos.
+#
+# Three lists, not one: what every host needs, then the two that belong to one
+# life or the other. A work laptop carrying Signal and the personal VPN is a
+# machine mixing two lives; a personal laptop carrying Slack and Teams is the
+# same mistake facing the other way. Anything genuinely shared stays here, so
+# the profile lists below only ever hold what really does belong to one side.
+# SC1083: the profile gates below are template braces, not shell ones. The
+# directive sits on the assignment because that is the command the braces are
+# inside of.
+# shellcheck disable=SC1083
 REPO_PACKAGES=(
-	discord
 	# Needs a display, so not mise. Which terminal Super+Return opens is set
 	# by dot_config/xdg-terminals.list.
 	ghostty
+	# Notes, and they are the same notes wherever the machine is.
 	obsidian
-	proton-vpn-gtk-app
-	prusa-slicer
-	rpi-imager
-	signal-desktop
-	# Mesh VPN. Host-only: owns machine-wide routing, which containers inherit.
-	tailscale
 	# Touch-to-sudo; pulls in libfido2, also needed for ed25519-sk keys.
 	pam-u2f
 	# YubiKey: pcscd smartcard daemon plus the ykman CLI.
@@ -45,19 +49,54 @@ REPO_PACKAGES=(
 	# the worst of the three possible outcomes. From pacman rather than mise: it
 	# is a dependency of a thing the desktop runs, not a tool typed at a prompt.
 	bun
+{{ if contains " personal " (includeTemplate "profiles" .) }}
+	# --- personal only ---------------------------------------------------
+	# Chat and a personal VPN account; a work machine has its own of both.
+	discord
+	proton-vpn-gtk-app
+	signal-desktop
+	# 3D printing and a Pi imager: hardware that lives at home.
+	prusa-slicer
+	rpi-imager
+	# Mesh VPN. Personal, not merely host-only: the tailnet is a personal
+	# network, and run_after_21-ssh-over-tailnet opens sshd onto it — a work
+	# machine joining it is a decision, never a default.
+	tailscale
+{{ end }}
 )
 
 # AUR packages. Building these runs upstream PKGBUILDs as arbitrary code, so
 # curate the list by hand. yay/paru check binary repos first, which also covers
 # packages served from a custom repo on some machines.
+# SC1083: the profile gates below are template braces, not shell ones. The
+# directive sits on the assignment because that is the command the braces are
+# inside of.
+# shellcheck disable=SC1083
 AUR_PACKAGES=(
-	bambustudio-bin
-	chirp-next
 	claude-desktop
+	# The Proton Pass desktop app, on both: a work machine reads its own Work
+	# vault, and this is how a human gets at it. Separate from pass-cli, which
+	# is what the scripts use.
 	proton-pass-bin
 	spotify
-	winbox
 	zen-browser-bin
+{{ if contains " personal " (includeTemplate "profiles" .) }}
+	# --- personal only ---------------------------------------------------
+	# 3D printer slicer, ham radio programmer, MikroTik router config: the
+	# hobbies, and none of them have anything to say to a work machine.
+	bambustudio-bin
+	chirp-next
+	winbox
+{{ end }}
+{{ if contains " work " (includeTemplate "profiles" .) }}
+	# --- work only -------------------------------------------------------
+	# The three things a work machine cannot do without and a personal one has
+	# no use for. All AUR: none of the three is in Arch's own repos, and Teams
+	# has no official Linux client at all — teams-for-linux wraps the web app.
+	slack-desktop
+	teams-for-linux
+	zoom
+{{ end }}
 )
 
 # Containers get none of this. Unquoted on purpose, and the pragmas are

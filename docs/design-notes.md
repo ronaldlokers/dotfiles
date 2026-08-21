@@ -158,6 +158,50 @@ writes `contains " host "` and a profile named `ghost` cannot answer for `host`.
 A gate that silently matches the wrong machine is worse than one that never
 matches, and `tests/profiles.bats` pins that case specifically.
 
+### What goes where
+
+The rule that decides a tag, in one line: **gate on what a thing belongs to, not
+on what it happens to need.** Most things belong to no profile at all, and
+untagged is the default to reach for — a terminal tool is wanted on every
+machine, and the mise list is almost entirely untagged for that reason.
+
+| Tag | What has it | Why |
+| --- | --- | --- |
+| none | the whole mise CLI list, ghostty, zsh, mosh/openssh, the YubiKey stack, bun, Obsidian, Spotify, Zen, Proton Pass, Claude Desktop, all the agent tooling | a machine of either kind is worse without it |
+| `personal` | Discord, Signal, Proton VPN, PrusaSlicer, BambuStudio, chirp, winbox, rpi-imager, Tailscale + `run_after_21-ssh-over-tailnet`, moshi-hook + the herdr shim, `repos-sync` | belongs to one life: home hardware, a personal mesh, a personal repo list |
+| `work` | Slack, Teams, Zoom, `jira-cli` | belongs to the other |
+
+Three of those are worth their own sentence:
+
+**Tailscale is `personal`, not `host`.** The tailnet is a personal network and
+`run_after_21` opens sshd onto it. A work machine joining it has to be something
+somebody decides, never something an apply does on its way past.
+
+**moshi-hook is `personal`** for the same shape of reason: a paired phone can
+approve tool calls and read what the agent is doing, which is a different
+proposition on a machine an employer owns. Three places gate on it — the
+external that fetches the binary, the script that starts the daemon, and the
+`.chezmoiignore` entry for the shim — because leaving any one ungated leaves a
+machine half-configured for something it should not have at all.
+
+**`repos-sync` is `personal`** because its repo list is hardcoded. On a work
+machine it is not a useless command, it is a command that does the wrong thing,
+which is worse than its absence.
+
+Proton Pass, Obsidian and Spotify are deliberately *not* tagged. A work machine
+reads its own `Work` vault and still needs the app to get at it by hand; notes
+and music do not change because the laptop did.
+
+Where a gate lives depends on what stops the thing best. A package is a line in
+one of three arrays in the host script. A file that should never land at all
+goes in `.chezmoiignore` — `repos-sync` and the herdr shim take that route,
+since a script that exists is a script somebody runs. A script that must exist
+but do nothing renders `is_personal` and exits, which is why
+`.chezmoitemplates/is-personal` exists at all: it yields a bare `true` or
+`false`, and a `contains` call written at the site instead puts parentheses in
+the rendered line that shellcheck cannot parse. That is the same reason
+`is-container` is a template rather than a stat call in every script.
+
 ### The vault a machine reads
 
 A work machine reads a **separate Proton Pass vault**, `Work`, and that is the

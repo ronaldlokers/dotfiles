@@ -1,0 +1,12 @@
+{{- /* "true" or "false": is this a personal machine?
+
+       The profile set is the source of truth; this is the shell-facing face of
+       it, exactly as .chezmoitemplates/is-container is for the container half.
+       Scripts write
+
+           is_personal={{ includeTemplate "is-personal" . }}
+
+       and get a bare word. Calling `contains` at the site instead puts
+       parentheses in the rendered line, which shellcheck cannot parse — the
+       same reason is-container exists rather than a stat call per script. */ -}}
+{{- if contains " personal " (includeTemplate "profiles" .) -}}true{{- else -}}false{{- end -}}

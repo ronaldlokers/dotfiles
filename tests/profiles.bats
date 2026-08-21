@@ -199,3 +199,62 @@ render_install_script() {
 	tagged="$(render_install_script DOTFILES_PROFILES=typescript)"
 	[ "$plain" != "$tagged" ]
 }
+
+# --- what a work machine does not get ----------------------------------------
+#
+# Three things belong to one life rather than to one form factor, and each is
+# gated in the place that actually stops it: repos-sync and the moshi shim never
+# land at all (.chezmoiignore), while the tailnet and moshi scripts render a
+# gate and exit. Cheap to get wrong in one place and right in the others, which
+# is why all three are asserted here rather than trusted to review.
+
+render_ignore() {
+	env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" chezmoi execute-template \
+		--source "$REPO" <"$REPO/home/.chezmoiignore"
+}
+
+@test "a work machine is not given repos-sync, which clones personal repos" {
+	set_role work
+	run render_ignore
+	[ "$status" -eq 0 ]
+	printf '%s\n' "$output" | grep -qx '.local/bin/repos-sync'
+}
+
+@test "a personal machine keeps it" {
+	set_role personal
+	run render_ignore
+	[ "$status" -eq 0 ]
+	! printf '%s\n' "$output" | grep -qx '.local/bin/repos-sync'
+}
+
+@test "the tailnet sshd script exits early on a work machine" {
+	set_role work
+	rendered="$BATS_TEST_TMPDIR/tailnet.sh"
+	env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" chezmoi execute-template --source "$REPO" \
+		<"$REPO/home/.chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl" >"$rendered"
+	grep -qx 'is_personal=false' "$rendered"
+	# ...and it is a real exit, not a variable nobody reads.
+	run bash "$rendered"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "and runs its checks on a personal one" {
+	set_role personal
+	rendered="$BATS_TEST_TMPDIR/tailnet-personal.sh"
+	env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" chezmoi execute-template --source "$REPO" \
+		<"$REPO/home/.chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl" >"$rendered"
+	grep -qx 'is_personal=true' "$rendered"
+}
+
+@test "the moshi external fetches nothing on a work machine" {
+	set_role work
+	run env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" chezmoi execute-template --source "$REPO" \
+		<"$REPO/home/.chezmoiexternals/moshi-hook.toml"
+	[ "$status" -eq 0 ]
+	[ -z "$(printf '%s' "$output" | tr -d '[:space:]')" ]
+}

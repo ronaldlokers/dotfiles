@@ -29,6 +29,17 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
 
+# Personal machines only. The tailnet is a personal mesh and this script opens
+# sshd onto it, so a work machine joining it has to be a decision somebody makes
+# rather than something an apply does. Rendered, not probed: `personal` is a profile,
+# and .chezmoitemplates/is-personal is the shell-facing face of the set.
+# shellcheck disable=SC1083
+is_personal={{ includeTemplate "is-personal" . }}
+# shellcheck disable=SC2154
+if [ "$is_personal" != "true" ]; then
+	exit 0
+fi
+
 # Overridable so the branches below can be tested against a temp path rather
 # than /etc. Same reason dotfiles-secrets-check takes --source: the interesting
 # behaviour here is the fail-closed path and the idempotent compare, and neither
