@@ -8,6 +8,10 @@ ghostty.terminfo
 # Omarchy's screensaver branding. A container has no omarchy, no display and
 # no screensaver to brand, so the file would just sit there unread.
 .config/omarchy/branding/screensaver.txt
+# Hyprland's monitor scaling, for the same reason and then some: a container
+# has no compositor to read it, no display to scale, and Hyprland would never
+# load the file anyway.
+.config/hypr/monitors.lua
 {{ end -}}
 {{ if or (eq (includeTemplate "is-container" .) "true") (eq (includeTemplate "is-devpod-platform" .) "false") -}}
 # The devpod wrapper only means something where the binary it fronts is
@@ -52,6 +56,11 @@ ghostty.terminfo
 # machine it is a command that does the wrong thing rather than nothing, which
 # is worse than its absence.
 .local/bin/repos-sync
+# The monitor rule is a catch-all pinned to the scale one 34" ultrawide wants,
+# which is a fact about a desk rather than about Omarchy. A work machine has
+# different displays, so it keeps Omarchy's `scale = "auto"` and lets the bar
+# widget resolve it — wrong-but-confident scaling is worse than none.
+.config/hypr/monitors.lua
 # The moshi shim, alongside .chezmoiexternals/moshi-hook.toml and
 # run_after_22-enable-moshi-hook, which gate on the same profile: a paired phone
 # can approve tool calls and read what the agent is doing.
