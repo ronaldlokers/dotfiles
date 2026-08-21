@@ -1,0 +1,49 @@
+{{- /* What kind of machine is this — as a set, not a single label.
+
+       A laptop is `host personal linux`; a devcontainer for a TypeScript web
+       app is `container typescript web linux`. Anything that must not be
+       installed or applied everywhere gates on one member of the set:
+
+         {{ if contains " host " (includeTemplate "profiles" .) }}
+
+       Three sources, and which is which is the whole design:
+
+         detected     host/container, and the OS. A machine can work these out
+                      about itself, so it is never asked.
+         asked once   personal or work. Nothing can detect this, so
+                      .chezmoi.toml.tmpl prompts on the first interactive init
+                      and remembers the answer. Unasked means personal, which
+                      is what CI, `mise run verify` and `devpod up` get.
+         environment  the project's own profiles, from DOTFILES_PROFILES, set
+                      by a devcontainer.json. They belong to the checkout
+                      rather than to the machine.
+
+       Assembled on every apply and never stored, so it cannot go stale: a
+       project edits DOTFILES_PROFILES and the next apply reflects it.
+
+       Padded with a space at each end, so a caller writes `contains " host "`
+       and a profile named `ghost` cannot answer for `host`. A gate that
+       silently matches the wrong machine is worse than one that never matches.
+
+       The container half comes from .chezmoitemplates/is-container, shared with
+       .chezmoiignore and the host-packages script, so the gates cannot drift
+       apart. */ -}}
+{{- $profiles := list -}}
+{{- if eq (includeTemplate "is-container" .) "true" -}}
+{{-   $profiles = append $profiles "container" -}}
+{{- else -}}
+{{-   $profiles = append $profiles "host" -}}
+{{- end -}}
+{{- $profiles = append $profiles .chezmoi.os -}}
+{{- $role := "personal" -}}
+{{- if and (hasKey . "role") .role -}}
+{{-   $role = .role -}}
+{{- end -}}
+{{- $profiles = append $profiles $role -}}
+{{- range splitList "," (env "DOTFILES_PROFILES") -}}
+{{-   $p := trim . -}}
+{{-   if $p -}}
+{{-     $profiles = append $profiles $p -}}
+{{-   end -}}
+{{- end -}}
+{{- printf " %s " (join " " $profiles) -}}

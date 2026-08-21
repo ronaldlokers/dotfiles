@@ -116,14 +116,76 @@ scripts must not share a number — `12-enable-secrets-check` and
 before `s` in the part after the number. That is not an ordering anyone chose,
 and it is not one anyone would notice changing. The second is `13-` now.
 
+## Profiles
+
+A machine is described by a *set* of profiles rather than a single label, and
+`.chezmoitemplates/profiles` assembles it: `host personal linux` on the laptop,
+`container typescript web linux` in a devcontainer for a TypeScript web app.
+Anything that should not be installed or applied everywhere gates on one member:
+
+```
+{{ if contains " host " (includeTemplate "profiles" .) }}
+```
+
+A set rather than one value because the real distinctions are independent and
+would otherwise multiply. Personal versus work is one question; host versus
+container is another; which language a project wants is a third, and it belongs
+to the checkout rather than to the machine. `personal-host`, `work-host`,
+`ts-container`, `go-container` is that same information with the combinations
+written out by hand, and every new axis doubles it.
+
+Three sources, and which is which is the design:
+
+| | Values | How |
+| --- | --- | --- |
+| detected | `host` / `container` | `.chezmoitemplates/is-container`, shared with `.chezmoiignore` |
+| detected | `linux` / `darwin` | `.chezmoi.os` |
+| asked once | `personal` / `work` | `promptStringOnce` in `.chezmoi.toml.tmpl` |
+| environment | `typescript`, `web`, … | `DOTFILES_PROFILES`, set by a project's `devcontainer.json` |
+
+Nothing a machine can work out about itself is ever asked. The one thing no
+probe can answer — whether this is a personal or a work machine — is asked once
+on an interactive init and remembered, and defaults to `personal`, so every
+non-TTY apply (CI, `mise run verify`, `devpod up`) lands somewhere sensible
+rather than on an empty role. A work machine is a deliberate answer.
+
+The set is assembled on every apply and never stored. That is what keeps the
+environment half honest: a project edits `DOTFILES_PROFILES` and the next apply
+reflects it, with no cached copy to go stale.
+
+It is padded with a space at each end — `" host personal linux "` — so a caller
+writes `contains " host "` and a profile named `ghost` cannot answer for `host`.
+A gate that silently matches the wrong machine is worse than one that never
+matches, and `tests/profiles.bats` pins that case specifically.
+
+**The trap worth knowing about.** `run_onchange_after_install_packages` re-runs
+`mise install` when its *rendered* contents change, and it reads the tool list
+with `include`, which returns the file **unrendered**. So a machine switching
+from `personal` to `work` would get a different tool list applied while the
+script's own contents never moved: no re-run, and the new profile's tools never
+installed. That is the enable scripts' sticky skip arriving through a different
+door, and it is why the profile set is part of what that script hashes.
+
+Two things this deliberately does not do. It does not re-express the
+`.chezmoiignore` gates in profile terms — they work, they are tested, and
+`container` means the same thing in both; converting them buys nothing today.
+And it does not put the split in mise: verified on 2026.7.10, mise reads only
+`~/.config/mise/config.toml` globally — no `conf.d`, no `config.local.toml`, no
+`MISE_ENV` layering — so chezmoi's apply-time rendering is the only seam there is.
+
 ## Packages
 
 Two lists, split by *where* a tool is wanted rather than by what installs it:
 
 | | Where | Goes in |
 | --- | --- | --- |
-| CLI / TUI tools | host **and** devpod containers | `dot_config/mise/config.toml` |
+| CLI / TUI tools | host **and** devpod containers, unless gated by a profile | `dot_config/mise/config.toml.tmpl` |
 | Desktop apps | host only | `run_after_20-install-host-packages.sh.tmpl` |
+
+Most of the mise list is untagged, and that is the default to reach for: a TUI
+is wanted inside a container as much as on the host, and a CLI on a work machine
+as much as on a personal one. `jira-cli` is the first exception — a work
+machine's issue tracker, of no use anywhere else.
 
 Anything that runs in a terminal belongs in mise, even when a distro package
 exists — `yazi` is in Arch's `extra` and `sugarrush` has its own AUR package,

@@ -330,6 +330,44 @@ jobs:
             exit 1
           fi
           echo ".chezmoiignore correctly excludes dotfiles-secrets-check inside a container"
+      - name: profiles resolve to container, and gate the tool list
+        run: |
+          # tests/profiles.bats covers every other source of the set, but the
+          # container half cannot be faked on a host — .chezmoitemplates/
+          # is-container stats real files. This is the only place it runs for
+          # real, so it is the only place the container gate is ever proven.
+          set="$(chezmoi execute-template --source "$PWD" '{{ includeTemplate "profiles" . }}')"
+          echo "profiles: [$set]"
+          case "$set" in
+            *" container "*) ;;
+            *) echo "::error::profiles did not resolve to container: [$set]"; exit 1 ;;
+          esac
+          case "$set" in
+            *" host "*) echo "::error::profiles claims host inside a container: [$set]"; exit 1 ;;
+          esac
+          # A project's profiles arrive from the environment, which is how a
+          # devcontainer.json asks for a language toolchain.
+          env_set="$(DOTFILES_PROFILES=typescript,web chezmoi execute-template \
+            --source "$PWD" '{{ includeTemplate "profiles" . }}')"
+          for want in typescript web; do
+            case "$env_set" in
+              *" $want "*) ;;
+              *) echo "::error::DOTFILES_PROFILES not honoured: [$env_set]"; exit 1 ;;
+            esac
+          done
+          # And the consequence: a work-only tool must be absent from a personal
+          # machine's tool list, which is what this container is.
+          tools="$(chezmoi execute-template --source "$PWD" \
+            < home/dot_config/mise/config.toml.tmpl)"
+          if printf '%s' "$tools" | grep -q 'jira-cli'; then
+            echo "::error::work-only tool present in a non-work tool list"
+            exit 1
+          fi
+          # ...while an untagged one is still there, so the gate is not just
+          # emptying the file.
+          printf '%s' "$tools" | grep -q '^ripgrep' \
+            || { echo "::error::untagged tool missing from the container's tool list"; exit 1; }
+          echo "profiles correctly resolved to container and gated the tool list"
       - name: host-packages script detects the container and skips
         run: |
           chezmoi execute-template --source "$PWD" \

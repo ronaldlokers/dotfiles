@@ -1,3 +1,9 @@
+{{- /* Rendered per machine: an untagged tool installs everywhere, a gated one
+       only where its profile applies. The set comes from
+       .chezmoitemplates/profiles — `host personal linux` on a laptop,
+       `container typescript linux` in a devcontainer. Gate only what genuinely
+       does not belong: a TUI is wanted in a container as much as on a host, and
+       most of this list is untagged for that reason. */ -}}
 [tools]
 bat = "0.26.1"
 chezmoi = "2.70.5"
@@ -67,6 +73,16 @@ gping = "1.20.4"
 # name collision noted in dot_claude/CLAUDE.md: reachingforthejack/rtk is a
 # different tool ("Rust Type Kit"). `rtk gain` working is the cheap check.
 rtk = "0.43.0"
+{{ if contains " work " (includeTemplate "profiles" .) -}}
+# Jira from the terminal, on a work machine only — the first gated tool here,
+# and the shape every later one follows. See docs/design-notes.md, "Profiles".
+#
+# ankitpokhrel/jira-cli. In mise rather than the AUR package of the same name
+# for the reason every other terminal tool is: a CLI belongs to the tool list,
+# where it is pinned and Renovate bumps it, and the AUR copy is a third-party
+# rebuild of these same release tarballs.
+"github:ankitpokhrel/jira-cli" = "1.7.0"
+{{ end -}}
 # General-purpose file encryption. Not used by this repo's own secrets, which
 # come from Proton Pass.
 age = "1.3.1"
