@@ -28,6 +28,17 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
 	exit 0
 fi
 
+# Personal machines only. A paired phone can approve tool calls and read what the
+# agent is doing, which is a different proposition on a machine an employer
+# owns than on one you do. Rendered, not probed: `personal` is a profile,
+# and .chezmoitemplates/is-personal is the shell-facing face of the set.
+# shellcheck disable=SC1083
+is_personal={{ includeTemplate "is-personal" . }}
+# shellcheck disable=SC2154
+if [ "$is_personal" != "true" ]; then
+	exit 0
+fi
+
 export PATH="$HOME/.local/bin:$PATH"
 
 if ! command -v moshi-hook >/dev/null 2>&1; then

@@ -38,3 +38,16 @@ ghostty.terminfo
 # launcher cannot see a mise shim".
 .local/bin/herdr
 {{ end -}}
+{{ if not (contains " personal " (includeTemplate "profiles" .)) -}}
+# Personal-only, on the same reasoning as the container block above: these are
+# not merely useless elsewhere, they belong to one life.
+#
+# repos-sync clones a hardcoded list of six personal repositories. On a work
+# machine it is a command that does the wrong thing rather than nothing, which
+# is worse than its absence.
+.local/bin/repos-sync
+# The moshi shim, alongside .chezmoiexternals/moshi-hook.toml and
+# run_after_22-enable-moshi-hook, which gate on the same profile: a paired phone
+# can approve tool calls and read what the agent is doing.
+.local/bin/herdr
+{{ end -}}

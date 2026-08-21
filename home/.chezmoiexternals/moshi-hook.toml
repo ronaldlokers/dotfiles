@@ -31,7 +31,7 @@
 
        Renovate has no datasource for a bare CDN, so nothing proposes these —
        which is the same position pass-cli is in, and the reason both say so. */ -}}
-{{- if and (eq (includeTemplate "is-container" .) "false") (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
+{{- if and (contains " personal " (includeTemplate "profiles" .)) (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
 {{ $moshiHookVersion := "v0.2.76" }}
 [".local/bin/moshi-hook"]
 type = "archive-file"
