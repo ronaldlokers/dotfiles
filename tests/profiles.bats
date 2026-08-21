@@ -258,3 +258,67 @@ render_ignore() {
 	[ "$status" -eq 0 ]
 	[ -z "$(printf '%s' "$output" | tr -d '[:space:]')" ]
 }
+
+# --- a work machine has no age key -------------------------------------------
+#
+# The Work vault holds `gh hosts.yml` and `sugarrush config` and nothing else.
+# The three it does not hold are not "missing" — they were never meant to be
+# there — so every consumer has to agree about that, or the weekly report fills
+# up with faults nobody can act on and stops being read.
+#
+# Four places have to agree: the restore list, the item list the check derives
+# from it, the offline-copy half of that check, and what dotfiles-status says
+# about a backup. Getting three of four right is how a check ends up crying
+# wolf.
+
+# The list is one list, marked rather than branched: a fourth field names the
+# single profile an item belongs to. So the assertion is not about which lines
+# are present — they all are — but about which ones a run would act on.
+restore_titles_for() {
+	set_role "$1"
+	local rendered="$BATS_TEST_TMPDIR/restore-$1.sh"
+	env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME \
+		-u XDG_CACHE_HOME HOME="$HOME" chezmoi execute-template --source "$REPO" \
+		<"$REPO/home/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl" >"$rendered"
+	# Replace the real restore() with one that only prints, then run the list.
+	{
+		sed -n '/^profiles=/p' "$rendered"
+		printf 'restore() {\n'
+		printf '\tonly="${4:-}"\n'
+		printf '\t[ -z "$only" ] || case " $profiles " in *" $only "*) ;; *) return 0 ;; esac\n'
+		printf '\tprintf "%%s\\n" "$1"\n'
+		printf '}\n'
+		grep '^restore "' "$rendered"
+	} >"$rendered.list"
+	sh "$rendered.list"
+}
+
+@test "a work machine restores only what the Work vault holds" {
+	run restore_titles_for work
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"gh hosts.yml"* ]]
+	[[ "$output" == *"sugarrush config"* ]]
+	[[ "$output" != *"sops age keys"* ]]
+	[[ "$output" != *"devpod dotfiles-env"* ]]
+	[[ "$output" != *"devpod project-tokens"* ]]
+}
+
+@test "a personal machine still restores all five" {
+	run restore_titles_for personal
+	[ "$status" -eq 0 ]
+	[ "$(printf '%s\n' "$output" | grep -c .)" -eq 5 ]
+}
+
+@test "the offline export and its counterpart are not installed on a work machine" {
+	set_role work
+	run render_ignore
+	printf '%s\n' "$output" | grep -qx '.local/bin/dotfiles-secrets-export'
+	printf '%s\n' "$output" | grep -qx '.local/bin/dotfiles-secrets-restore'
+}
+
+@test "and both are installed on a personal one" {
+	set_role personal
+	run render_ignore
+	! printf '%s\n' "$output" | grep -qx '.local/bin/dotfiles-secrets-export'
+	! printf '%s\n' "$output" | grep -qx '.local/bin/dotfiles-secrets-restore'
+}

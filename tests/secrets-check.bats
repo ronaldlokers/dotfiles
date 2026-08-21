@@ -1231,3 +1231,47 @@ STUB
 	# row may be redirected away from stdout.
 	! grep -qE "printf '(FAIL|warn|ok) [^\n]*>&2" "$SCRIPT"
 }
+
+# --- a work machine watches only what its vault holds -------------------------
+#
+# The item list is derived from the rendered restore script, so the gate that
+# keeps three secrets off a work machine also keeps them out of what this
+# watches. Reading the source text instead would have a work machine ask the
+# Work vault for the age key every week and report it missing — correctly, and
+# uselessly, which is how a weekly report stops being read.
+
+work_machine() {
+	mkdir -p "$HOME/.config/dotfiles"
+	printf 'DOTFILES_PROFILES=" host work linux "\nDOTFILES_VAULT="Work"\n' \
+		>"$HOME/.config/dotfiles/machine.env"
+	# The fixture source tree's restore script, gated the way the real one is.
+	# Marked the way the real restore script marks a personal-only item: a
+	# fourth field naming the one profile that restores it.
+	cat >"$SRC/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl" <<'RESTORE'
+#!/bin/sh
+restore "gh hosts.yml" "$HOME/.config/gh/hosts.yml" 600
+restore "sops age keys" "$HOME/.config/sops/age/keys.txt" 600 personal
+RESTORE
+}
+
+@test "a work machine does not ask its vault for the age key" {
+	work_machine
+	run_check
+	grep -q -- "--item-title gh hosts.yml" "$STUB_LOG"
+	! grep -q -- "--item-title sops age keys" "$STUB_LOG"
+}
+
+# The offline-copy half is about that same key, so it goes quiet too rather than
+# reporting a copy that can never be made.
+@test "and says nothing about an offline copy it could never make" {
+	work_machine
+	rm -f "$BACKUP_MANIFEST"
+	run_check
+	[[ "$output" != *"offline backup"* ]]
+}
+
+@test "a personal machine still asks for both, and still reports the copy" {
+	run_check
+	grep -q -- "--item-title sops age keys" "$STUB_LOG"
+	[[ "$output" == *"offline backup"* ]]
+}

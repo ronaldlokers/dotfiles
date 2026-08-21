@@ -37,6 +37,12 @@ ghostty.terminfo
 # on a PATH no phone will ever export. See docs/design-notes.md, "Moshi's
 # launcher cannot see a mise shim".
 .local/bin/herdr
+# The offline copy is a copy of the age key, and a work machine has none: the
+# Work vault holds no `sops age keys`, so there is nothing to export and nothing
+# to read back. Both halves go, or a work machine ships two commands whose only
+# possible outcome is an error about a missing vault item.
+.local/bin/dotfiles-secrets-export
+.local/bin/dotfiles-secrets-restore
 {{ end -}}
 {{ if not (contains " personal " (includeTemplate "profiles" .)) -}}
 # Personal-only, on the same reasoning as the container block above: these are
@@ -50,4 +56,10 @@ ghostty.terminfo
 # run_after_22-enable-moshi-hook, which gate on the same profile: a paired phone
 # can approve tool calls and read what the agent is doing.
 .local/bin/herdr
+# The offline copy is a copy of the age key, and a work machine has none: the
+# Work vault holds no `sops age keys`, so there is nothing to export and nothing
+# to read back. Both halves go, or a work machine ships two commands whose only
+# possible outcome is an error about a missing vault item.
+.local/bin/dotfiles-secrets-export
+.local/bin/dotfiles-secrets-restore
 {{ end -}}
