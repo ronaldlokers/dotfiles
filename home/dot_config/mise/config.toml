@@ -1,6 +1,6 @@
 [tools]
 bat = "0.26.1"
-chezmoi = "2.70.5"
+chezmoi = "2.72.0"
 claude-code = "2.1.220"
 fzf = "0.74.2"
 lsd = "1.2.0"
