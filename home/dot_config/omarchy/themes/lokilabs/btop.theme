@@ -1,0 +1,94 @@
+# lokilabs — hand-tuned gauges, calibrated to the boot-log wallpaper. Shipped verbatim.
+# Main background, empty for terminal default, need to be empty if you want transparent background
+theme[main_bg]="#2f1950"
+
+# Main text color
+theme[main_fg]="#c9b8e8"
+
+# Title color for boxes
+theme[title]="#c9b8e8"
+
+# Highlight color for keyboard shortcuts
+theme[hi_fg]="#f67d51"
+
+# Background color of selected item in processes box
+theme[selected_bg]="#4a2474"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#f67d51"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#967bbd"
+
+# Color of text appearing on top of graphs, i.e uptime and current network graph scaling
+theme[graph_text]="#baa7db"
+
+# Background color of the percentage meters
+theme[meter_bg]="#4a2474"
+
+# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
+theme[proc_misc]="#bba0e6"
+
+# CPU, Memory, Network, Proc box outline colors
+theme[cpu_box]="#c481c8"
+theme[mem_box]="#7dc98f"
+theme[net_box]="#e9622e"
+theme[proc_box]="#f67d51"
+
+# Box divider line and small boxes line color
+theme[div_line]="#967bbd"
+
+# Temperature graph color (Green -> Yellow -> Red)
+theme[temp_start]="#7dc98f"
+theme[temp_mid]="#d2a663"
+theme[temp_end]="#e9622e"
+
+# CPU graph colors (Teal -> Blue -> Magenta)
+theme[cpu_start]="#6b3aae"
+theme[cpu_mid]="#a47de0"
+theme[cpu_end]="#f67d51"
+
+# Mem/Disk free meter
+theme[free_start]="#7dc98f"
+theme[free_mid]="#9ce3ac"
+theme[free_end]="#baa7db"
+
+# Mem/Disk cached meter
+theme[cached_start]="#9d89c0"
+theme[cached_mid]="#baa7db"
+theme[cached_end]="#d1b0ff"
+
+# Mem/Disk available meter
+theme[available_start]="#7dc98f"
+theme[available_mid]="#d2a663"
+theme[available_end]="#e9622e"
+
+# Mem/Disk used meter (Green -> Teal -> Blue)
+theme[used_start]="#a47de0"
+theme[used_mid]="#c481c8"
+theme[used_end]="#f67d51"
+
+# Download graph colors
+theme[download_start]="#a47de0"
+theme[download_mid]="#bb9ae6"
+theme[download_end]="#d1b0ff"
+
+# Upload graph colors (Green -> Teal -> Blue)
+theme[upload_start]="#c24a17"
+theme[upload_mid]="#f67d51"
+theme[upload_end]="#ffb98f"
+
+# Process box color gradient for threads, mem and cpu usage
+theme[process_start]="#6b3aae"
+theme[process_mid]="#a47de0"
+theme[process_end]="#f67d51"
+
+# Graph gradient colors (spectrum shades from background to foreground)
+theme[gradient_color_0]="#2f1950"
+theme[gradient_color_1]="#3a1c5b"
+theme[gradient_color_2]="#4a2474"
+theme[gradient_color_3]="#967bbd"
+theme[gradient_color_4]="#9b7fd0"
+theme[gradient_color_5]="#c9b8e8"
+theme[gradient_color_6]="#bba0e6"
+theme[gradient_color_7]="#e2d5f6"

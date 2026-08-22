@@ -1,0 +1,43 @@
+# lokilabs — https://lokilabs.nl
+# Calibrated to the boot-log wallpaper: its field runs #351A5A → #562C8B, its dim
+# log text is #967BBD and its prompt "$" is Ember Light #F67D51 exactly. The ground
+# sits one step under the wallpaper's darkest field, so windows read as sitting on
+# it rather than punched out of it — which lets the canonical design.json tokens
+# return at sane contrast instead of dimmed stand-ins.
+
+mode = "dark"
+
+accent = "#f67d51"            # Ember Light — the wallpaper's own prompt glyph
+selection = "#4a2474"         # Deep Violet ramp 3
+muted = "#967bbd"             # the wallpaper's dim log text
+
+background = "#2f1950"        # Signal Violet ramp 1 — just under the wallpaper's darkest field
+dark_background = "#231145"   # Taskbar Deep
+darker_background = "#1d0f30" # Signal Violet ramp 0
+lighter_background = "#3a1c5b" # Deep Violet ramp 2
+
+foreground = "#c9b8e8"        # Nav Muted
+dark_foreground = "#9b7fd0"   # Lavender Dim
+light_foreground = "#bba0e6"  # Lavender Muted
+bright_foreground = "#e2d5f6" # Lavender
+
+red = "#e9622e"               # Ember Orange
+yellow = "#d2a663"            # Paper warm-neutral axis (H77)
+orange = "#f67d51"            # Ember Light
+green = "#7dc98f"             # the ANSI green from the site's escapes
+cyan = "#9d89c0"              # Violet Tint 4 — dusty violet, no teal in the system
+blue = "#a47de0"              # the ANSI lavender from the site's escapes
+magenta = "#c481c8"           # orchid off Lilac
+brown = "#8a3312"             # Ember ramp 2
+
+bright_red = "#ff7a3d"        # Ember Hover — ember only ever gets lighter
+bright_yellow = "#eac183"
+bright_green = "#9ce3ac"
+bright_cyan = "#baa7db"
+bright_blue = "#d1b0ff"       # Lilac
+bright_magenta = "#df9fe2"
+
+# Hyprland borders. The site never uses a flat fill where a gradient belongs —
+# Violet Lift is "the bright stop of every radial gradient".
+hyprland_active_border = "#f67d51 #a47de0 45deg"
+hyprland_inactive_border = "rgba(3a1c5bcc)"
