@@ -1,0 +1,9 @@
+[bar]
+# The site's nav band — the wallpaper's hot centre, so bar and desktop agree.
+background       = "#562c8b"
+background-alpha = 1.0
+text             = "#e2d5f6"
+active           = "#f67d51"
+scale-with-font  = true
+size-horizontal  = 26
+size-vertical    = 28
