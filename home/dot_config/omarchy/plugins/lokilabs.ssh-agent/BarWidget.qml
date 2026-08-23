@@ -10,7 +10,6 @@
 // This file renders it and runs the fix on click.
 
 import QtQuick
-import QtQuick.Controls
 import Quickshell.Io
 
 Item {
@@ -127,10 +126,39 @@ Item {
     font.pixelSize: 12
   }
 
+  // The bar draws tooltips itself, on its own surface, and a widget asks for
+  // one by exposing `tooltipHovered` and calling showTooltip -- the contract
+  // Bar.targetTooltipHovered checks. A QtQuick.Controls ToolTip cannot do this
+  // job: it is a popup inside the bar's layer surface, so a bar-height window
+  // clips it to nothing and the text is unreadable. That was the first attempt.
+  //
+  // Both are still only the injected `bar`, so this costs no internal imports.
+  property bool tooltipHovered: false
+
+  function showOwnTooltip() {
+    if (bar && tooltip !== "") bar.showTooltip(root, tooltip)
+  }
+
+  onTooltipHoveredChanged: {
+    if (!bar) return
+    if (tooltipHovered) showOwnTooltip()
+    else bar.hideTooltip(root)
+  }
+
+  // The text changes under the pointer -- a poll lands, or the click's recheck
+  // returns -- and a tooltip already on screen would otherwise keep describing
+  // the state before it.
+  onTooltipChanged: if (tooltipHovered) showOwnTooltip()
+
+  // Hidden while hovered leaves the tooltip orphaned on the bar; healthy is
+  // exactly when that happens, since the widget disappears.
+  onVisibleChanged: if (!visible && bar) bar.hideTooltip(root)
+
   MouseArea {
     anchors.fill: parent
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
+    onContainsMouseChanged: root.tooltipHovered = containsMouse
     // Through the bar's own runner, the way every stock widget launches
     // something: it is the seam that knows about the session.
     onClicked: {
@@ -139,9 +167,6 @@ Item {
       // Without this the bar keeps showing the fault after it is gone.
       recheck.restart()
     }
-    ToolTip.visible: containsMouse && root.tooltip !== ""
-    ToolTip.text: root.tooltip
-    ToolTip.delay: 300
   }
 
   Timer {
