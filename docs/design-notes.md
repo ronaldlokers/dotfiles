@@ -988,12 +988,22 @@ into the file (`~/.local/state/omarchy/monitor-scaling.log` records the
 resolution, which is how this was reconstructed at all). Two writers, one of
 them a GUI, and a display that came back 28% larger than it went away.
 
-So this repo pins the literal — 1.25, one of only two fractional scales that
-divide 3440x1440 into whole pixels — and the consequence is the same as for
+So this repo pins the literal, and the consequence is the same as for
 `enabledPlugins`: a scale changed from the bar's Display widget is reverted by
 the next apply, and a lasting change is an edit to the source file. `GDK_SCALE`
 is pinned to 1 rather than Omarchy 4's default of 2, which is the retina-class
-value and double-scales GTK apps on top of a 1.25 monitor scale.
+value and doubles every GTK app on top of whatever the monitor scale already is.
+
+The pinned literal was 1.25 until 2026-08-23 and is now 1 — the ultrawide runs
+1:1, one logical pixel per physical pixel. The scale is not just a number in
+this file: the portrait Dell beside it is positioned in logical pixels, so
+changing it moves the other monitor too. At 1.25 the rotated Dell was 1152x2048
+logical and the ultrawide sat at 1152x448; at 1:1 it is 1440x2560 and the
+ultrawide sits at 1440x560, still vertically centred against it. Editing the
+scale without recomputing the position leaves the two overlapping, which is
+exactly what a live `hyprctl` scale change did here — Hyprland took the new
+scale and kept the old coordinates. If it ever goes back up, 1.25 and 1.6 are
+the only fractional scales that divide 3440x1440 into whole pixels.
 
 Only this one file, not `~/.config/hypr` wholesale. Everything else there —
 `bindings.lua`, `input.lua`, `looknfeel.lua`, `autostart.lua` — is byte-identical
