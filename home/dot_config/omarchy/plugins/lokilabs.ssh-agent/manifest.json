@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "lokilabs.ssh-agent",
+  "name": "SSH agent",
+  "version": "1.0.0",
+  "author": "lokilabs",
+  "description": "Whether the ssh-agent holds the git signing key, and why not when it does not",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "SSH agent",
+    "description": "Whether the ssh-agent holds the git signing key, and why not when it does not",
+    "category": "Info",
+    "allowMultiple": false
+  }
+}
