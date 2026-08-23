@@ -1,0 +1,95 @@
+#!/bin/sh
+# Put the ssh-agent widget on the Omarchy bar, once.
+#
+# ~/.config/omarchy/shell.json is deliberately not managed: `omarchy bar`,
+# `omarchy theme` and the plugin commands all write to it, and a managed copy
+# would revert whatever the last one did -- the fight docs/design-notes.md
+# describes under "Co-owned configuration files". The widget still has to
+# arrive on a new machine without being typed in by hand, so it is seeded
+# rather than asserted.
+#
+# A plain `run_after`, not a `run_onchange`, for the reason the enable scripts
+# next door are: chezmoi records a run_onchange script's hash the moment it
+# exits 0, including the exit 0 that means "nothing here to act on". This
+# script has two such conditions -- no shell.json yet, no jq yet -- and either
+# would have marked the seeding done for the life of the machine.
+#
+# The memory is a state file instead. It holds the spec last written, so:
+#   - spec unchanged and already recorded: do nothing. A widget removed by hand
+#     stays removed; the repo has had its say and does not keep re-asking.
+#   - spec changed, or never recorded: seed, then record.
+#   - could not act: record nothing, and the next apply tries again.
+set -eu
+
+# A container has no omarchy shell, no bar and no display to put one on.
+# Rendered into a variable rather than wrapping the body in a template `if`,
+# the way the host-packages script does it: CI shellchecks the template, not
+# the rendered script, and a bare template action at statement level does not
+# parse as shell.
+# shellcheck disable=SC1083
+is_container={{ includeTemplate "is-container" . }}
+# shellcheck disable=SC2154
+if [ "$is_container" = "true" ]; then
+	exit 0
+fi
+
+shell_json="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
+state_file="$state_dir/bar-widget-seeded"
+
+# The whole desired entry, and the thing the state file remembers. Changing
+# anything here -- the id, the settings, where it sits -- is what makes the next
+# apply seed again.
+widget_id="lokilabs.ssh-agent"
+widget_entry='{"id":"lokilabs.ssh-agent","alwaysShow":true}'
+widget_before="omarchy.power"
+spec="$widget_entry before=$widget_before"
+
+# Nothing to merge into. Not an error: omarchy writes this file itself, and a
+# machine part-way through its first bootstrap genuinely has none yet. Recording
+# nothing is the point -- the next apply finds it and seeds then.
+[ -f "$shell_json" ] || exit 0
+
+# Same reasoning. jq arrives with the packages that a later script installs, so
+# the first apply on a fresh machine can legitimately run without it.
+command -v jq >/dev/null 2>&1 || exit 0
+
+# Already said this. Whatever the bar looks like now is the user's business.
+if [ -r "$state_file" ] && [ "$(cat "$state_file")" = "$spec" ]; then
+	exit 0
+fi
+
+# Add before the anchor, or append to the section when the anchor is not there;
+# update in place when the id is already present, so a changed spec moves the
+# settings across without ever ending up with the widget twice.
+merged="$(jq --arg id "$widget_id" \
+	--argjson entry "$widget_entry" \
+	--arg before "$widget_before" '
+	.bar.layout.right = (
+		(.bar.layout.right // [])
+		| if any(.[]; .id == $id) then
+			map(if .id == $id then $entry else . end)
+		else
+			(map(.id) | index($before)) as $at
+			| if $at == null then . + [$entry] else .[0:$at] + [$entry] + .[$at:] end
+		end
+	)
+' "$shell_json")" || {
+	echo "Could not merge the ssh-agent widget into shell.json; leaving it alone." >&2
+	exit 0
+}
+
+# Written through a temp file in the same directory: a half-written shell.json
+# is a bar that does not come up, and this runs unattended.
+tmp="$shell_json.tmp.$$"
+if ! printf '%s\n' "$merged" >"$tmp"; then
+	rm -f "$tmp"
+	echo "Could not write shell.json; leaving it alone." >&2
+	exit 0
+fi
+mv -f "$tmp" "$shell_json"
+
+# Only after the write landed. A recorded spec whose write failed would stop
+# every later apply from retrying.
+mkdir -p "$state_dir"
+printf '%s\n' "$spec" >"$state_file"

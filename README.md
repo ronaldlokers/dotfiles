@@ -239,8 +239,10 @@ against a live session, a lapsed session, a pass-cli database that will not
 decrypt, or a missing cached PAT. Clicking the widget opens a floating terminal
 running `proton-ssh-load --prompt`.
 
-The plugin arrives with an apply; putting it on the bar does not, since
-`shell.json` is not managed:
+Both the plugin and its place on the bar arrive with an apply. `shell.json`
+itself is not managed — omarchy's own commands write to it — so the widget is
+*seeded* into it once and then left alone: move it, retune it or remove it with
+`omarchy bar` and the change sticks. Putting it back after a removal is manual:
 
 ```sh
 omarchy bar put lokilabs.ssh-agent --before omarchy.power
