@@ -1015,6 +1015,63 @@ value however the `hl.monitor` line were keyed, so keying it would imply a
 precision that isn't there. That is why the ignore gate is `personal`, not
 `host` — the scale is a fact about one desk.
 
+## The ssh-agent bar widget
+
+`agent-status` and the `lokilabs.ssh-agent` bar widget exist because of one
+failure mode that keeps costing an hour: the agent is empty, and nothing says
+so. `proton-ssh-load` does warn, but on stderr, once per boot, in whichever
+terminal happened to be first — close that terminal and the machine looks fine
+until a push fails to authenticate, at which point the visible symptom is git's
+and the cause is Proton's.
+
+It is deliberately not a second `dotfiles-secrets-check`. That one runs weekly
+under a timer and asks the expensive questions: is every vault item readable,
+does every template render, is the offline copy of the unreissuable secret
+current, has the PAT expired. This one runs on every bar tick and asks one
+question — can this machine sign right now — as cheaply as it can be asked.
+
+Three decisions are worth keeping:
+
+**Green means the signing key, not a key count.** The agent can hold the host
+key and the AUR key while the one git signs with is missing; that is exactly
+what 2026-08-23 looked like, and a count would have called it healthy. The
+match is on the base64 blob of `user.signingkey`, not the comment, because the
+comment differs between `git config` and `ssh-add -L` and proves nothing.
+
+**The network call is on the empty path only.** With keys loaded there is
+nothing to diagnose, so the steady state is one local `ssh-add -L` per tick and
+no round trip at all. An empty agent does earn a `pass-cli info`, because the
+reason matters — and the result is cached in `$XDG_RUNTIME_DIR` with a TTL,
+since "empty" does not resolve on its own and would otherwise be re-asked every
+tick for as long as the fault is on screen. Two tests pin this: one asserts a
+healthy run makes no `pass-cli` call at all, the other that a second tick
+inside the TTL makes none either. Both were mutation-checked by moving the
+probe above the healthy branch, and both caught it.
+
+**`info` failing is not one fault.** A lapsed session and a sqlcipher database
+that will not decrypt both exit non-zero, and the fixes are opposites —
+`pass-cli login` versus `pass-cli logout --force`. Reading the second as the
+first is what sent 2026-08-23 down the wrong path for an hour, so the two are
+told apart by pass-cli's own error text and given different tooltips.
+
+The widget follows the sugarrush plugin's contract rather than the stock
+widgets': a plain `Item` using only `bar`, `moduleName` and `settings`, with no
+import of `qs.Ui` or `qs.Commons`. Stock widgets get `BarIconButton` and its
+tooltip for free; the cost is that a shell release which moves those modules
+takes the widget with it, and this one is supposed to be the thing still
+working when something else is broken.
+
+One thing the widget cannot rely on: its `Process` does not reliably carry
+`SSH_AUTH_SOCK`. The bar read "no ssh-agent reachable" while the identical
+command in a terminal reported three keys. Rather than fix the caller, the
+script falls back to `$XDG_RUNTIME_DIR/ssh-agent.socket` — the path the systemd
+unit listens on — when `ssh-add` exits 2 and that socket exists.
+
+The bar placement is not managed. `~/.config/omarchy/shell.json` is not in
+chezmoi (only `dot_config/omarchy/branding` and the theme are), so the plugin
+arrives with an apply and `omarchy bar put lokilabs.ssh-agent` is a one-off
+live command on each machine that wants it.
+
 ## Project checkouts
 
 The `host/owner/repo` layout is more depth than six GitHub repos need, but it's

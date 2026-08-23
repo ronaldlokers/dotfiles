@@ -84,6 +84,10 @@ info)
 		grep -q '^login' "$STUB_LOG" 2>/dev/null; then
 		exit "$PASS_INFO_RC_AFTER_LOGIN"
 	fi
+	# A pass-cli whose local database will not decrypt fails here with its own
+	# distinctive text, and that text is the only thing separating "log in
+	# again" from "reset the local state" -- both are `info` exiting non-zero.
+	[ -n "${PASS_INFO_STDERR:-}" ] && printf '%s\n' "$PASS_INFO_STDERR" >&2
 	exit "${PASS_INFO_RC:-0}"
 	;;
 login)
@@ -422,4 +426,57 @@ run_load_tty() {
 	done
 
 	run script -qec "$cmd" /dev/null <<<"$typed"
+}
+
+# Writes a fake ssh-add into $1 (a directory placed first on PATH). Only the two
+# forms agent-status uses are implemented:
+#
+#   ssh-add -L   the full public keys, which is what identifies a key rather
+#                than merely counting one; the real binary exits 1 on an empty
+#                agent and 2 when it cannot reach one at all, and the caller
+#                has to tell those apart
+#   ssh-add -l   the fingerprint listing, same exit codes
+#
+# Driven by:
+#   SSH_ADD_KEYS  newline-separated public keys the agent holds (default: none)
+#   SSH_ADD_RC    exit code; defaults to 0 with keys, 1 without. Set it to 2 to
+#                 model a dead SSH_AUTH_SOCK, which is a different fault with a
+#                 different fix and must not read as "empty".
+make_ssh_add_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/ssh-add" <<'STUB'
+#!/bin/sh
+[ -n "${SSH_ADD_LOG:-}" ] && printf '%s\n' "$*" >>"$SSH_ADD_LOG"
+
+# The agent is only reachable through the right socket. When SSH_ADD_GOOD_SOCK
+# is set the stub answers for that socket and no other, which is what lets a
+# test model a caller whose environment does not name it.
+if [ -n "${SSH_ADD_GOOD_SOCK:-}" ] && [ "${SSH_AUTH_SOCK:-}" != "$SSH_ADD_GOOD_SOCK" ]; then
+	echo "Error connecting to agent: No such file or directory" >&2
+	exit 2
+fi
+
+keys="${SSH_ADD_KEYS:-}"
+if [ -n "${SSH_ADD_RC:-}" ]; then
+	rc="$SSH_ADD_RC"
+elif [ -n "$keys" ]; then
+	rc=0
+else
+	rc=1
+fi
+
+if [ "$rc" -eq 2 ]; then
+	echo "Error connecting to agent: No such file or directory" >&2
+	exit 2
+fi
+if [ "$rc" -ne 0 ] || [ -z "$keys" ]; then
+	echo "The agent has no identities." >&2
+	exit "$rc"
+fi
+
+printf '%s\n' "$keys"
+exit 0
+STUB
+	chmod 755 "$bin/ssh-add"
 }

@@ -231,6 +231,22 @@ stays on, so the next commit fails loudly rather than going unsigned.
 
 `pass-cli ssh-agent debug` explains why an item is or isn't usable.
 
+An empty agent is easy to miss — `proton-ssh-load` says so once per boot, on the
+stderr of whichever terminal was first — so `agent-status` reports it on the bar
+instead. It prints one Waybar object saying whether the *signing* key is loaded
+(not merely how many keys are), and when it is not, why: a load that failed
+against a live session, a lapsed session, a pass-cli database that will not
+decrypt, or a missing cached PAT. Clicking the widget opens a floating terminal
+running `proton-ssh-load --prompt`.
+
+The plugin arrives with an apply; putting it on the bar does not, since
+`shell.json` is not managed:
+
+```sh
+omarchy bar put lokilabs.ssh-agent --before omarchy.power
+omarchy bar set lokilabs.ssh-agent alwaysShow true   # otherwise hidden when healthy
+```
+
 ### Rotating the signing key
 
 > [!WARNING]

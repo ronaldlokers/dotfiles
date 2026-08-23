@@ -1,0 +1,134 @@
+#!/bin/sh
+# One Waybar JSON object for the bar widget that says whether this machine can
+# sign and push right now.
+#
+# It exists because the failure it reports is silent. An empty ssh-agent shows
+# up as a git push that cannot authenticate; the reason -- a lapsed Proton
+# session, a pass-cli database that will not decrypt -- is announced once per
+# boot on the stderr of whichever terminal happened to be first, and nowhere
+# else. On 2026-08-23 that cost an hour of looking at the wrong thing.
+#
+# Not a replacement for dotfiles-secrets-check. That one runs weekly under a
+# timer and asks the deep questions (is every vault item readable, is the
+# offline copy current, has the PAT expired). This one runs on every bar tick
+# and asks one shallow question as cheaply as it can be asked.
+#
+# Reports counts, states and fixes. Never contents: the tooltip is on screen.
+set -eu
+
+# Per boot, cleared by the OS, nothing to clean up.
+probe_cache="${XDG_RUNTIME_DIR:-/tmp}/agent-status.probe"
+probe_ttl="${AGENT_STATUS_PROBE_TTL:-300}"
+
+emit() {
+	printf '{"text":"%s","tooltip":"%s","class":"%s"}\n' "$1" "$2" "$3"
+}
+
+# A diagnosis outlives the fault it describes, so the states that mean "nothing
+# is wrong" drop it. Without this, fixing an empty agent leaves the reason it
+# was empty on disk, ready to be served to the next empty tick inside the TTL
+# and blame a session that was repaired ten minutes ago.
+emit_healthy() {
+	rm -f "$probe_cache" 2>/dev/null || true
+	emit "$@"
+}
+
+# The empty-agent diagnoses, which are the ones that cost a network call.
+emit_probed() {
+	line="$(emit "$@")"
+	printf '%s\n' "$line"
+	printf '%s\n%s\n' "$(date +%s)" "$line" >"$probe_cache" 2>/dev/null || true
+}
+
+# The configured key is `key::ssh-ed25519 AAAA... comment`; ssh-add -L prints
+# `ssh-ed25519 AAAA... comment`. The base64 blob is the identity -- the comments
+# differ between the two and prove nothing.
+key_blob() {
+	printf '%s\n' "$1" | sed 's/^key:://' | awk '{print $2}'
+}
+
+agent_query() {
+	ssh_rc=0
+	loaded="$(ssh-add -L 2>/dev/null)" || ssh_rc=$?
+}
+
+agent_query
+
+# The bar's Process does not reliably carry SSH_AUTH_SOCK -- the widget read
+# "no ssh-agent reachable" while the identical command in a terminal reported
+# three keys. The socket systemd's ssh-agent.service listens on is at a known
+# path, so this is recoverable rather than a fault, and guessing it here beats
+# every caller having to get its environment right.
+if [ "$ssh_rc" -eq 2 ] && [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+	[ -e "$XDG_RUNTIME_DIR/ssh-agent.socket" ]; then
+	SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/ssh-agent.socket"
+	export SSH_AUTH_SOCK
+	agent_query
+fi
+
+# 2 is "cannot reach an agent", 1 is "reached one, it is empty". Different
+# faults, different fixes, and only the second has anything to do with Proton --
+# so this branch comes before any thought of a network call.
+if [ "$ssh_rc" -eq 2 ]; then
+	emit_healthy "?" "No ssh-agent reachable. Start it with: systemctl --user enable --now ssh-agent.service" "no-agent"
+	exit 0
+fi
+
+want="$(key_blob "$(git config --get user.signingkey 2>/dev/null || true)")"
+
+if [ -n "$loaded" ]; then
+	count="$(printf '%s\n' "$loaded" | grep -c .)"
+	# A count alone is the wrong question. The agent can hold the host and AUR
+	# keys while the one git signs with is missing, which is the shape the
+	# 2026-08-23 outage took: keys in the vault, none of them loaded, and a
+	# commit that would not sign.
+	if [ -n "$want" ] && printf '%s\n' "$loaded" | awk '{print $2}' | grep -qxF "$want"; then
+		emit_healthy "$count" "ssh-agent: $count keys, signing key loaded" "ok"
+	else
+		emit_healthy "$count!" "ssh-agent: $count keys, but the git signing key is not loaded" "warn"
+	fi
+	exit 0
+fi
+
+# Below here the agent is empty, and this is the one state where the reason
+# matters enough to pay for a network round trip.
+#
+# Cached even so, because "empty" does not resolve on its own: it lasts until
+# someone looks at the bar and clicks, and every tick in between would
+# otherwise ask Proton the same question. The whole rendered line is cached, so
+# a hit costs no reasoning either.
+if [ -r "$probe_cache" ]; then
+	cached_at="$(sed -n 1p "$probe_cache")"
+	case "$cached_at" in
+	'' | *[!0-9]*) cached_at=0 ;;
+	esac
+	if [ "$(($(date +%s) - cached_at))" -lt "$probe_ttl" ]; then
+		sed -n 2p "$probe_cache"
+		exit 0
+	fi
+fi
+
+if pass_out="$(timeout "${AGENT_STATUS_TIMEOUT:-5}" pass-cli info 2>&1)"; then
+	emit_probed "!" "ssh-agent is empty; the Proton session is alive, so loading the keys failed. Click to run proton-ssh-load." "empty"
+	exit 0
+fi
+
+# `info` failing is not one fault. A database that will not decrypt is not a
+# lapsed session: `pass-cli login` does nothing for it, and only `logout
+# --force` clears it. pass-cli's own text is the only thing telling them apart --
+# both exit non-zero.
+case "$pass_out" in
+*"not a database"* | *"may not match"*)
+	emit_probed "!" "ssh-agent is empty; the pass-cli database will not decrypt. Run 'pass-cli logout --force', then proton-ssh-load." "empty"
+	exit 0
+	;;
+esac
+
+# proton-ssh-load logs in from this cached token. Gone, and the click still
+# opens a terminal, but the terminal has to ask for a token -- worth knowing
+# before clicking rather than after.
+if [ -r "$HOME/.config/pass-cli-bootstrap-pat" ]; then
+	emit_probed "!" "ssh-agent is empty; no Proton Pass session. Click to run proton-ssh-load." "empty"
+else
+	emit_probed "!" "ssh-agent is empty; no Proton Pass session and no cached bootstrap PAT, so the load will ask for a token. Click to run proton-ssh-load." "empty"
+fi
