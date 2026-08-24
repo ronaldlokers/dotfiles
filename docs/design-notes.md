@@ -1067,10 +1067,30 @@ command in a terminal reported three keys. Rather than fix the caller, the
 script falls back to `$XDG_RUNTIME_DIR/ssh-agent.socket` — the path the systemd
 unit listens on — when `ssh-add` exits 2 and that socket exists.
 
-The bar placement is not managed. `~/.config/omarchy/shell.json` is not in
-chezmoi (only `dot_config/omarchy/branding` and the theme are), so the plugin
-arrives with an apply and `omarchy bar put lokilabs.ssh-agent` is a one-off
-live command on each machine that wants it.
+The bar placement is seeded, not managed, and the difference is the whole
+point. `~/.config/omarchy/shell.json` cannot be a managed file: `omarchy bar`,
+`omarchy theme` and the plugin commands all write to it, so an apply would
+revert whatever the last command did — the fight described above. But leaving
+it entirely manual meant the widget did not exist on a new machine until
+somebody remembered two commands.
+
+So `run_after_23-seed-bar-widget.sh.tmpl` merges the entry in with jq and
+records what it wrote in `~/.local/state/dotfiles/bar-widget-seeded`. While the
+recorded spec matches the one it would write, it does nothing — so a widget
+moved or removed with `omarchy bar` stays that way, because the repo has
+already had its say. Change the spec in the script and the next apply seeds
+again. The consequence to know: after a deliberate removal, getting the widget
+back is a manual command, since nothing about the spec changed.
+
+It is a plain `run_after` with its own state file rather than a `run_onchange`,
+and that is deliberate. A `run_onchange` records its hash on the exit 0 that
+means "nothing here to act on", and this script has two such conditions — no
+`shell.json` yet, and no `jq` yet, both entirely normal on a machine part-way
+through its first bootstrap. Either would have marked the seeding done for the
+life of the machine. With a state file, a run that could not act records
+nothing and the next apply tries again. Two tests pin exactly that, and both
+catch a mutation that records the spec before the write is known to have
+happened.
 
 ## Project checkouts
 
