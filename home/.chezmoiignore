@@ -12,10 +12,11 @@ ghostty.terminfo
 # has no compositor to read it, no display to scale, and Hyprland would never
 # load the file anyway.
 .config/hypr/monitors.lua
-# The ssh-agent bar widget. A container has no omarchy shell to load a bar
-# widget into. Its `agent-status` script is not ignored: it costs nothing, and a
-# devcontainer working on this repo can still run it by hand.
+# The bar widgets. A container has no omarchy shell to load one into. The
+# ssh-agent widget's `agent-status` script is not ignored: it costs nothing, and
+# a devcontainer working on this repo can still run it by hand.
 .config/omarchy/plugins/lokilabs.ssh-agent
+.config/omarchy/plugins/lokilabs.workspace
 {{ end -}}
 {{ if or (eq (includeTemplate "is-container" .) "true") (eq (includeTemplate "is-devpod-platform" .) "false") -}}
 # The devpod wrapper only means something where the binary it fronts is

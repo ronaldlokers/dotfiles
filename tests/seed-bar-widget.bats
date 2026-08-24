@@ -40,6 +40,9 @@ write_shell_json() {
 		      "left": [
 		        {
 		          "id": "omarchy.menu"
+		        },
+		        {
+		          "id": "omarchy.workspaces"
 		        }
 		      ],
 		      "right": [
@@ -62,6 +65,10 @@ write_shell_json() {
 # instead of the fixture. `mise run verify` clears them for the same reason.
 run_seed() {
 	run env -u XDG_CONFIG_HOME -u XDG_STATE_HOME HOME="$HOME" "$@" sh "$SCRIPT"
+}
+
+left_ids() {
+	jq -r '.bar.layout.left[].id' "$SHELL_JSON" | tr '\n' ' '
 }
 
 right_ids() {
@@ -154,4 +161,77 @@ right_ids() {
 	[ "$status" -eq 0 ]
 	[ ! -e "$STATE" ]
 	[ "$(right_ids)" = "omarchy.network omarchy.power " ]
+}
+
+# The workspace widget is a clone of omarchy.workspaces, not an addition to it:
+# two of them on one bar would paint the same spaces twice. Replacing in place
+# also keeps whatever position the stock one had.
+@test "swaps the stock workspaces widget for the clone, in its place" {
+	write_shell_json
+	run_seed
+	[ "$(left_ids)" = "omarchy.menu lokilabs.workspace " ]
+}
+
+@test "the swapped-in widget carries its monitor colours" {
+	write_shell_json
+	run_seed
+	[ "$(jq -c '.bar.layout.left[] | select(.id == "lokilabs.workspace") | .monitorColors' "$SHELL_JSON")" = '["bright_green","bright_magenta"]' ]
+}
+
+@test "seeds both widgets in one run" {
+	write_shell_json
+	run_seed
+	[ "$(left_ids)" = "omarchy.menu lokilabs.workspace " ]
+	[ "$(right_ids)" = "omarchy.network lokilabs.ssh-agent omarchy.power " ]
+}
+
+# Each widget's own line, and only it, decides that widget. The design this
+# rules out is one combined record for the whole table: under that, editing the
+# ssh-agent entry here would invalidate the record wholesale and resurrect a
+# workspace widget the user had removed on purpose -- a change to one thing
+# undoing a decision about another.
+#
+# Both widgets are off the bar and only the ssh-agent's record is gone, so the
+# two halves have to disagree: one comes back, one stays away.
+@test "one widget's record does not decide another's" {
+	write_shell_json
+	run_seed
+	jq 'del(.bar.layout.left[] | select(.id == "lokilabs.workspace"))
+		| del(.bar.layout.right[] | select(.id == "lokilabs.ssh-agent"))' \
+		"$SHELL_JSON" >"$SHELL_JSON.new"
+	mv "$SHELL_JSON.new" "$SHELL_JSON"
+	grep -v '^lokilabs.ssh-agent ' "$STATE" >"$STATE.new"
+	mv "$STATE.new" "$STATE"
+
+	run_seed
+	[ "$(right_ids)" = "omarchy.network lokilabs.ssh-agent omarchy.power " ]
+	[ "$(left_ids)" = "omarchy.menu " ]
+}
+
+# The format that makes the above possible, asserted directly: a line per
+# widget, not one record for the table.
+@test "the state file keeps a line per widget" {
+	write_shell_json
+	run_seed
+	[ "$(wc -l <"$STATE")" -eq 2 ]
+	grep -q '^lokilabs.ssh-agent ' "$STATE"
+	grep -q '^lokilabs.workspace ' "$STATE"
+}
+
+@test "appends when neither the clone nor the widget it replaces is on the bar" {
+	write_shell_json
+	jq 'del(.bar.layout.left[] | select(.id == "omarchy.workspaces"))' "$SHELL_JSON" >"$SHELL_JSON.new"
+	mv "$SHELL_JSON.new" "$SHELL_JSON"
+
+	run_seed
+	[ "$(left_ids)" = "omarchy.menu lokilabs.workspace " ]
+}
+
+@test "a clone already on the bar keeps its position" {
+	write_shell_json
+	jq '.bar.layout.left = [{"id":"lokilabs.workspace"},{"id":"omarchy.menu"}]' "$SHELL_JSON" >"$SHELL_JSON.new"
+	mv "$SHELL_JSON.new" "$SHELL_JSON"
+
+	run_seed
+	[ "$(left_ids)" = "lokilabs.workspace omarchy.menu " ]
 }
