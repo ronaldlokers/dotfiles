@@ -7,7 +7,7 @@
 # mutable as the tag — the hash is what makes "0.6.0" name one file.
 #
 # renovate: datasource=github-tags depName=rcaloras/bash-preexec
-{{ $bashPreexecVersion := "0.6.0" }}
+{{ $bashPreexecVersion := "0.7.0" }}
 [".bash/bash-preexec.sh"]
 type = "file"
 url = "https://raw.githubusercontent.com/rcaloras/bash-preexec/{{ $bashPreexecVersion }}/bash-preexec.sh"
