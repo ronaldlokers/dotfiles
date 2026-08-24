@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "lokilabs.workspace",
+  "name": "Workspaces",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Workspace indicators with per-monitor rails",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Workspaces.qml"
+  },
+  "barWidget": {
+    "displayName": "Workspaces",
+    "description": "Workspace indicators with per-monitor rails",
+    "category": "Compositor",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.workspaces"
+  }
+}

@@ -1074,13 +1074,33 @@ revert whatever the last command did — the fight described above. But leaving
 it entirely manual meant the widget did not exist on a new machine until
 somebody remembered two commands.
 
-So `run_after_23-seed-bar-widget.sh.tmpl` merges the entry in with jq and
+So `run_after_23-seed-bar-widget.sh.tmpl` merges each entry in with jq and
 records what it wrote in `~/.local/state/dotfiles/bar-widget-seeded`. While the
 recorded spec matches the one it would write, it does nothing — so a widget
 moved or removed with `omarchy bar` stays that way, because the repo has
 already had its say. Change the spec in the script and the next apply seeds
 again. The consequence to know: after a deliberate removal, getting the widget
 back is a manual command, since nothing about the spec changed.
+
+The script drives a table, currently two rows, and the modes are not the same.
+`lokilabs.ssh-agent` is inserted *before* `omarchy.power`, an addition to the
+bar. `lokilabs.workspace` *replaces* `omarchy.workspaces`, taking its index and
+dropping it: the widget is a clone of the stock one, and both on a bar would
+paint the same workspaces twice. Both modes fall back to appending when neither
+the widget nor its anchor is present — a section missing its anchor is not a
+reason to skip the widget — and both update in place when the widget is already
+there, so a widget moved to a new position keeps it.
+
+The state file holds one line per widget rather than one record for the table,
+and the difference is not cosmetic: with a shared record, editing the ssh-agent
+entry would invalidate the whole thing and resurrect a workspace widget the
+user had removed on purpose. Two tests pin it, and the first draft of the
+behavioural one did not — it passed against a deliberately shared record,
+because the script's own rewriting of the state file reordered the lines and
+masked the fault. It only became a real test once it removed both widgets and
+deleted one record, forcing the two halves to disagree. Worth remembering: a
+test of "these two things are independent" proves nothing until the scenario
+makes them visibly disagree.
 
 It is a plain `run_after` with its own state file rather than a `run_onchange`,
 and that is deliberate. A `run_onchange` records its hash on the exit 0 that
