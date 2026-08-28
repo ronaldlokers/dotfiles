@@ -10,8 +10,13 @@ ghostty.terminfo
 .config/omarchy/branding/screensaver.txt
 # Hyprland's monitor scaling, for the same reason and then some: a container
 # has no compositor to read it, no display to scale, and Hyprland would never
-# load the file anyway.
+# load the file anyway. The keybindings and the look-and-feel block are managed
+# for the same reason monitors.lua is -- they are customised, and a migration
+# has replaced a hand-tuned hypr file here before with no backup -- and are
+# equally useless to a container.
 .config/hypr/monitors.lua
+.config/hypr/bindings.lua
+.config/hypr/looknfeel.lua
 # The bar widgets. A container has no omarchy shell to load one into. The
 # ssh-agent widget's `agent-status` script is not ignored: it costs nothing, and
 # a devcontainer working on this repo can still run it by hand.

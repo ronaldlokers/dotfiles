@@ -1005,10 +1005,29 @@ exactly what a live `hyprctl` scale change did here — Hyprland took the new
 scale and kept the old coordinates. If it ever goes back up, 1.25 and 1.6 are
 the only fractional scales that divide 3440x1440 into whole pixels.
 
-Only this one file, not `~/.config/hypr` wholesale. Everything else there —
-`bindings.lua`, `input.lua`, `looknfeel.lua`, `autostart.lua` — is byte-identical
-to Omarchy's own template, and managing a copy of someone else's defaults buys
-nothing while guaranteeing a fight with the next migration. The rule is also a
+Not `~/.config/hypr` wholesale, though. The rule is that a file is managed once
+it has been customised, and left alone while it is still Omarchy's: managing a
+copy of someone else's defaults buys nothing while guaranteeing a fight with the
+next migration.
+
+Three files meet that test today. `monitors.lua` is described above.
+`bindings.lua` carries a dictation binding driven by the compositor, because
+handy's own hotkey backends both fail on this machine — the `tauri` one grabs
+through X11 and re-registers without unregistering, so every visit to handy's
+settings screen kills the binding until the app restarts, and `handy_keys` wants
+write access to a root-owned `/dev/uinput`. `looknfeel.lua` uncomments the
+decoration block: rounded corners, and unfocused windows dimmed by 0.15.
+
+This file said until 2026-08-24 that every hypr file except `monitors.lua` was
+byte-identical to the template. That had quietly stopped being true, and the
+claim was load-bearing — it was the whole argument for not managing them, so
+while it went stale two customised files sat in `$HOME` with no copy anywhere
+else. Exactly the loss `monitors.lua` was adopted to prevent, running unnoticed
+on the strength of a sentence nobody rechecked. The two are container-ignored
+but not `personal`-gated, unlike `monitors.lua`: a keybinding and a corner
+radius are preferences that travel with the person, not facts about one desk.
+
+The monitor rule is also a
 catch-all rather than a `desc:`-matched monitor, because `GDK_SCALE` is a single
 process-global env: a second display at a different DPI could not get its own
 value however the `hl.monitor` line were keyed, so keying it would imply a
