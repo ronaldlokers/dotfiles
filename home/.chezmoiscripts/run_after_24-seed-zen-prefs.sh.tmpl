@@ -68,7 +68,18 @@ resolve_profile() {
 	rel=""
 
 	# 1. installs.ini: what Zen itself honours, per install.
-	if [ -f "$zen_dir/installs.ini" ]; then
+	#
+	# The `[ -z "$rel" ]` guard looks redundant here -- $rel starts empty and
+	# this is the first source tried, so today it never has anything to
+	# protect. Keep it anyway: without it, priority holds only because this
+	# block is textually first, not because anything enforces it. Sources 2
+	# and 3 already guard themselves the same way, for the same reason.
+	# Move this block below source 3's and, unguarded, it would
+	# unconditionally overwrite whatever source 3 had already found on any
+	# machine where installs.ini exists -- silently defeating the ordering
+	# this function exists to pin. With the guard, source 1 stays
+	# authoritative regardless of where it sits in the function.
+	if [ -z "$rel" ] && [ -f "$zen_dir/installs.ini" ]; then
 		rel="$(awk '/^Default=/ { print substr($0, 9); exit }' \
 			"$zen_dir/installs.ini")"
 	fi

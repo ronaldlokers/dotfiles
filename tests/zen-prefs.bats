@@ -173,6 +173,25 @@ write_installs() {
 	[ -f "$ZEN/only.Default Profile/user.js" ]
 }
 
+@test "falls back to Default=1 when it appears before Path= in the section" {
+	mkdir -p "$ZEN/only.Default Profile"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile0]
+		Name=Default Profile
+		IsRelative=1
+		Default=1
+		Path=only.Default Profile
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/only.Default Profile/user.js" ]
+}
+
 @test "honours an absolute Path with IsRelative=0" {
 	mkdir -p "$BATS_TEST_TMPDIR/elsewhere"
 	cat >"$ZEN/installs.ini" <<-EOF
