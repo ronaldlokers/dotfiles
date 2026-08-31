@@ -32,7 +32,7 @@ run = [
 	# the fixed-point property — is covered by tests/modify-settings.bats. Two
 	# unreadable one-liners used to live here instead.
 	# renovate: datasource=npm depName=renovate
-	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
+	"npx --yes --package renovate@43.288.0 renovate-config-validator .github/renovate.json",
 	# The facts this repo states in more than one place — the three chezmoi
 	# versions, the vault name, the two container markers, the bootstrap PAT's
 	# expiry, the vendored graphify skill's version, the cached PAT's path. Each
