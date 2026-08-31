@@ -7,7 +7,7 @@
 [tools]
 bat = "0.26.1"
 chezmoi = "2.72.0"
-claude-code = "2.1.237"
+claude = "2.1.251"
 fzf = "0.74.3"
 lsd = "1.2.0"
 fd = "10.4.2"
@@ -63,7 +63,7 @@ gping = "1.20.4"
 # toolchain, while this pulls the cargo-dist binary straight from the release
 # and verifies its SLSA provenance. (Not `ubi:` — mise deprecated that backend
 # in favour of `github:`, removal in 2027.1.0.)
-"github:ronaldlokers/sugarrush" = "2026.8.1"
+"github:ronaldlokers/sugarrush" = "2026.8.3"
 # rtk-ai/rtk, the CLI proxy the Claude Code PreToolUse hook routes commands
 # through (dot_claude/hooks/rtk-rewrite.sh). Previously built from source by a
 # run_onchange script pinned to a commit SHA, which meant no Rust toolchain, no
@@ -110,6 +110,30 @@ uv = "0.12.5"
 # vendored into dot_claude/skills rather than left to `graphify install`, so a
 # fresh machine gets it from an apply.
 "pipx:graphifyy" = "0.9.47"
+
+# The five below were added on this machine with `mise use`, which writes
+# ~/.config/mise/config.toml directly and so never reached this template. An
+# apply was therefore deleting five working tools on every run, and refusing a
+# non-interactive apply for exactly that reason. Recorded here so the template
+# and the machine agree.
+#
+# `mise use` wrote them as `latest`, which this file does not do anywhere else:
+# an unpinned tool resolves to a different version on every run, so the
+# clean-HOME `mise run verify` job cannot be reproducible and Renovate has no
+# version to bump. Pinned to what was current when they were adopted.
+#
+# OpenAI's agent CLI, alongside Claude Code above rather than instead of it.
+codex = "0.151.0"
+# Both are also pinned in this repo's own mise.toml, which is repo tooling and
+# never applied into $HOME. These copies are what put them on a machine's PATH
+# generally -- the versions are allowed to drift apart, since one answers "what
+# does CI run" and the other "what does this machine have".
+actionlint = "1.7.12"
+shellcheck = "0.11.0"
+# The homelab is a Kubernetes cluster whose manifests are reconciled by Flux, so
+# these two are how it is reached and inspected at all.
+kubectl = "1.36.3"
+flux2 = "2.7.5"
 
 [settings]
 # run pipx-backend tools through uvx so no system python/pipx is needed
