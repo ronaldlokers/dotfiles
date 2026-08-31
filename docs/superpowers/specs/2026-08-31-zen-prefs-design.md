@@ -200,12 +200,18 @@ and `chezmoi apply` runs before that.
 The script runs `zen-browser -CreateProfile "<name> <path>"`, then re-runs
 resolution to pick the result up.
 
-**Unverified assumption.** That `-CreateProfile` exits cleanly, without opening
-a window and without requiring a display. Firefox behaves this way; Zen is a
-fork and this has not been tested. The implementation plan verifies it before
-this branch is written. If it does not hold, order 4 degrades to printing what
-to do and exiting 0, and the fresh-machine case costs one extra
-`chezmoi apply` after the first launch.
+**Verified 2026-08-31.** `zen-browser -CreateProfile "<name> <path>"` exits 0
+without opening a window when a display is present, creating the directory and
+registering it in `profiles.ini` with `IsRelative=1` and a relative `Path=`.
+Without one it exits 1 with `Error: no DISPLAY environment variable specified`
+and creates nothing.
+
+So the creation branch is implemented, and its failure path carries the headless
+case: a `chezmoi apply` run from a TTY, over SSH, or in CI cannot create a
+profile, reports that it could not, and exits 0 so the rest of the apply chain
+survives. On such a machine the fresh-machine path costs one extra apply after
+Zen has been launched once, exactly as the print-and-exit alternative would
+have.
 
 ### Safety rules
 
