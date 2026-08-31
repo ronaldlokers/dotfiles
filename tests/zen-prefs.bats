@@ -319,6 +319,13 @@ write_installs() {
 @test "creates a profile when the machine has none" {
 	# No installs.ini, no profiles.ini, no profile directory: a machine whose
 	# Zen has never been launched, which is what a fresh apply meets.
+	#
+	# $ZEN_LOG is pre-created empty so the grep below can only pass or fail on
+	# content -- without this, a script that never invokes zen-browser at all
+	# would leave $ZEN_LOG absent, and `grep -q` on a missing file fails with
+	# "No such file" (status 2), which reads as a pass-worthy failure but never
+	# actually evaluated the assertion it claims to.
+	: >"$ZEN_LOG"
 	run_seed
 	[ "$status" -eq 0 ]
 	grep -q '^-CreateProfile ' "$ZEN_LOG"
@@ -327,6 +334,10 @@ write_installs() {
 
 @test "does not create a profile when one already exists" {
 	write_installs "abc123.Default (release)"
+	# Pre-created for the same reason as the test above: without it, "the log
+	# has no CreateProfile line" and "the log does not exist" both make
+	# `grep -c` exit non-zero, and this test cannot tell those apart.
+	: >"$ZEN_LOG"
 	run_seed
 	[ "$status" -eq 0 ]
 	run grep -c 'CreateProfile' "$ZEN_LOG"
