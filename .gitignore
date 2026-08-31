@@ -11,3 +11,7 @@ graphify-out/
 # armour header — this is the third layer, for the copy that arrives by file
 # manager or stray cp rather than by the export.
 *.age
+
+# Superpowers SDD scratch: ledger, briefs and review packages for a
+# plan in flight. Rebuildable from git once the plan ships.
+.superpowers/
