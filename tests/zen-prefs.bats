@@ -204,3 +204,114 @@ write_installs() {
 	[ "$status" -eq 0 ]
 	[ -f "$BATS_TEST_TMPDIR/elsewhere/user.js" ]
 }
+
+@test "leaves installs.ini and profiles.ini byte-identical" {
+	write_installs "abc123.Default (release)"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile0]
+		Name=Default (release)
+		IsRelative=1
+		Path=abc123.Default (release)
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+	before_i="$(md5sum <"$ZEN/installs.ini")"
+	before_p="$(md5sum <"$ZEN/profiles.ini")"
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ "$(md5sum <"$ZEN/installs.ini")" = "$before_i" ]
+	[ "$(md5sum <"$ZEN/profiles.ini")" = "$before_p" ]
+}
+
+@test "writes nothing else into the profile" {
+	write_installs "abc123.Default (release)"
+	run_seed
+	# user.js and nothing besides. A stray temp file left behind is a bug:
+	# the profile is Zen's, and this script's whole licence is one file.
+	found="$(cd "$ZEN/abc123.Default (release)" && ls -A | tr '\n' ' ')"
+	[ "$found" = "user.js " ]
+}
+
+@test "a second run leaves the file untouched" {
+	write_installs "abc123.Default (release)"
+	js="$ZEN/abc123.Default (release)/user.js"
+	run_seed
+	[ "$status" -eq 0 ]
+	# Coarse mtime is enough here and avoids a sleep: set it back a day, then
+	# assert the second run did not move it forward.
+	touch -d '1 day ago' "$js"
+	before="$(stat -c %Y "$js")"
+	before_content="$(cat "$js")"
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ "$(stat -c %Y "$js")" -eq "$before" ]
+	# Not just untouched -- still correct. Without this, a second run that
+	# bailed out early for an unrelated reason (say, resolve_profile stopped
+	# finding the profile) would leave the mtime unmoved too, and the test
+	# above would pass for the wrong reason.
+	[ "$(cat "$js")" = "$before_content" ]
+	grep -q '^user_pref(' "$js"
+}
+
+@test "a changed list is rewritten" {
+	write_installs "abc123.Default (release)"
+	js="$ZEN/abc123.Default (release)/user.js"
+	run_seed
+	echo '// stale' >"$js"
+
+	run_seed
+	[ "$status" -eq 0 ]
+	grep -q '^user_pref(' "$js"
+	run grep -c 'stale' "$js"
+	[ "$status" -ne 0 ]
+}
+
+@test "exits 0 and writes nothing inside a container" {
+	write_installs "abc123.Default (release)"
+	CONTAINER_SCRIPT="$BATS_TEST_TMPDIR/seed-container.sh"
+	# is-container renders to a literal in the script, so flipping that
+	# literal is how a host-rendered copy takes the container branch.
+	sed 's/^is_container=false$/is_container=true/' "$SCRIPT" >"$CONTAINER_SCRIPT"
+
+	run env -u XDG_CONFIG_HOME HOME="$HOME" PATH="$BIN:$PATH" sh "$CONTAINER_SCRIPT"
+	[ "$status" -eq 0 ]
+	[ ! -f "$ZEN/abc123.Default (release)/user.js" ]
+}
+
+# The known defect this suite exists to pin: under `set -eu`, a failed write
+# into $tmp used to abort the script immediately, before the `rm -f "$tmp"`
+# that every other early-return path in this script already gets. The stray
+# user.js.tmp.$$ that leaves behind sits in the user's real Zen profile
+# forever -- this script has no later occasion to clean it up.
+#
+# Shadowing `cat` (rather than, say, chmod-ing the profile directory
+# read-only) is deliberate: the shell's `>"$tmp"` redirection creates
+# (truncates) the temp file as part of launching `cat`, before `cat` itself
+# ever runs. A directory-permission block would stop that open() from
+# succeeding at all, so nothing would exist for `rm -f` to remove -- such a
+# test would pass identically whether or not the cleanup code was even
+# there, which is exactly the trap called out in proton-ssh-load.bats over
+# the equivalent case for `mv`. Failing inside `cat` instead lets the temp
+# file genuinely come into existence first, so this test can tell "cleaned
+# up" apart from "never created".
+@test "removes the temp file when the write into it fails" {
+	write_installs "abc123.Default (release)"
+	FAILBIN="$BATS_TEST_TMPDIR/failcat"
+	mkdir -p "$FAILBIN"
+	cat >"$FAILBIN/cat" <<-'EOF'
+		#!/bin/sh
+		exit 1
+	EOF
+	chmod 755 "$FAILBIN/cat"
+
+	run env -u XDG_CONFIG_HOME HOME="$HOME" PATH="$FAILBIN:$BIN:$PATH" sh "$SCRIPT"
+
+	[ "$status" -eq 0 ]
+	[ ! -f "$ZEN/abc123.Default (release)/user.js" ]
+	found="$(find "$ZEN/abc123.Default (release)" -name '*.tmp.*' -print -quit)"
+	[ -z "$found" ]
+}

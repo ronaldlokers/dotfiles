@@ -122,10 +122,24 @@ tmp="$target.tmp.$$"
 
 # The quoted heredoc delimiter stops the shell touching the content; chezmoi
 # has already rendered the template by the time this runs.
+#
+# Guarded the way run_after_23-seed-bar-widget.sh.tmpl guards its own write:
+# under `set -eu` a failed write aborts the whole script immediately, and
+# without this guard that abort happens after the shell has already created
+# (and possibly partially filled) $tmp, leaving a stray user.js.tmp.$$
+# sitting in the user's real Zen profile directory -- this script has no
+# other occasion to clean it up, and "writes nothing but user.js into this
+# profile" is the whole safety claim it makes. Disk-full mid-write is the
+# ordinary way this happens.
 # shellcheck disable=SC1083
-cat >"$tmp" <<'ZEN_USER_JS'
+if ! cat >"$tmp" <<'ZEN_USER_JS'
 {{ includeTemplate "zen-user-js" . }}
 ZEN_USER_JS
+then
+	rm -f "$tmp"
+	echo "[zen] could not write user.js into $(basename "$profile_dir"); leaving it alone." >&2
+	exit 0
+fi
 
 if [ -f "$target" ] && cmp -s "$tmp" "$target"; then
 	rm -f "$tmp"
