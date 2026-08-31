@@ -114,6 +114,22 @@ resolve_profile() {
 }
 
 resolve_profile
+
+# No profile at all. This is the fresh-machine case: Zen creates its profile
+# on first launch, and `chezmoi apply` runs before that has happened. Creating
+# one here is what keeps the fresh-machine path down to a single apply.
+#
+# Only ever reached when resolution found nothing, so this can never re-point
+# an existing profile.
+if [ -z "$profile_dir" ]; then
+	if ! zen-browser -CreateProfile "dotfiles $zen_dir/dotfiles" \
+		>/dev/null 2>&1; then
+		echo "[zen] could not create a profile; launch Zen once, then re-apply" >&2
+		exit 0
+	fi
+	resolve_profile
+fi
+
 [ -n "$profile_dir" ] || exit 0
 [ -d "$profile_dir" ] || exit 0
 

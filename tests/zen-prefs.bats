@@ -315,3 +315,26 @@ write_installs() {
 	found="$(find "$ZEN/abc123.Default (release)" -name '*.tmp.*' -print -quit)"
 	[ -z "$found" ]
 }
+
+@test "creates a profile when the machine has none" {
+	# No installs.ini, no profiles.ini, no profile directory: a machine whose
+	# Zen has never been launched, which is what a fresh apply meets.
+	run_seed
+	[ "$status" -eq 0 ]
+	grep -q '^-CreateProfile ' "$ZEN_LOG"
+	[ -f "$ZEN/dotfiles/user.js" ]
+}
+
+@test "does not create a profile when one already exists" {
+	write_installs "abc123.Default (release)"
+	run_seed
+	[ "$status" -eq 0 ]
+	run grep -c 'CreateProfile' "$ZEN_LOG"
+	[ "$status" -ne 0 ]
+}
+
+@test "exits 0 when the profile cannot be created" {
+	run env -u XDG_CONFIG_HOME HOME="$HOME" ZEN_LOG="$ZEN_LOG" \
+		ZEN_CREATE_RC=1 PATH="$BIN:$PATH" sh "$SCRIPT"
+	[ "$status" -eq 0 ]
+}
