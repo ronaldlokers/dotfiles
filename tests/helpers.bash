@@ -480,3 +480,53 @@ exit 0
 STUB
 	chmod 755 "$bin/ssh-add"
 }
+
+# Writes a fake zen-browser into $1 (a directory placed first on PATH). The
+# seed script only needs zen-browser to exist for its `command -v` gate; the
+# -CreateProfile form is implemented so the creation branch can be driven
+# without a real browser or a display.
+#
+#   ZEN_LOG        file to record every invocation's argv, one per line
+#   ZEN_CREATE_RC  exit code for -CreateProfile            (default 0)
+make_zen_browser_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/zen-browser" <<'STUB'
+#!/bin/sh
+[ -n "${ZEN_LOG:-}" ] && printf '%s\n' "$*" >>"$ZEN_LOG"
+# Zen takes the profile name and its directory as one argument, space
+# separated: -CreateProfile "<name> <path>". Creating the directory and
+# registering it in profiles.ini is what the real binary does -- probed on this
+# machine: the first time profiles.ini is created it gets a [General] header
+# before any [ProfileN] block, and Path= is written relative (IsRelative=1),
+# not absolute -- just the new profile directory's basename under the zen dir.
+if [ "${1:-}" = "-CreateProfile" ]; then
+	name="${2%% *}"
+	path="${2#* }"
+	rc="${ZEN_CREATE_RC:-0}"
+	[ "$rc" -ne 0 ] && exit "$rc"
+	mkdir -p "$path"
+	zen_dir="${XDG_CONFIG_HOME:-$HOME/.config}/zen"
+	mkdir -p "$zen_dir"
+	ini="$zen_dir/profiles.ini"
+	if [ ! -f "$ini" ]; then
+		{
+			printf '[General]\n'
+			printf 'StartWithLastProfile=1\n'
+			printf 'Version=2\n'
+			printf '\n'
+		} >>"$ini"
+	fi
+	{
+		printf '[Profile0]\n'
+		printf 'Name=%s\n' "$name"
+		printf 'IsRelative=1\n'
+		printf 'Path=%s\n' "$(basename "$path")"
+		printf 'Default=1\n'
+	} >>"$ini"
+	exit 0
+fi
+exit 0
+STUB
+	chmod 755 "$bin/zen-browser"
+}

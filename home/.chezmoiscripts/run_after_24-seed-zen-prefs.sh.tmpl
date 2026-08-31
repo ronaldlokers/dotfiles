@@ -1,0 +1,88 @@
+#!/bin/sh
+# Write this repo's Zen Browser preferences into the browser's profile.
+#
+# user.js cannot be an ordinary managed file: its path contains a randomly
+# generated profile directory name, different on every machine, so chezmoi has
+# no static target to map it to. The list lives in .chezmoitemplates/zen-user-js
+# and this script renders it into whichever profile it resolves.
+#
+# The preferences listed there are repo-owned. Zen re-reads user.js at every
+# startup and its values override prefs.js, so changing one in the browser UI
+# appears to work and reverts at the next restart. That is the trade accepted
+# in docs/design-notes.md: reproducible on a new machine, not editable in place.
+#
+# A plain `run_after`, not a `run_onchange`, for the reason the enable scripts
+# next door are: chezmoi records a run_onchange script's hash the moment it
+# exits 0, including the exit 0 that means "nothing here to act on". A machine
+# whose Zen has never been launched has no profile yet, and that exit 0 would
+# have marked the seeding done for the life of the machine.
+set -eu
+
+# A container has no Zen and no display to run one on. Rendered into a variable
+# rather than wrapping the body in a template `if`, the way the scripts next
+# door do it: CI shellchecks the template, not the rendered script, and a bare
+# template action at statement level does not parse as shell.
+# shellcheck disable=SC1083
+is_container={{ includeTemplate "is-container" . }}
+# shellcheck disable=SC2154
+if [ "$is_container" = "true" ]; then
+	exit 0
+fi
+
+# No browser, nothing to configure. Not an error: this runs on every machine,
+# and the package install is a later script's job.
+command -v zen-browser >/dev/null 2>&1 || exit 0
+
+zen_dir="${XDG_CONFIG_HOME:-$HOME/.config}/zen"
+
+# Turns a Path= value into an absolute directory. IsRelative=1 means relative
+# to the zen directory; anything starting with / is already absolute.
+abs_profile() {
+	case "$1" in
+	/*) printf '%s\n' "$1" ;;
+	*) printf '%s\n' "$zen_dir/$1" ;;
+	esac
+}
+
+# Sets $profile_dir, or leaves it empty when no profile exists yet.
+#
+# installs.ini first, and this ordering is the whole reason the script exists.
+# profiles.ini's `Default=1` is not what Zen honours -- on the machine this was
+# written for it marks an unused 4 KB profile, while installs.ini names the one
+# holding the actual session. A glob, or a reader that trusts `Default=1`,
+# writes user.js into the wrong profile and silently achieves nothing.
+resolve_profile() {
+	profile_dir=""
+	rel=""
+
+	if [ -f "$zen_dir/installs.ini" ]; then
+		rel="$(awk '/^Default=/ { print substr($0, 9); exit }' \
+			"$zen_dir/installs.ini")"
+	fi
+
+	if [ -n "$rel" ]; then
+		profile_dir="$(abs_profile "$rel")"
+	fi
+}
+
+resolve_profile
+[ -n "$profile_dir" ] || exit 0
+[ -d "$profile_dir" ] || exit 0
+
+target="$profile_dir/user.js"
+tmp="$target.tmp.$$"
+
+# The quoted heredoc delimiter stops the shell touching the content; chezmoi
+# has already rendered the template by the time this runs.
+# shellcheck disable=SC1083
+cat >"$tmp" <<'ZEN_USER_JS'
+{{ includeTemplate "zen-user-js" . }}
+ZEN_USER_JS
+
+if [ -f "$target" ] && cmp -s "$tmp" "$target"; then
+	rm -f "$tmp"
+	exit 0
+fi
+
+mv "$tmp" "$target"
+echo "[zen] wrote user.js into $(basename "$profile_dir")"
