@@ -530,3 +530,47 @@ exit 0
 STUB
 	chmod 755 "$bin/zen-browser"
 }
+
+# Rewrites a rendered copy of run_after_24-seed-zen-prefs.sh.tmpl ($1) into
+# $2, moving the resolve_profile installs.ini ("source 1") if-block -- guard
+# and all -- to just after the profiles.ini Default=1 ("source 3") block's
+# closing `fi`. Exists to prove what the `[ -z "$rel" ]` guard on source 1
+# actually protects: not "installs.ini runs first" (every other test already
+# covers that in the unmoved script), but "a later-running, unguarded
+# installs.ini check does not clobber a resolution an earlier block already
+# made." Matches on the literal `if`/`fi` lines rather than fixed line
+# numbers, so an unrelated edit elsewhere in the script does not silently
+# turn this into a no-op mutation of nothing.
+move_installs_block_after_default1() {
+	local src="$1" out="$2"
+	awk '
+		BEGIN { in_b1 = 0; block1 = ""; p_ini_count = 0; inserted = 0 }
+		{
+			line = $0
+			# Matched on the `if`s tail, not its full text (including
+			# whether a `[ -z "$rel" ]` guard prefixes it): the whole point
+			# of this rewrite is to let a test remove that guard and still
+			# see the block land in the moved position, so the mutation it
+			# is trying to catch actually gets exercised instead of being
+			# silently skipped because the line no longer matches.
+			if (!in_b1 && line ~ /\[ -r "\$zen_dir\/installs\.ini" \]; then$/) {
+				in_b1 = 1
+				block1 = line "\n"
+				next
+			}
+			if (in_b1) {
+				block1 = block1 line "\n"
+				if (line == "\tfi") { in_b1 = 0 }
+				next
+			}
+			if (line ~ /\[ -r "\$zen_dir\/profiles\.ini" \]; then$/) {
+				p_ini_count++
+			}
+			print line
+			if (line == "\tfi" && p_ini_count == 2 && !inserted) {
+				printf "%s", block1
+				inserted = 1
+			}
+		}
+	' "$src" >"$out"
+}

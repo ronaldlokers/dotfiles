@@ -74,38 +74,61 @@ resolve_profile() {
 	# protect. Keep it anyway: without it, priority holds only because this
 	# block is textually first, not because anything enforces it. Sources 2
 	# and 3 already guard themselves the same way, for the same reason.
-	# Move this block below source 3's and, unguarded, it would
-	# unconditionally overwrite whatever source 3 had already found on any
-	# machine where installs.ini exists -- silently defeating the ordering
-	# this function exists to pin. With the guard, source 1 stays
-	# authoritative regardless of where it sits in the function.
-	if [ -z "$rel" ] && [ -f "$zen_dir/installs.ini" ]; then
-		rel="$(awk '/^Default=/ { print substr($0, 9); exit }' \
-			"$zen_dir/installs.ini")"
+	# Move this block below source 3's, unguarded, and it would run
+	# unconditionally there too -- and on a machine whose installs.ini exists
+	# but does not carry a `Default=` line of its own, that unconditional run
+	# assigns $rel the empty string it found, clobbering whatever source 3
+	# had already resolved a moment earlier. That is proven by mutation in
+	# tests/zen-prefs.bats: moving this block after source 3's and dropping
+	# the guard turns a working resolution into no resolution at all. With
+	# the guard, this block simply declines to run once an earlier source has
+	# already set $rel, so a later source's finding survives regardless of
+	# where in the function this block ends up sitting.
+	#
+	# `-r`, not `-f`: an installs.ini that exists but cannot be *read* --
+	# restored as root, applied as a different user, a hardened umask on the
+	# zen directory -- must be skipped over just like one that does not exist
+	# at all, not handed to awk. `-f` alone tests existence, not readability.
+	if [ -z "$rel" ] && [ -r "$zen_dir/installs.ini" ]; then
+		# The `2>/dev/null || :` is belt-and-braces on top of the `-r` guard
+		# above, not a duplicate of it: `-r` can pass and awk can still fail
+		# to open the file a moment later -- permissions changing between the
+		# check and the read, or any other reason awk's open() can refuse a
+		# file `-r` said yes to. Under `set -eu`, awk's own exit status
+		# becomes this command substitution's status, and awk fatals (exit 2)
+		# on a file it cannot open. That fatal exit, unguarded, aborts this
+		# script immediately -- and a non-zero exit from a `run_after` script
+		# stops every later script in the apply chain, so one unreadable ini
+		# on one machine would silently cancel the rest of that machine's
+		# provisioning. `|| :` makes a failed read resolve to "found
+		# nothing" here, same as a missing file, instead of killing the
+		# script.
+		rel="$(awk '/^Default=/ { sub(/[ \t\r]+$/, ""); print substr($0, 9); exit }' \
+			"$zen_dir/installs.ini" 2>/dev/null || :)"
 	fi
 
 	# 2. The same record mirrored into profiles.ini as an [InstallXXXX]
 	#    section. Present on machines whose installs.ini has not been
 	#    written yet.
-	if [ -z "$rel" ] && [ -f "$zen_dir/profiles.ini" ]; then
+	if [ -z "$rel" ] && [ -r "$zen_dir/profiles.ini" ]; then
 		rel="$(awk '
 			/^\[Install/ { in_install = 1; next }
 			/^\[/        { in_install = 0 }
-			in_install && /^Default=/ { print substr($0, 9); exit }
-		' "$zen_dir/profiles.ini")"
+			in_install && /^Default=/ { sub(/[ \t\r]+$/, ""); print substr($0, 9); exit }
+		' "$zen_dir/profiles.ini" 2>/dev/null || :)"
 	fi
 
 	# 3. Last, and only last: the [ProfileN] section flagged Default=1. On a
 	#    machine with more than one profile this is frequently not the one in
 	#    use, which is why the two install records are consulted first.
-	if [ -z "$rel" ] && [ -f "$zen_dir/profiles.ini" ]; then
+	if [ -z "$rel" ] && [ -r "$zen_dir/profiles.ini" ]; then
 		rel="$(awk '
 			/^\[Profile/ { path = ""; isdef = 0; in_prof = 1; next }
 			/^\[/        { in_prof = 0 }
-			in_prof && /^Path=/      { path = substr($0, 6) }
+			in_prof && /^Path=/      { sub(/[ \t\r]+$/, ""); path = substr($0, 6) }
 			in_prof && /^Default=1/  { isdef = 1 }
 			in_prof && isdef && path != "" { print path; exit }
-		' "$zen_dir/profiles.ini")"
+		' "$zen_dir/profiles.ini" 2>/dev/null || :)"
 	fi
 
 	if [ -n "$rel" ]; then
@@ -119,17 +142,37 @@ resolve_profile
 # on first launch, and `chezmoi apply` runs before that has happened. Creating
 # one here is what keeps the fresh-machine path down to a single apply.
 #
-# Only ever reached when resolution found nothing, so this can never re-point
-# an existing profile.
+# "Resolution found nothing" is NOT the same thing as "no profile exists", and
+# treating them as equivalent is exactly the bug this gate exists to close. A
+# profiles.ini that lists a real profile but flags none of them Default=1, has
+# no [InstallXXXX] section, and has no installs.ini alongside it resolves
+# empty in exactly the way a genuinely fresh machine does -- so a version of
+# this gate keyed on `profile_dir` being empty would run -CreateProfile on a
+# machine that already has a profile. Zen would then register a *second*
+# profile, with still nothing recorded as default anywhere: the exact
+# ambiguous state in which it goes on to treat the new, empty one as default.
+# That is the 277 MB orphaning scenario the resolution order above exists to
+# avoid -- reached here without this script ever having written an ini
+# itself. So the gate below checks for genuinely-never-launched directly:
+# neither ini file exists at all. Only that is a state -CreateProfile is safe
+# to act on.
 if [ -z "$profile_dir" ]; then
-	if ! zen-browser -CreateProfile "dotfiles $zen_dir/dotfiles" \
-		>/dev/null 2>&1; then
-		echo "[zen] could not create a profile; launch Zen once, then re-apply" >&2
+	if [ ! -e "$zen_dir/profiles.ini" ] && [ ! -e "$zen_dir/installs.ini" ]; then
+		if ! zen-browser -CreateProfile "dotfiles $zen_dir/dotfiles" \
+			>/dev/null 2>&1; then
+			echo "[zen] could not create a profile; launch Zen once, then re-apply" >&2
+			exit 0
+		fi
+		resolve_profile
+	else
+		echo "[zen] could not resolve a profile from the existing installs.ini/profiles.ini; leaving Zen alone" >&2
 		exit 0
 	fi
-	resolve_profile
 fi
 
+if [ -n "$profile_dir" ] && [ ! -d "$profile_dir" ]; then
+	echo "[zen] resolved to \"$profile_dir\", but it does not exist; leaving Zen alone" >&2
+fi
 [ -n "$profile_dir" ] || exit 0
 [ -d "$profile_dir" ] || exit 0
 

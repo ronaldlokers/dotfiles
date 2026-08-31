@@ -1355,7 +1355,18 @@ Global Privacy Control has been *seen*, not that it is on — the actual switch,
 `privacy.globalprivacycontrol.enabled`, is a real decision left out of scope
 here — and `browser.settings-redesign.promo.dismissed` is nothing more than a
 dismissed-promo marker. Managing either would be managing bookkeeping the
-browser writes about itself, not a preference anyone chose.
+browser writes about itself, not a preference anyone chose. A third category
+is absent for a reason that is not geometry or bookkeeping at all:
+`identity.fxaccounts.*`, the per-install telemetry client IDs, and
+`browser.download.lastDir` identify this machine or this account rather than
+choosing how it behaves, and this repo's rule that nothing secret lives in
+the tree does not stop at credentials — committing an fxaccounts UID or a
+telemetry client ID into `.chezmoitemplates/zen-user-js` would put a durable,
+cross-machine identifier in git history for as long as the repo exists, and
+pinning `browser.download.lastDir` would carry one machine's filesystem
+layout into every other machine's browser. Anyone extending this list should
+treat an identity- or account-linked value as needing this sentence's
+reasoning, not the "would revert a resize" reasoning above.
 
 **Creating a profile on a machine that has never launched Zen.** `chezmoi
 apply` runs before Zen ever has, on a genuinely fresh machine, so resolution

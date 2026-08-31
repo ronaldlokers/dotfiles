@@ -229,6 +229,17 @@ write_installs() {
 @test "writes nothing else into the profile" {
 	write_installs "abc123.Default (release)"
 	run_seed
+	# A second run before the assertion is deliberate, not padding: the first
+	# run always takes the `mv` branch, which the guard in `receives the temp
+	# file when the write fails` test already proves clears its temp file on
+	# the way in. The steady-state branch -- `cmp -s` says the content
+	# already matches, so the script removes $tmp instead of moving it -- is
+	# only reached from a *second* run onward, and it is the branch every
+	# apply after the first actually takes. A single run_seed call here would
+	# pass even if that branch's own `rm -f "$tmp"` were deleted, leaving a
+	# fresh user.js.tmp.$$ behind on every apply forever without this test
+	# ever noticing.
+	run_seed
 	# user.js and nothing besides. A stray temp file left behind is a bug:
 	# the profile is Zen's, and this script's whole licence is one file.
 	found="$(cd "$ZEN/abc123.Default (release)" && ls -A | tr '\n' ' ')"
@@ -348,4 +359,139 @@ write_installs() {
 	run env -u XDG_CONFIG_HOME HOME="$HOME" ZEN_LOG="$ZEN_LOG" \
 		ZEN_CREATE_RC=1 PATH="$BIN:$PATH" sh "$SCRIPT"
 	[ "$status" -eq 0 ]
+}
+
+# "Resolution found nothing" is not the same fact as "no profile exists", and
+# the fresh-machine branch must only ever fire on the latter. This is exactly
+# that gap: profiles.ini lists a real profile, but nothing flags it
+# Default=1, there is no [InstallXXXX] section, and there is no installs.ini
+# to consult first -- so resolve_profile legitimately comes up empty on a
+# machine that is not fresh at all. A version of the gate keyed on
+# `profile_dir` being empty runs -CreateProfile here anyway, registering a
+# *second* profile next to the real one with still nothing recorded as
+# default -- the exact ambiguous state Zen resolves by picking the new, empty
+# profile. That is the 277 MB orphaning scenario this suite is named for,
+# reached without the script ever writing an ini itself.
+@test "does not create a profile when profiles.ini exists but resolves nothing" {
+	mkdir -p "$ZEN/only.Default Profile"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile0]
+		Name=Default Profile
+		IsRelative=1
+		Path=only.Default Profile
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+	: >"$ZEN_LOG"
+	run_seed
+	[ "$status" -eq 0 ]
+	run grep -c 'CreateProfile' "$ZEN_LOG"
+	[ "$status" -ne 0 ]
+	[ ! -f "$ZEN/only.Default Profile/user.js" ]
+}
+
+# Critical: an installs.ini or profiles.ini that exists but cannot be read
+# used to abort the entire apply chain. Under `set -eu`, `rel="$(awk ...)"`
+# takes awk's own exit status, and awk fatals with status 2 on a file it
+# cannot open -- for a permission-denied file, for a file that turns unreadable
+# between the `-r` check and the read, or for other reasons `open()` can
+# refuse a file. A non-zero exit from a `run_after` script stops every script
+# that runs after it, so this one unreadable ini took down the rest of that
+# machine's provisioning.
+#
+# `chmod 000` cannot reproduce the failure here: CI, like a real restore-as-root
+# scenario, runs as root, and root can read a file no matter what its mode
+# bits say. Shadowing `awk` itself reproduces the exact failure mode --
+# a fatal, non-zero exit from the tool the script hands the file to -- without
+# depending on which user is running the test.
+@test "does not abort the apply chain when awk cannot read an ini file" {
+	write_installs "abc123.Default (release)"
+	FAILBIN="$BATS_TEST_TMPDIR/failawk"
+	mkdir -p "$FAILBIN"
+	cat >"$FAILBIN/awk" <<-'EOF'
+		#!/bin/sh
+		echo "awk: fatal: cannot open file for reading (Permission denied)" >&2
+		exit 2
+	EOF
+	chmod 755 "$FAILBIN/awk"
+
+	run env -u XDG_CONFIG_HOME HOME="$HOME" ZEN_LOG="$ZEN_LOG" \
+		PATH="$FAILBIN:$BIN:$PATH" sh "$SCRIPT"
+
+	[ "$status" -eq 0 ]
+}
+
+# The `[ -z "$rel" ]` guard on the installs.ini block (source 1) looks
+# pointless where it sits -- $rel starts empty and this is the first block
+# tried, so nothing has set it yet. What the guard actually buys shows up
+# only once the block's *position* changes: move it after the Default=1
+# block (source 3) and, unguarded, it still runs unconditionally there. On a
+# machine whose installs.ini exists but carries no `Default=` line of its own
+# -- this fixture's shape -- that unconditional run assigns $rel the empty
+# string it found, erasing whatever source 3 had already resolved a moment
+# earlier. Guarded, the moved block simply declines to run once $rel is
+# already set, so the earlier resolution survives the reordering intact.
+#
+# installs.ini deliberately has no matching Default= line here: with a
+# matching one, moving the block to the end and dropping the guard both
+# converge on installs.ini's own value regardless of guard, which would not
+# distinguish the two. This is the one fixture shape where guarded and
+# unguarded actually disagree.
+@test "the installs.ini guard survives being moved after the Default=1 block" {
+	mkdir -p "$ZEN/only.Default Profile"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile0]
+		Name=Default Profile
+		IsRelative=1
+		Path=only.Default Profile
+		Default=1
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+	cat >"$ZEN/installs.ini" <<-'EOF'
+		[15B76BAA26BA15E7]
+		Locked=1
+	EOF
+
+	MUTATED="$BATS_TEST_TMPDIR/reordered.sh"
+	move_installs_block_after_default1 "$SCRIPT" "$MUTATED"
+
+	run env -u XDG_CONFIG_HOME HOME="$HOME" PATH="$BIN:$PATH" sh "$MUTATED"
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/only.Default Profile/user.js" ]
+}
+
+# Minor: profiles.ini and installs.ini are Windows-authored ini files, and a
+# trailing CR (or trailing space) on a Path= or Default= line is a real shape,
+# not a hypothetical one. Before the fix, `substr($0, N)` on such a line keeps
+# the CR as part of the resolved value, `abs_profile` builds a directory name
+# with a literal trailing CR in it, `[ -d ]` on that bogus path fails, and the
+# script exits 0 having done nothing -- silently, with no message.
+@test "trims a trailing CR from a resolved installs.ini value" {
+	mkdir -p "$ZEN/abc123.Default (release)"
+	printf '[15B76BAA26BA15E7]\r\nDefault=abc123.Default (release)\r\nLocked=1\r\n' \
+		>"$ZEN/installs.ini"
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/abc123.Default (release)/user.js" ]
+}
+
+# The other half of the CRLF fix: a resolution that still cannot find a real
+# directory -- a stale installs.ini naming a profile that has since been
+# deleted, say -- must not fail the same way the CRLF case used to: silently,
+# with exit 0 and no trace. It should say so on stderr.
+@test "warns instead of silently exiting when the resolved profile directory is missing" {
+	cat >"$ZEN/installs.ini" <<-EOF
+		[15B76BAA26BA15E7]
+		Default=missing.Default (release)
+		Locked=1
+	EOF
+	run_seed
+	[ "$status" -eq 0 ]
+	[ ! -f "$ZEN/missing.Default (release)/user.js" ]
+	[[ "$output" == *"[zen]"* ]]
 }
