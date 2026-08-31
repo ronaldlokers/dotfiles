@@ -469,6 +469,11 @@ containers get it too; desktop apps go in the host package script.
 Project-specific tooling belongs in that project's own `mise.toml`. Repo-only
 files sit outside `home/` and need no `.chezmoiignore` entry.
 
+Zen Browser's preferences are written to `user.js` in the browser profile from
+`home/.chezmoitemplates/zen-user-js`. They are repo-owned: changing one in
+Zen's own settings reverts at the next restart. Edit the template and
+re-apply instead.
+
 ### Profiles
 
 A machine has a *set* of profiles, and anything that should not be everywhere

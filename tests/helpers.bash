@@ -480,3 +480,97 @@ exit 0
 STUB
 	chmod 755 "$bin/ssh-add"
 }
+
+# Writes a fake zen-browser into $1 (a directory placed first on PATH). The
+# seed script only needs zen-browser to exist for its `command -v` gate; the
+# -CreateProfile form is implemented so the creation branch can be driven
+# without a real browser or a display.
+#
+#   ZEN_LOG        file to record every invocation's argv, one per line
+#   ZEN_CREATE_RC  exit code for -CreateProfile            (default 0)
+make_zen_browser_stub() {
+	local bin="$1"
+	mkdir -p "$bin"
+	cat >"$bin/zen-browser" <<'STUB'
+#!/bin/sh
+[ -n "${ZEN_LOG:-}" ] && printf '%s\n' "$*" >>"$ZEN_LOG"
+# Zen takes the profile name and its directory as one argument, space
+# separated: -CreateProfile "<name> <path>". Creating the directory and
+# registering it in profiles.ini is what the real binary does -- probed on this
+# machine: the first time profiles.ini is created it gets a [General] header
+# before any [ProfileN] block, and Path= is written relative (IsRelative=1),
+# not absolute -- just the new profile directory's basename under the zen dir.
+if [ "${1:-}" = "-CreateProfile" ]; then
+	name="${2%% *}"
+	path="${2#* }"
+	rc="${ZEN_CREATE_RC:-0}"
+	[ "$rc" -ne 0 ] && exit "$rc"
+	mkdir -p "$path"
+	zen_dir="${XDG_CONFIG_HOME:-$HOME/.config}/zen"
+	mkdir -p "$zen_dir"
+	ini="$zen_dir/profiles.ini"
+	if [ ! -f "$ini" ]; then
+		{
+			printf '[General]\n'
+			printf 'StartWithLastProfile=1\n'
+			printf 'Version=2\n'
+			printf '\n'
+		} >>"$ini"
+	fi
+	{
+		printf '[Profile0]\n'
+		printf 'Name=%s\n' "$name"
+		printf 'IsRelative=1\n'
+		printf 'Path=%s\n' "$(basename "$path")"
+		printf 'Default=1\n'
+	} >>"$ini"
+	exit 0
+fi
+exit 0
+STUB
+	chmod 755 "$bin/zen-browser"
+}
+
+# Rewrites a rendered copy of run_after_24-seed-zen-prefs.sh.tmpl ($1) into
+# $2, moving the resolve_profile installs.ini ("source 1") if-block -- guard
+# and all -- to just after the profiles.ini Default=1 ("source 3") block's
+# closing `fi`. Exists to prove what the `[ -z "$rel" ]` guard on source 1
+# actually protects: not "installs.ini runs first" (every other test already
+# covers that in the unmoved script), but "a later-running, unguarded
+# installs.ini check does not clobber a resolution an earlier block already
+# made." Matches on the literal `if`/`fi` lines rather than fixed line
+# numbers, so an unrelated edit elsewhere in the script does not silently
+# turn this into a no-op mutation of nothing.
+move_installs_block_after_default1() {
+	local src="$1" out="$2"
+	awk '
+		BEGIN { in_b1 = 0; block1 = ""; p_ini_count = 0; inserted = 0 }
+		{
+			line = $0
+			# Matched on the `if`s tail, not its full text (including
+			# whether a `[ -z "$rel" ]` guard prefixes it): the whole point
+			# of this rewrite is to let a test remove that guard and still
+			# see the block land in the moved position, so the mutation it
+			# is trying to catch actually gets exercised instead of being
+			# silently skipped because the line no longer matches.
+			if (!in_b1 && line ~ /\[ -r "\$zen_dir\/installs\.ini" \]; then$/) {
+				in_b1 = 1
+				block1 = line "\n"
+				next
+			}
+			if (in_b1) {
+				block1 = block1 line "\n"
+				if (line == "\tfi") { in_b1 = 0 }
+				next
+			}
+			if (line ~ /\[ -r "\$zen_dir\/profiles\.ini" \]; then$/) {
+				p_ini_count++
+			}
+			print line
+			if (line == "\tfi" && p_ini_count == 2 && !inserted) {
+				printf "%s", block1
+				inserted = 1
+			}
+		}
+	' "$src" >"$out"
+}

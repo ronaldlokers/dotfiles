@@ -1264,3 +1264,121 @@ and they disagree, which is the worse property. `XDG_STATE_HOME` is cleared for
 the mirror-image reason: the debounce record lives under it, so a test that
 makes the check fail would otherwise write into the developer's real
 `~/.local/state` and read back whatever was already there.
+
+## Zen Browser preferences
+
+`run_after_24-seed-zen-prefs.sh.tmpl` writes a fixed list of Zen preferences
+into `user.js` in the browser's profile, from `.chezmoitemplates/zen-user-js`.
+Zen re-reads `user.js` at every startup and its values override `prefs.js`, so
+a preference listed there is repo-owned: changing it from Zen's own settings
+appears to work and reverts at the next restart. That is the whole trade, and
+it is deliberate — reproducible on a rebuilt machine costs editing in place.
+
+**Why `user.js` and not `policies.json`.** `policies.json` is Mozilla's actual
+management mechanism, and it can lock a preference outright rather than merely
+reassert it. It is unusable here for a reason that has nothing to do with its
+capabilities: it lives at `/opt/zen-browser-bin/distribution/policies.json`,
+inside the install directory, owned by the `zen-browser-bin` package. That file
+already ships content — `DisableAppUpdate`, `DefaultSerialGuardSetting` — so
+writing to it means a root-privileged script overwriting a pacman-owned file,
+and losing the edit on the next AUR rebuild regardless. An autoconfig `.cfg`
+file (`general.config.filename`) dies for the identical reason: it also lives
+under the install directory, not `$HOME`. `user.js` is the only one of the
+three this repo can own outright. The cost of that choice is that `lockPref()`
+is rejected outright in a user preference file — Mozilla reserves it for
+`policies.json` and autoconfig — so nothing here is actually locked. The
+browser can still change a managed value at runtime; what this script
+guarantees is that the value is back to the repo's choice the next time Zen
+starts. Enforcement by reassertion, not by locking, and sufficient for
+preferences that are set-once choices rather than security boundaries.
+
+**Why `installs.ini` is read before `profiles.ini`, and why the block that
+reads it first is still guarded.** Zen (like Firefox) keeps two records of
+which profile is the default: `installs.ini`, keyed per install and
+authoritative for what the browser itself launches into, and a mirror inside
+`profiles.ini`. `profiles.ini` also carries a third, older record — a
+`[ProfileN]` section flagged `Default=1` — which is the one most naive readers
+reach for because it needs no per-install key. On the machine this was written
+for, that record is wrong: it flags `0rk8j4vs.Default Profile`, an unused 4 KB
+directory, while `installs.ini` correctly names `a2s1x793.Default (release)`,
+the 277 MB profile actually holding the session. A reader that globs
+`profiles.ini` or trusts `Default=1` first writes `user.js` into the empty
+profile and reports success — no error, no missing file, just a script that
+did exactly what it was asked and helped nobody. The resolution order in
+`resolve_profile` exists to put `installs.ini` first and the `Default=1`
+fallback last, tried only when neither install record exists.
+
+The `[ -z "$rel" ]` guard in front of the `installs.ini` block looks pointless
+in isolation — `$rel` starts empty and this is the first source tried, so
+nothing has set it yet. A review during Task 3 mutated the function by moving
+that block below the `Default=1` block, guard and all, and it still produced
+the wrong answer: without the guard, a block that runs later in a reordered
+function unconditionally clobbers whatever an earlier block already found, so
+priority held only because of the blocks' textual position, not because
+anything enforced it. With the guard, `installs.ini` stays authoritative no
+matter where in the function it sits — it simply declines to overwrite a
+`$rel` that a higher-priority source already set. Sources 2 and 3 guard
+themselves the same way for the same reason. The mutation the ordering test
+exists to catch is exactly a future edit that reorders these blocks without
+noticing which one is supposed to win.
+
+**Why managing preferences Firefox Sync also carries is deliberate, not an
+oversight.** The account signed into this profile already syncs a small
+allowlist — nine `services.sync.prefs.sync-seen.*` entries locally — and seven
+of the twenty-two preferences managed here overlap it:
+`browser.contentblocking.category`, `browser.ctrlTab.sortByRecentlyUsed`,
+`browser.tabs.warnOnClose`, `media.eme.enabled`, `nimbus.rollouts.enabled`,
+`privacy.clearOnShutdown_v2.formdata` and `signon.rememberSignons`. Dropping
+those seven because Sync already sets them would make the repo's coverage
+depend on Sync having run at all: a fresh machine's first boot, or a moment
+where the account is deliberately signed out, would see the account-linked
+half of the list simply missing. Managing them anyway makes the machine
+correct before sign-in and keeps it correct if Sync is ever turned off or
+abandoned. `user.js` is read at every startup, after Sync has already written
+whatever it is going to write, so where the two disagree the repo wins — that
+precedence is the point, not a conflict this design failed to resolve.
+
+**What is deliberately left out, and why leaving it out matters as much as the
+list itself.** Geometry that changes as the browser is actually used —
+devtools viewport dimensions, toolbox panel sizes and the split-console flag —
+is absent on purpose: a permanent `user.js` freezes whatever it lists, so
+pinning any of these would revert a resize or a panel drag at the very next
+restart, which is a worse experience than not managing them at all.
+`browser.uiCustomization.state` is excluded for the same reason and one more:
+the live profile's blob still lists `search_kagi_com-browser-action` in
+`unified-extensions-area` and `seen`, for an extension that has already been
+removed. Pinning that blob would not just freeze the toolbar — it would
+actively resurrect a dead extension's button on every single startup and
+guarantee it can never clear itself. Two more lines that read like settings
+are not: `privacy.globalprivacycontrol.was_ever_enabled` only records that
+Global Privacy Control has been *seen*, not that it is on — the actual switch,
+`privacy.globalprivacycontrol.enabled`, is a real decision left out of scope
+here — and `browser.settings-redesign.promo.dismissed` is nothing more than a
+dismissed-promo marker. Managing either would be managing bookkeeping the
+browser writes about itself, not a preference anyone chose. A third category
+is absent for a reason that is not geometry or bookkeeping at all:
+`identity.fxaccounts.*`, the per-install telemetry client IDs, and
+`browser.download.lastDir` identify this machine or this account rather than
+choosing how it behaves, and this repo's rule that nothing secret lives in
+the tree does not stop at credentials — committing an fxaccounts UID or a
+telemetry client ID into `.chezmoitemplates/zen-user-js` would put a durable,
+cross-machine identifier in git history for as long as the repo exists, and
+pinning `browser.download.lastDir` would carry one machine's filesystem
+layout into every other machine's browser. Anyone extending this list should
+treat an identity- or account-linked value as needing this sentence's
+reasoning, not the "would revert a resize" reasoning above.
+
+**Creating a profile on a machine that has never launched Zen.** `chezmoi
+apply` runs before Zen ever has, on a genuinely fresh machine, so resolution
+can legitimately find nothing. The script's fallback runs `zen-browser
+-CreateProfile "<name> <path>"` and re-resolves. Probing that command directly
+found it exits 0 and creates the profile, silently and without opening a
+window, whenever a display is present — but exits 1 with `Error: no DISPLAY
+environment variable specified` and creates nothing when one is not. A
+`chezmoi apply` from a bare TTY, over SSH, or in CI has no display, so that
+failure is routine rather than exceptional, and it is why the creation branch
+reports and exits 0 instead of failing outright: a non-zero exit from a
+`run_after` script stops every later script in the apply chain, and a missing
+Zen profile is not worth taking the rest of the machine's provisioning down
+with it. On such a machine the fresh-install path just costs one extra apply,
+after Zen has been launched by hand once.

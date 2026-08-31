@@ -1,0 +1,209 @@
+#!/bin/sh
+# Write this repo's Zen Browser preferences into the browser's profile.
+#
+# user.js cannot be an ordinary managed file: its path contains a randomly
+# generated profile directory name, different on every machine, so chezmoi has
+# no static target to map it to. The list lives in .chezmoitemplates/zen-user-js
+# and this script renders it into whichever profile it resolves.
+#
+# The preferences listed there are repo-owned. Zen re-reads user.js at every
+# startup and its values override prefs.js, so changing one in the browser UI
+# appears to work and reverts at the next restart. That is the trade accepted
+# in docs/design-notes.md: reproducible on a new machine, not editable in place.
+#
+# A plain `run_after`, not a `run_onchange`, for the reason the enable scripts
+# next door are: chezmoi records a run_onchange script's hash the moment it
+# exits 0, including the exit 0 that means "nothing here to act on". A machine
+# whose Zen has never been launched has no profile yet, and that exit 0 would
+# have marked the seeding done for the life of the machine.
+set -eu
+
+# A container has no Zen and no display to run one on. Rendered into a variable
+# rather than wrapping the body in a template `if`, the way the scripts next
+# door do it: CI shellchecks the template, not the rendered script, and a bare
+# template action at statement level does not parse as shell.
+# shellcheck disable=SC1083
+is_container={{ includeTemplate "is-container" . }}
+# shellcheck disable=SC2154
+if [ "$is_container" = "true" ]; then
+	exit 0
+fi
+
+# No browser, nothing to configure. Not an error: this runs on every machine,
+# and the package install is a later script's job.
+command -v zen-browser >/dev/null 2>&1 || exit 0
+
+zen_dir="${XDG_CONFIG_HOME:-$HOME/.config}/zen"
+
+# Turns a Path= value into an absolute directory. IsRelative=1 means relative
+# to the zen directory; anything starting with / is already absolute.
+abs_profile() {
+	case "$1" in
+	/*) printf '%s\n' "$1" ;;
+	*) printf '%s\n' "$zen_dir/$1" ;;
+	esac
+}
+
+# Sets $profile_dir, or leaves it empty when no profile exists yet.
+#
+# Four sources, tried in this order, and the order is the whole reason the
+# script exists:
+#
+#   1. installs.ini: what Zen itself honours, per install. This is the
+#      authoritative answer whenever it exists.
+#   2. The same record mirrored into profiles.ini as an [InstallXXXX]
+#      section -- present on machines whose installs.ini has not been
+#      written yet, but Zen has still recorded which profile that install
+#      uses.
+#   3. The [ProfileN] section flagged Default=1. Tried last, and only last:
+#      on a machine with more than one profile this is frequently not the
+#      one in use. On the machine this was written for, profiles.ini marks
+#      an unused 4 KB profile Default=1 while installs.ini names the 277 MB
+#      profile holding the actual session. A glob, or a reader that trusts
+#      `Default=1` first, writes user.js into the wrong profile and silently
+#      achieves nothing -- exit 0, no error, and the browser never sees the
+#      preferences.
+resolve_profile() {
+	profile_dir=""
+	rel=""
+
+	# 1. installs.ini: what Zen itself honours, per install.
+	#
+	# The `[ -z "$rel" ]` guard looks redundant here -- $rel starts empty and
+	# this is the first source tried, so today it never has anything to
+	# protect. Keep it anyway: without it, priority holds only because this
+	# block is textually first, not because anything enforces it. Sources 2
+	# and 3 already guard themselves the same way, for the same reason.
+	# Move this block below source 3's, unguarded, and it would run
+	# unconditionally there too -- and on a machine whose installs.ini exists
+	# but does not carry a `Default=` line of its own, that unconditional run
+	# assigns $rel the empty string it found, clobbering whatever source 3
+	# had already resolved a moment earlier. That is proven by mutation in
+	# tests/zen-prefs.bats: moving this block after source 3's and dropping
+	# the guard turns a working resolution into no resolution at all. With
+	# the guard, this block simply declines to run once an earlier source has
+	# already set $rel, so a later source's finding survives regardless of
+	# where in the function this block ends up sitting.
+	#
+	# `-r`, not `-f`: an installs.ini that exists but cannot be *read* --
+	# restored as root, applied as a different user, a hardened umask on the
+	# zen directory -- must be skipped over just like one that does not exist
+	# at all, not handed to awk. `-f` alone tests existence, not readability.
+	if [ -z "$rel" ] && [ -r "$zen_dir/installs.ini" ]; then
+		# The `2>/dev/null || :` is belt-and-braces on top of the `-r` guard
+		# above, not a duplicate of it: `-r` can pass and awk can still fail
+		# to open the file a moment later -- permissions changing between the
+		# check and the read, or any other reason awk's open() can refuse a
+		# file `-r` said yes to. Under `set -eu`, awk's own exit status
+		# becomes this command substitution's status, and awk fatals (exit 2)
+		# on a file it cannot open. That fatal exit, unguarded, aborts this
+		# script immediately -- and a non-zero exit from a `run_after` script
+		# stops every later script in the apply chain, so one unreadable ini
+		# on one machine would silently cancel the rest of that machine's
+		# provisioning. `|| :` makes a failed read resolve to "found
+		# nothing" here, same as a missing file, instead of killing the
+		# script.
+		rel="$(awk '/^Default=/ { sub(/[ \t\r]+$/, ""); print substr($0, 9); exit }' \
+			"$zen_dir/installs.ini" 2>/dev/null || :)"
+	fi
+
+	# 2. The same record mirrored into profiles.ini as an [InstallXXXX]
+	#    section. Present on machines whose installs.ini has not been
+	#    written yet.
+	if [ -z "$rel" ] && [ -r "$zen_dir/profiles.ini" ]; then
+		rel="$(awk '
+			/^\[Install/ { in_install = 1; next }
+			/^\[/        { in_install = 0 }
+			in_install && /^Default=/ { sub(/[ \t\r]+$/, ""); print substr($0, 9); exit }
+		' "$zen_dir/profiles.ini" 2>/dev/null || :)"
+	fi
+
+	# 3. Last, and only last: the [ProfileN] section flagged Default=1. On a
+	#    machine with more than one profile this is frequently not the one in
+	#    use, which is why the two install records are consulted first.
+	if [ -z "$rel" ] && [ -r "$zen_dir/profiles.ini" ]; then
+		rel="$(awk '
+			/^\[Profile/ { path = ""; isdef = 0; in_prof = 1; next }
+			/^\[/        { in_prof = 0 }
+			in_prof && /^Path=/      { sub(/[ \t\r]+$/, ""); path = substr($0, 6) }
+			in_prof && /^Default=1/  { isdef = 1 }
+			in_prof && isdef && path != "" { print path; exit }
+		' "$zen_dir/profiles.ini" 2>/dev/null || :)"
+	fi
+
+	if [ -n "$rel" ]; then
+		profile_dir="$(abs_profile "$rel")"
+	fi
+}
+
+resolve_profile
+
+# No profile at all. This is the fresh-machine case: Zen creates its profile
+# on first launch, and `chezmoi apply` runs before that has happened. Creating
+# one here is what keeps the fresh-machine path down to a single apply.
+#
+# "Resolution found nothing" is NOT the same thing as "no profile exists", and
+# treating them as equivalent is exactly the bug this gate exists to close. A
+# profiles.ini that lists a real profile but flags none of them Default=1, has
+# no [InstallXXXX] section, and has no installs.ini alongside it resolves
+# empty in exactly the way a genuinely fresh machine does -- so a version of
+# this gate keyed on `profile_dir` being empty would run -CreateProfile on a
+# machine that already has a profile. Zen would then register a *second*
+# profile, with still nothing recorded as default anywhere: the exact
+# ambiguous state in which it goes on to treat the new, empty one as default.
+# That is the 277 MB orphaning scenario the resolution order above exists to
+# avoid -- reached here without this script ever having written an ini
+# itself. So the gate below checks for genuinely-never-launched directly:
+# neither ini file exists at all. Only that is a state -CreateProfile is safe
+# to act on.
+if [ -z "$profile_dir" ]; then
+	if [ ! -e "$zen_dir/profiles.ini" ] && [ ! -e "$zen_dir/installs.ini" ]; then
+		if ! zen-browser -CreateProfile "dotfiles $zen_dir/dotfiles" \
+			>/dev/null 2>&1; then
+			echo "[zen] could not create a profile; launch Zen once, then re-apply" >&2
+			exit 0
+		fi
+		resolve_profile
+	else
+		echo "[zen] could not resolve a profile from the existing installs.ini/profiles.ini; leaving Zen alone" >&2
+		exit 0
+	fi
+fi
+
+if [ -n "$profile_dir" ] && [ ! -d "$profile_dir" ]; then
+	echo "[zen] resolved to \"$profile_dir\", but it does not exist; leaving Zen alone" >&2
+fi
+[ -n "$profile_dir" ] || exit 0
+[ -d "$profile_dir" ] || exit 0
+
+target="$profile_dir/user.js"
+tmp="$target.tmp.$$"
+
+# The quoted heredoc delimiter stops the shell touching the content; chezmoi
+# has already rendered the template by the time this runs.
+#
+# Guarded the way run_after_23-seed-bar-widget.sh.tmpl guards its own write:
+# under `set -eu` a failed write aborts the whole script immediately, and
+# without this guard that abort happens after the shell has already created
+# (and possibly partially filled) $tmp, leaving a stray user.js.tmp.$$
+# sitting in the user's real Zen profile directory -- this script has no
+# other occasion to clean it up, and "writes nothing but user.js into this
+# profile" is the whole safety claim it makes. Disk-full mid-write is the
+# ordinary way this happens.
+# shellcheck disable=SC1083
+if ! cat >"$tmp" <<'ZEN_USER_JS'
+{{ includeTemplate "zen-user-js" . }}
+ZEN_USER_JS
+then
+	rm -f "$tmp"
+	echo "[zen] could not write user.js into $(basename "$profile_dir"); leaving it alone." >&2
+	exit 0
+fi
+
+if [ -f "$target" ] && cmp -s "$tmp" "$target"; then
+	rm -f "$tmp"
+	exit 0
+fi
+
+mv "$tmp" "$target"
+echo "[zen] wrote user.js into $(basename "$profile_dir")"
