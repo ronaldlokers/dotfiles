@@ -92,3 +92,96 @@ write_installs() {
 	[ "$status" -eq 0 ]
 	[ ! -f "$ZEN/abc123.Default (release)/user.js" ]
 }
+
+@test "resolution prefers installs.ini over a profiles.ini marked Default=1" {
+	mkdir -p "$ZEN/wrong.Default Profile" "$ZEN/right.Default (release)"
+	# Exactly the shape of the machine this was written for: profiles.ini
+	# marks the empty profile default, installs.ini names the real one.
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile1]
+		Name=Default Profile
+		IsRelative=1
+		Path=wrong.Default Profile
+		Default=1
+
+		[Profile0]
+		Name=Default (release)
+		IsRelative=1
+		Path=right.Default (release)
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+	cat >"$ZEN/installs.ini" <<-'EOF'
+		[15B76BAA26BA15E7]
+		Default=right.Default (release)
+		Locked=1
+	EOF
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/right.Default (release)/user.js" ]
+	[ ! -f "$ZEN/wrong.Default Profile/user.js" ]
+}
+
+@test "falls back to the profiles.ini Install section when installs.ini is absent" {
+	mkdir -p "$ZEN/wrong.Default Profile" "$ZEN/right.Default (release)"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile1]
+		Name=Default Profile
+		IsRelative=1
+		Path=wrong.Default Profile
+		Default=1
+
+		[Profile0]
+		Name=Default (release)
+		IsRelative=1
+		Path=right.Default (release)
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+
+		[Install15B76BAA26BA15E7]
+		Default=right.Default (release)
+		Locked=1
+	EOF
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/right.Default (release)/user.js" ]
+	[ ! -f "$ZEN/wrong.Default Profile/user.js" ]
+}
+
+@test "falls back to Default=1 only when neither install record exists" {
+	mkdir -p "$ZEN/only.Default Profile"
+	cat >"$ZEN/profiles.ini" <<-'EOF'
+		[Profile0]
+		Name=Default Profile
+		IsRelative=1
+		Path=only.Default Profile
+		Default=1
+
+		[General]
+		StartWithLastProfile=1
+		Version=2
+	EOF
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$ZEN/only.Default Profile/user.js" ]
+}
+
+@test "honours an absolute Path with IsRelative=0" {
+	mkdir -p "$BATS_TEST_TMPDIR/elsewhere"
+	cat >"$ZEN/installs.ini" <<-EOF
+		[15B76BAA26BA15E7]
+		Default=$BATS_TEST_TMPDIR/elsewhere
+		Locked=1
+	EOF
+
+	run_seed
+	[ "$status" -eq 0 ]
+	[ -f "$BATS_TEST_TMPDIR/elsewhere/user.js" ]
+}

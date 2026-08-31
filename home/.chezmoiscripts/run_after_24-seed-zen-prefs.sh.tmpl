@@ -46,18 +46,55 @@ abs_profile() {
 
 # Sets $profile_dir, or leaves it empty when no profile exists yet.
 #
-# installs.ini first, and this ordering is the whole reason the script exists.
-# profiles.ini's `Default=1` is not what Zen honours -- on the machine this was
-# written for it marks an unused 4 KB profile, while installs.ini names the one
-# holding the actual session. A glob, or a reader that trusts `Default=1`,
-# writes user.js into the wrong profile and silently achieves nothing.
+# Four sources, tried in this order, and the order is the whole reason the
+# script exists:
+#
+#   1. installs.ini: what Zen itself honours, per install. This is the
+#      authoritative answer whenever it exists.
+#   2. The same record mirrored into profiles.ini as an [InstallXXXX]
+#      section -- present on machines whose installs.ini has not been
+#      written yet, but Zen has still recorded which profile that install
+#      uses.
+#   3. The [ProfileN] section flagged Default=1. Tried last, and only last:
+#      on a machine with more than one profile this is frequently not the
+#      one in use. On the machine this was written for, profiles.ini marks
+#      an unused 4 KB profile Default=1 while installs.ini names the 277 MB
+#      profile holding the actual session. A glob, or a reader that trusts
+#      `Default=1` first, writes user.js into the wrong profile and silently
+#      achieves nothing -- exit 0, no error, and the browser never sees the
+#      preferences.
 resolve_profile() {
 	profile_dir=""
 	rel=""
 
+	# 1. installs.ini: what Zen itself honours, per install.
 	if [ -f "$zen_dir/installs.ini" ]; then
 		rel="$(awk '/^Default=/ { print substr($0, 9); exit }' \
 			"$zen_dir/installs.ini")"
+	fi
+
+	# 2. The same record mirrored into profiles.ini as an [InstallXXXX]
+	#    section. Present on machines whose installs.ini has not been
+	#    written yet.
+	if [ -z "$rel" ] && [ -f "$zen_dir/profiles.ini" ]; then
+		rel="$(awk '
+			/^\[Install/ { in_install = 1; next }
+			/^\[/        { in_install = 0 }
+			in_install && /^Default=/ { print substr($0, 9); exit }
+		' "$zen_dir/profiles.ini")"
+	fi
+
+	# 3. Last, and only last: the [ProfileN] section flagged Default=1. On a
+	#    machine with more than one profile this is frequently not the one in
+	#    use, which is why the two install records are consulted first.
+	if [ -z "$rel" ] && [ -f "$zen_dir/profiles.ini" ]; then
+		rel="$(awk '
+			/^\[Profile/ { path = ""; isdef = 0; in_prof = 1; next }
+			/^\[/        { in_prof = 0 }
+			in_prof && /^Path=/      { path = substr($0, 6) }
+			in_prof && /^Default=1/  { isdef = 1 }
+			in_prof && isdef && path != "" { print path; exit }
+		' "$zen_dir/profiles.ini")"
 	fi
 
 	if [ -n "$rel" ]; then
