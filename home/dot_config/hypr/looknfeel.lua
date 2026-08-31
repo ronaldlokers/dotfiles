@@ -48,3 +48,23 @@ hl.config({
 --     column_width = 0.97,
 --   },
 -- })
+
+-- Keep Zen fully opaque when it does not have focus.
+--
+-- A window rule rather than a decoration setting, and it lives in this file
+-- rather than hyprland.lua because it is the same question the block above
+-- answers -- what unfocused windows look like -- and because hyprland.lua is
+-- not managed here, so a rule put there would not survive a rebuild.
+--
+-- The transparency is not Hyprland's inactive_opacity, which is 1.0 and unset.
+-- Omarchy's default/hypr/apps/browser.lua tags zen `+firefox-based-browser`
+-- and then gives that tag `opacity = "1.0 0.985"`, so every Firefox derivative
+-- goes 1.5% see-through when it loses focus. Reading through a browser window
+-- to the wallpaper behind it is a poor trade on a screen that is mostly text,
+-- and dim_inactive above already marks the unfocused window without making it
+-- transparent.
+--
+-- `1 1` is active and inactive alpha. The form matches Omarchy's own opt-outs
+-- in default/hypr/apps/steam.lua and qemu.lua. This file is required after
+-- `default.hypr.omarchy` in hyprland.lua, so it wins over the browser rule.
+o.window("zen", { opacity = "1 1" })
