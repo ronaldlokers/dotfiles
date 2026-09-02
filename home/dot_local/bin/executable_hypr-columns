@@ -1,0 +1,128 @@
+#!/bin/bash
+# Arrange the active workspace into columns: three windows become 25/50/25,
+# any other count is split evenly.
+#
+# Bound to SUPER + SHIFT + T in dot_config/hypr/bindings.lua.
+#
+# Why this is a script and not a keybind straight to a dispatcher: Hyprland has
+# no "lay this workspace out like so" command. `colresize` acts on whichever
+# column has focus, so setting three different widths means visiting each column
+# in turn, and the only way to visit them in a known order is to read their
+# on-screen positions first. That is the whole job -- read, order, visit, resize.
+#
+# It also has to switch the workspace to the scrolling layout, because dwindle
+# has no notion of a column width at all: its splits are a tree of ratios, and
+# asking for 25/50/25 there means two nested splits whose ratios depend on which
+# window was opened when. Scrolling gives every window a column with a width,
+# which is the model this wants.
+set -euo pipefail
+
+# The dwindle -> scrolling switch is what actually makes widths addressable, and
+# it has to persist. Hyprland re-reads its config whenever a config file is
+# saved -- which a `chezmoi apply` does -- and a workspace whose layout was set
+# only at runtime silently drops back to dwindle at that moment, leaving windows
+# in positions nothing will maintain. Omarchy solves this for its own
+# dwindle/scrolling toggle by writing the rule to a file it reloads from, so
+# this writes to the same place rather than inventing a second mechanism:
+# omarchy-hyprland-workspace-layout-toggle owns the format, and
+# default/hypr/workspace-layouts.lua reloads every file in that directory.
+layouts_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts"
+
+notify() {
+	if command -v omarchy-notification-send >/dev/null 2>&1; then
+		omarchy-notification-send -u low "󱂬" "$1" || true
+	else
+		echo "[hypr-columns] $1" >&2
+	fi
+}
+
+for tool in hyprctl jq; do
+	if ! command -v "$tool" >/dev/null 2>&1; then
+		notify "$tool is not installed"
+		exit 1
+	fi
+done
+
+ws="$(hyprctl activeworkspace -j | jq -r '.id')"
+# A workspace id is what every later call keys off. Anything non-numeric means
+# hyprctl answered with something unexpected, and guessing from there would set
+# a layout rule on a workspace that may not exist.
+if ! [[ "$ws" =~ ^-?[0-9]+$ ]]; then
+	notify "could not read the active workspace"
+	exit 1
+fi
+
+# Remembered so focus lands back where it started. Running a layout command
+# should not also change which window you are typing into.
+original="$(hyprctl activewindow -j | jq -r '.address // empty')"
+
+# Only tiled, mapped windows have a column. A floating window is not in the
+# layout at all, and counting one would make three windows read as four and
+# throw the split off.
+tiled_on_workspace='[ .[] | select(.workspace.id == $ws and .floating == false and .mapped == true) ]'
+
+count="$(hyprctl clients -j | jq --argjson ws "$ws" "$tiled_on_workspace | length")"
+if [ "$count" -eq 0 ]; then
+	notify "no tiled windows on workspace $ws"
+	exit 0
+fi
+
+# Set the layout before reading positions, not after. Converting from dwindle
+# re-flows every window, so coordinates read beforehand describe an arrangement
+# that no longer exists by the time they are used.
+if ! hyprctl eval "hl.workspace_rule({ workspace = \"$ws\", layout = \"scrolling\" })" >/dev/null 2>&1; then
+	notify "could not switch workspace $ws to the scrolling layout"
+	exit 1
+fi
+mkdir -p "$layouts_dir"
+printf 'hl.workspace_rule({ workspace = "%s", layout = "scrolling" })\n' \
+	"$ws" >"$layouts_dir/$ws.lua"
+
+# Left to right by x. `at` is the window's top-left in layout coordinates, which
+# on a multi-monitor setup are global -- so this orders correctly whichever
+# display the workspace is on, without needing to know where that display sits.
+mapfile -t addresses < <(
+	hyprctl clients -j |
+		jq -r --argjson ws "$ws" "$tiled_on_workspace | sort_by(.at[0]) | .[].address"
+)
+
+n="${#addresses[@]}"
+
+# Three is the case this exists for. Everything else gets equal columns rather
+# than an error: a layout key that refuses to do anything is a layout key you
+# stop reaching for, and "even" is the only other split that means something
+# without knowing which window is the important one.
+widths=()
+if [ "$n" -eq 3 ]; then
+	widths=(0.25 0.5 0.25)
+else
+	even="$(awk -v n="$n" 'BEGIN { printf "%.4f", 1 / n }')"
+	for _ in "${addresses[@]}"; do
+		widths+=("$even")
+	done
+fi
+
+for i in "${!addresses[@]}"; do
+	address="${addresses[$i]}"
+	width="${widths[$i]}"
+
+	# Focus is how colresize is aimed; there is no "resize that column over
+	# there" form. Each failure is reported and skipped rather than aborting:
+	# a window that closed between the read above and this loop should cost
+	# its own column, not the whole arrangement.
+	if ! hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1; then
+		notify "could not focus $address"
+		continue
+	fi
+	# expel first: converting from dwindle can leave two windows sharing one
+	# column, and a shared column takes one width between them. Expelling a
+	# window that is already alone in its column is a no-op, so this is safe
+	# to run unconditionally rather than trying to detect the case.
+	hyprctl dispatch 'hl.dsp.layout("expel")' >/dev/null 2>&1 || true
+	hyprctl dispatch "hl.dsp.layout(\"colresize $width\")" >/dev/null 2>&1 ||
+		notify "could not resize the column at $address"
+done
+
+if [ -n "$original" ]; then
+	hyprctl dispatch "hl.dsp.focus({ window = \"address:$original\" })" >/dev/null 2>&1 || true
+fi

@@ -56,3 +56,15 @@
 -- For tap-to-toggle instead of hold-to-talk, delete the second bind.
 o.bind("Alt_R", "Dictate", "handy --toggle-transcription", { ignore_mods = true })
 o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mods = true })
+
+-- Arrange the active workspace into columns: three windows become 25/50/25,
+-- any other count is split evenly. The script is dot_local/bin/hypr-columns.
+--
+-- A script rather than a dispatcher because Hyprland has no "lay this workspace
+-- out like so" command: `colresize` acts on the focused column only, so three
+-- different widths means visiting each column in a known order, and the order
+-- can only be known by reading the windows' on-screen positions first.
+--
+-- SUPER + SHIFT + T was unbound in both Omarchy's defaults and this file, so
+-- there is no hl.unbind above it.
+o.bind("SUPER + SHIFT + T", "Arrange columns 25/50/25", "hypr-columns")
