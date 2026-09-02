@@ -1284,6 +1284,48 @@ the mirror-image reason: the debounce record lives under it, so a test that
 makes the check fail would otherwise write into the developer's real
 `~/.local/state` and read back whatever was already there.
 
+
+### Arranging a workspace into columns
+
+`SUPER + SHIFT + T` runs `hypr-columns`, which lays the active workspace out as
+three columns at 20/60/20, or as even columns at any other window count.
+
+**It is a script rather than a keybind pointed at a dispatcher, because
+Hyprland has no command that lays a workspace out.** `colresize` resizes
+whichever column currently has focus, so three different widths means visiting
+three columns in a known order -- and the order is only knowable by reading the
+windows' on-screen positions, since `hyprctl clients` returns them in creation
+order, not left to right. Read, sort, visit, resize. That is the whole script,
+and none of it can be expressed as a bind.
+
+**It switches the workspace to the scrolling layout first, because dwindle has
+no such thing as a column width.** Dwindle's geometry is a tree of split ratios,
+so 20/60/20 there is two nested splits whose ratios depend on which window was
+opened when -- the same key would produce different results on workspaces that
+look identical. Scrolling gives every window a column and every column a width,
+which is the model the request actually describes.
+
+The switch has to persist, and that is why the script writes to
+`$XDG_STATE_HOME/omarchy/workspace-layouts/<id>.lua` rather than only calling
+`hyprctl eval`. Hyprland re-reads its config whenever a config file is saved,
+which `chezmoi apply` does routinely; a workspace whose layout was set only at
+runtime drops back to dwindle at that moment and leaves the windows in
+positions nothing maintains. That path and format belong to
+`omarchy-hyprland-workspace-layout-toggle`, and Omarchy's own
+`default/hypr/workspace-layouts.lua` reloads every file in that directory --
+writing there rather than inventing a second mechanism means the toggle and
+this script cannot disagree about what layout a workspace is on.
+
+**Uneven counts are split evenly rather than refused.** A layout key that
+declines to act is a layout key nobody reaches for, and with the important
+window unknown, even columns are the only other split that means anything.
+
+The ordering is what the tests are for. A focus and a resize that drift apart
+silently size the wrong window, and reading positions before the layout switch
+reads coordinates the switch has already invalidated -- neither failure shows
+up in an exit code, so `tests/hypr-columns.bats` asserts against a transcript of
+the `hyprctl` calls rather than against the script's result.
+
 ## Zen Browser preferences
 
 `run_after_24-seed-zen-prefs.sh.tmpl` writes a fixed list of Zen preferences
