@@ -1288,7 +1288,7 @@ makes the check fail would otherwise write into the developer's real
 ### Arranging a workspace into columns
 
 `SUPER + SHIFT + T` runs `hypr-columns`, which lays the active workspace out as
-three columns at 20/60/20, or as even columns at any other window count.
+three columns at 25/50/25, or as even columns at any other window count.
 
 **It is a script rather than a keybind pointed at a dispatcher, because
 Hyprland has no command that lays a workspace out.** `colresize` resizes
@@ -1300,7 +1300,7 @@ and none of it can be expressed as a bind.
 
 **It switches the workspace to the scrolling layout first, because dwindle has
 no such thing as a column width.** Dwindle's geometry is a tree of split ratios,
-so 20/60/20 there is two nested splits whose ratios depend on which window was
+so 25/50/25 there is two nested splits whose ratios depend on which window was
 opened when -- the same key would produce different results on workspaces that
 look identical. Scrolling gives every window a column and every column a width,
 which is the model the request actually describes.

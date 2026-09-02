@@ -94,25 +94,25 @@ run_columns() {
 		bash "$SCRIPT"
 }
 
-@test "three windows get 20/60/20 in left-to-right order" {
+@test "three windows get 25/50/25 in left-to-right order" {
 	make_hyprctl_stub
 	write_clients 0xleft 0xmid 0xright
 	run_columns
 	[ "$status" -eq 0 ]
-	grep -q 'colresize 0.2.*' "$HYPR_LOG"
+	grep -q 'colresize 0.25' "$HYPR_LOG"
 	# The pairing is the point: each resize must follow the focus of the
 	# window it is meant to size. Asserting the widths alone would pass even
 	# if all three landed on one window.
-	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.2'
-	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.6'
-	grep -A2 'address:0xright' "$HYPR_LOG" | grep -q 'colresize 0.2'
+	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.25'
+	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.5'
+	grep -A2 'address:0xright' "$HYPR_LOG" | grep -q 'colresize 0.25'
 }
 
 @test "windows are ordered by x, not by the order hyprctl returned them" {
 	make_hyprctl_stub
 	# Deliberately out of order: the rightmost window is listed first, so a
-	# script that trusted hyprctl's ordering would give it 0.2 and the
-	# leftmost 0.2 while the middle got 0.6 -- wrong window wide.
+	# script that trusted hyprctl's ordering would give it 0.25 and the
+	# leftmost 0.25 while the middle got 0.5 -- wrong window wide.
 	CLIENTS_JSON="$BATS_TEST_TMPDIR/clients.json"
 	cat >"$CLIENTS_JSON" <<-'EOF'
 		[
@@ -124,8 +124,8 @@ run_columns() {
 	export CLIENTS_JSON
 	run_columns
 	[ "$status" -eq 0 ]
-	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.6'
-	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.2'
+	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.5'
+	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.25'
 }
 
 @test "the layout switch happens before the positions are read" {
@@ -147,7 +147,9 @@ run_columns() {
 	run_columns
 	[ "$status" -eq 0 ]
 	[ "$(grep -c 'colresize 0.2500' "$HYPR_LOG")" -eq 4 ]
-	run grep -c 'colresize 0.6' "$HYPR_LOG"
+	# No column got the three-window middle width, which is what distinguishes
+	# "split evenly" from "applied the 25/50/25 case to the wrong count".
+	run grep -cF 'colresize 0.5")' "$HYPR_LOG"
 	[ "$status" -ne 0 ]
 }
 
@@ -164,7 +166,7 @@ run_columns() {
 	CLIENTS_JSON="$BATS_TEST_TMPDIR/clients.json"
 	# Three tiled windows plus one floating and one unmapped. Counting either
 	# would make this read as four or five and split evenly instead of
-	# 20/60/20 -- the failure is a wrong layout, not an error.
+	# 25/50/25 -- the failure is a wrong layout, not an error.
 	cat >"$CLIENTS_JSON" <<-'EOF'
 		[
 		 {"address":"0xleft","at":[100,0],"floating":false,"mapped":true,"workspace":{"id":1}},
@@ -177,7 +179,7 @@ run_columns() {
 	export CLIENTS_JSON
 	run_columns
 	[ "$status" -eq 0 ]
-	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.6'
+	grep -A2 'address:0xmid' "$HYPR_LOG" | grep -q 'colresize 0.5'
 	run grep -c 'address:0xfloat' "$HYPR_LOG"
 	[ "$status" -ne 0 ]
 }
@@ -234,8 +236,8 @@ run_columns() {
 	# A window that closed between the read and the loop must not abort the
 	# script under `set -e` and leave the other two unarranged.
 	[ "$status" -eq 0 ]
-	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.2'
-	grep -A2 'address:0xright' "$HYPR_LOG" | grep -q 'colresize 0.2'
+	grep -A2 'address:0xleft' "$HYPR_LOG" | grep -q 'colresize 0.25'
+	grep -A2 'address:0xright' "$HYPR_LOG" | grep -q 'colresize 0.25'
 }
 
 @test "an empty workspace exits 0 without switching the layout" {

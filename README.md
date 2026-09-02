@@ -460,7 +460,7 @@ for a touch — but `sudo -v` then a non-interactive apply works.
 | `dot_claude/` | Claude Code: global `CLAUDE.md`, statusline, `rtk-rewrite` hook, `modify_settings.json` |
 | `dot_config/omarchy/branding/` | screensaver branding, generated from `assets/`. Host-only |
 | `dot_config/hypr/` | the three customised Hyprland files: `monitors.lua` (scaling for the 34" ultrawide, personal only), `bindings.lua` and `looknfeel.lua`. Host only; the rest of `~/.config/hypr` is Omarchy's |
-| `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check`, `proton-ssh-load`, `hypr-columns` (SUPER + SHIFT + T, lays the active workspace out 20/60/20), and `devpod` (wrapper for the binary in `~/.local/libexec`) |
+| `dot_local/bin/` | own scripts: `repos-sync`, `devcontainer-init`, `dotfiles-update-check`, `proton-ssh-load`, `hypr-columns` (SUPER + SHIFT + T, lays the active workspace out 25/50/25), and `devpod` (wrapper for the binary in `~/.local/libexec`) |
 | `.chezmoiexternals/` | pinned downloads, every one checksummed |
 | `assets/` (repo root) | source artwork; never copied into `$HOME` |
 

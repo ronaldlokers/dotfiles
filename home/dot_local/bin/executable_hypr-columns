@@ -1,5 +1,5 @@
 #!/bin/bash
-# Arrange the active workspace into columns: three windows become 20/60/20,
+# Arrange the active workspace into columns: three windows become 25/50/25,
 # any other count is split evenly.
 #
 # Bound to SUPER + SHIFT + T in dot_config/hypr/bindings.lua.
@@ -12,7 +12,7 @@
 #
 # It also has to switch the workspace to the scrolling layout, because dwindle
 # has no notion of a column width at all: its splits are a tree of ratios, and
-# asking for 20/60/20 there means two nested splits whose ratios depend on which
+# asking for 25/50/25 there means two nested splits whose ratios depend on which
 # window was opened when. Scrolling gives every window a column with a width,
 # which is the model this wants.
 set -euo pipefail
@@ -94,7 +94,7 @@ n="${#addresses[@]}"
 # without knowing which window is the important one.
 widths=()
 if [ "$n" -eq 3 ]; then
-	widths=(0.2 0.6 0.2)
+	widths=(0.25 0.5 0.25)
 else
 	even="$(awk -v n="$n" 'BEGIN { printf "%.4f", 1 / n }')"
 	for _ in "${addresses[@]}"; do

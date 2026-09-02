@@ -57,7 +57,7 @@
 o.bind("Alt_R", "Dictate", "handy --toggle-transcription", { ignore_mods = true })
 o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mods = true })
 
--- Arrange the active workspace into columns: three windows become 20/60/20,
+-- Arrange the active workspace into columns: three windows become 25/50/25,
 -- any other count is split evenly. The script is dot_local/bin/hypr-columns.
 --
 -- A script rather than a dispatcher because Hyprland has no "lay this workspace
@@ -67,4 +67,4 @@ o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mo
 --
 -- SUPER + SHIFT + T was unbound in both Omarchy's defaults and this file, so
 -- there is no hl.unbind above it.
-o.bind("SUPER + SHIFT + T", "Arrange columns 20/60/20", "hypr-columns")
+o.bind("SUPER + SHIFT + T", "Arrange columns 25/50/25", "hypr-columns")
