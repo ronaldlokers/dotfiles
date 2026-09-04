@@ -70,5 +70,6 @@ o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mo
 -- master workspace back into dwindle, so the way out already exists and a
 -- second toggle over the same state would only fight it.
 --
--- SUPER + SHIFT + T was unbound in both Omarchy's defaults and this file.
-o.bind("SUPER + SHIFT + T", "Centre master (25/50/25)", "hypr-center-master")
+-- SUPER + M was unbound in Omarchy's defaults, in this file, and in the live
+-- compositor's bind table, so there is no hl.unbind above it.
+o.bind("SUPER + M", "Centre master (25/50/25)", "hypr-center-master")

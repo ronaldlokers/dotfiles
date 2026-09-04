@@ -1287,7 +1287,7 @@ makes the check fail would otherwise write into the developer's real
 
 ### Laying a workspace out as 25/50/25
 
-`SUPER + SHIFT + T` runs `hypr-center-master`, which puts the active workspace
+`SUPER + M` runs `hypr-center-master`, which puts the active workspace
 on Hyprland's master layout with `orientation = center`. With `mfact = 0.5` set
 in `looknfeel.lua`, the master takes the middle half and the two slave stacks
 take a quarter each.
@@ -1308,6 +1308,20 @@ hundred-odd lines of shell went away with it, and the geometry got better.
 The lesson generalises: reaching for a script to compute a layout is a sign the
 layout has not been read closely enough. `orientation = center` is documented
 one page away from the `mfact` that was already in use.
+
+**`mfact` in the config is only a seed, which is not obvious and cost a live
+experiment to find.** Hyprland stores a live mfact *per workspace*. Setting
+`hl.config({ master = { mfact = 0.4 } })` at runtime changed nothing on a
+workspace that had already been laid out -- it kept its own value -- so the
+config alone gives the intended split on a fresh workspace and whatever was
+there last on any other. That is the sort of difference nobody traces back to
+this script. It therefore sends `hl.dsp.layout("mfact exact <n>")` as well,
+after the workspace rule, since `mfact` is a master-layout message and a
+workspace still on dwindle or scrolling answers "no such layoutmsg".
+
+The value is read back out of Hyprland with `getoption master:mfact` rather
+than written into the script a second time, so `looknfeel.lua` remains the one
+place the ratio is stated and there is no pair of copies to keep in agreement.
 
 **`mfact` is global rather than per-workspace, and that is a Hyprland limit
 rather than a choice.** The master layout exposes only `orientation` as a

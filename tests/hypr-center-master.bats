@@ -36,6 +36,9 @@ setup() {
 #            real format, verified against Hyprland 0.56.2:
 #            `workspace ID 1 (1) on monitor DP-1:`
 #   EVAL_RC  exit code for `hyprctl eval`  (default 0)
+#   MFACT    what `getoption master:mfact` prints, in Hyprland's own format
+#            (default "float: 0.500000"). Set it empty to model an unreadable
+#            option.
 make_hyprctl_stub() {
 	cat >"$BIN/hyprctl" <<'STUB'
 #!/bin/sh
@@ -48,6 +51,10 @@ activeworkspace)
 eval)
 	exit "${EVAL_RC:-0}"
 	;;
+getoption)
+	printf '%s\n' "${MFACT-float: 0.500000}"
+	printf 'set: true\n'
+	;;
 esac
 exit 0
 STUB
@@ -58,6 +65,7 @@ run_center() {
 	run env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME \
 		PATH="$BIN:/usr/bin:/bin" HOME="$HOME" HYPR_LOG="$HYPR_LOG" \
 		${WS_LINE+WS_LINE="$WS_LINE"} ${EVAL_RC:+EVAL_RC="$EVAL_RC"} \
+		${MFACT+MFACT="$MFACT"} \
 		bash "$SCRIPT"
 }
 
@@ -150,4 +158,53 @@ run_center() {
 	# A file recording a layout the compositor rejected would take effect on
 	# the next reload, making a failure look like a success one restart later.
 	[ ! -f "$STATE/1.lua" ]
+}
+
+@test "sets the workspace's own split from the configured mfact" {
+	make_hyprctl_stub
+	run_center
+	[ "$status" -eq 0 ]
+	# Hyprland stores a live mfact per workspace, and the config value only
+	# seeds a workspace that has never been laid out. Without this message a
+	# workspace used with master before keeps whatever split it had, so the
+	# key appears to work on some workspaces and not others.
+	grep -q 'mfact exact 0.500000' "$HYPR_LOG"
+}
+
+@test "the split is read from the config, not written here a second time" {
+	make_hyprctl_stub
+	MFACT="float: 0.400000"
+	export MFACT
+	run_center
+	[ "$status" -eq 0 ]
+	# looknfeel.lua is the one place the ratio is stated. A hardcoded copy
+	# here would drift from it silently -- the layout would simply be wrong.
+	grep -q 'mfact exact 0.400000' "$HYPR_LOG"
+	run grep -c 'mfact exact 0.5' "$HYPR_LOG"
+	[ "$status" -ne 0 ]
+}
+
+@test "the split is set after the workspace is on master, not before" {
+	make_hyprctl_stub
+	run_center
+	[ "$status" -eq 0 ]
+	# `mfact` is a master-layout message. Sent to a workspace still on dwindle
+	# or scrolling it fails with "no such layoutmsg", which is exactly what
+	# happened when this was first tried by hand.
+	rule_line="$(grep -n '^eval ' "$HYPR_LOG" | head -1 | cut -d: -f1)"
+	mfact_line="$(grep -n 'mfact exact' "$HYPR_LOG" | head -1 | cut -d: -f1)"
+	[ "$rule_line" -lt "$mfact_line" ]
+}
+
+@test "an unreadable mfact still leaves the workspace centred" {
+	make_hyprctl_stub
+	MFACT=""
+	export MFACT
+	run_center
+	# The centring is the part that matters and it already succeeded; failing
+	# the whole run here would undo it for a split that is merely unchanged.
+	[ "$status" -eq 0 ]
+	grep -q 'orientation = "center"' "$STATE/1.lua"
+	run grep -c 'mfact exact' "$HYPR_LOG"
+	[ "$status" -ne 0 ]
 }

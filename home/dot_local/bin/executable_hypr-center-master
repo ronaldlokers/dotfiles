@@ -2,7 +2,7 @@
 # Put the active workspace on Hyprland's master layout with the master centred,
 # which lays it out as 25/50/25.
 #
-# Bound to SUPER + SHIFT + T in dot_config/hypr/bindings.lua.
+# Bound to SUPER + M in dot_config/hypr/bindings.lua.
 #
 # This replaced a script that read every window's position and resized each
 # column by hand. The layout does the same job better: `orientation = center`
@@ -73,6 +73,34 @@ fi
 # directory. Writing here rather than inventing a second store is what stops
 # that toggle and this script disagreeing about a workspace's layout: whichever
 # ran last owns the file, and there is only one file.
+# Centring is only half of it. `mfact` in looknfeel.lua is the *default for a
+# workspace that has not been laid out yet* -- Hyprland stores a live mfact per
+# workspace, and a workspace that has been used with the master layout before
+# keeps its own. So a config value alone gives 25/50/25 on a fresh workspace and
+# whatever was there last on any other, which is the sort of difference nobody
+# connects back to this script.
+#
+# The value is read back from Hyprland rather than written here a second time.
+# looknfeel.lua stays the one place the ratio is stated, and the two cannot
+# drift apart -- there is nothing to keep in agreement.
+#
+# It has to come after the rule above: `mfact` is a master-layout message, and
+# sending it to a workspace still on dwindle or scrolling fails with
+# "no such layoutmsg".
+mfact="$(hyprctl getoption master:mfact 2>/dev/null | sed -n 's/^float: \([0-9.]*\).*/\1/p' | head -1)"
+case "$mfact" in
+'' | *[!0-9.]*)
+	# Not fatal: the workspace is centred either way, it just keeps whatever
+	# split it had. Worth saying so, because the layout will look wrong and
+	# the cause is not otherwise visible.
+	notify "centred workspace $ws, but could not read master:mfact"
+	;;
+*)
+	hyprctl dispatch "hl.dsp.layout(\"mfact exact $mfact\")" >/dev/null 2>&1 ||
+		notify "centred workspace $ws, but could not set its split to $mfact"
+	;;
+esac
+
 if ! mkdir -p "$layouts_dir" 2>/dev/null; then
 	notify "centred workspace $ws, but could not persist it"
 	exit 0

@@ -77,8 +77,7 @@ o.window("zen", { opacity = "1 1" })
 -- Global rather than per-workspace because Hyprland only exposes `orientation`
 -- as a workspace `layout_opts` rule, not `mfact`. That costs nothing here:
 -- master is not the default layout, so this only applies where a workspace has
--- been switched to it deliberately -- by `hypr-center-master`, on
--- SUPER + SHIFT + T.
+-- been switched to it deliberately -- by `hypr-center-master`, on SUPER + M.
 --
 -- Omarchy's default is 0.55, which would give 27.5/45/27.5.
 hl.config({
