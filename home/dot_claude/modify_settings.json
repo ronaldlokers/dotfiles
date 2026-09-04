@@ -177,7 +177,7 @@ baseline() {
     "commit-commands@claude-plugins-official": true,
     "security-guidance@claude-plugins-official": true,
     "hookify@claude-plugins-official": true,
-    "andrej-karpathy-skills@karpathy-skills": true,
+    "andrej-karpathy-skills@karpathy-skills": false,
     "frontend-design@claude-plugins-official": false,
     "github@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": false,
@@ -190,9 +190,16 @@ baseline() {
     "chrome-devtools-mcp@claude-plugins-official": true,
     "playground@claude-plugins-official": false,
     "semgrep@claude-plugins-official": true,
-    "impeccable@impeccable": true
+    "impeccable@impeccable": true,
+    "ponytail@ponytail": true
   },
   "extraKnownMarketplaces": {
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
     "karpathy-skills": {
       "source": {
         "source": "github",

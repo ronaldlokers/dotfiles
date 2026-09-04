@@ -1349,6 +1349,45 @@ this script from disagreeing about a workspace.
 keeps working on a machine part-way through its first apply -- which is when
 someone is most likely to be pressing keys to find out what works.
 
+
+### The ponytail plugin, and why its two halves differ
+
+`ponytail` is enabled for both Claude Code and Codex, and the two are installed
+by different mechanisms because the two tools keep their configuration
+differently.
+
+**Claude Code is declarative.** `dot_claude/modify_settings.json` already owns
+`enabledPlugins` and `extraKnownMarketplaces` and replaces both wholesale, so
+adding ponytail is two entries there and removing it later actually removes it.
+
+**Codex is not, so its half drives the CLI.** `~/.codex/config.toml` is written
+by Codex itself -- a `trust_level` appears for each project as it is trusted,
+and `hooks.state` records a `trusted_hash` per hook that changes whenever the
+hook does -- so a managed copy would revert whatever Codex last recorded and
+show as drift on every apply. It also sits beside `auth.json`, and nothing here
+goes near that directory's credentials.
+`run_after_25-install-codex-plugins.sh.tmpl` therefore asks the CLI what is
+installed and adds what is missing, which is the arrangement
+`run_onchange_after_30-configure-devpod` already has with DevPod for the same
+reason.
+
+**Only the Codex half is pinned, and that asymmetry is deliberate.** Codex's
+`plugin marketplace add` accepts `owner/repo@ref` and honours it. Claude Code's
+does not accept a ref at all -- which is why the pins were stripped from the
+three third-party marketplaces on 2026-08-08, recorded at length in
+`modify_settings.json`: a field that reads as supply-chain control while
+enforcing nothing is worse than an honest absence. Here the pin enforces
+something, so it is worth having. A Renovate custom manager bumps it, because a
+pin nobody bumps is how a plugin that injects instructions into every session
+quietly stops being the one that was reviewed.
+
+**ponytail replaced `andrej-karpathy-skills` rather than joining it.** Both
+exist to argue against over-engineering and both inject guidance into every
+session; running the pair spends context saying one thing twice. karpathy is
+declared-but-disabled rather than removed, so its marketplace entry survives and
+re-enabling is one line. `tests/modify-settings.bats` pins both halves of that,
+since nothing else would notice the swap reverting.
+
 ## Zen Browser preferences
 
 `run_after_24-seed-zen-prefs.sh.tmpl` writes a fixed list of Zen preferences

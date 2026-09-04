@@ -11,6 +11,13 @@
   },
   "customManagers": [
     {
+      "description": "The ponytail plugin's Codex marketplace pin. Codex accepts `owner/repo@ref` and honours it, unlike Claude Code's plugin marketplace command, so this is the one plugin pin in the tree that actuates. Without a manager it would still be enforced and would simply freeze -- a pin nobody bumps is how a plugin that injects instructions into every session quietly stops matching the one that was reviewed.",
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)\\.chezmoiscripts/run_after_25-install-codex-plugins\\.sh\\.tmpl$/"],
+      "matchStrings": ["# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+ponytail_ref=\"(?<currentDigest>[0-9a-f]{40})\""],
+      "currentValueTemplate": "main"
+    },
+    {
       "description": "Bump tag-pinned .chezmoiexternals archives via inline `# renovate:` annotations",
       "customType": "regex",
       "managerFilePatterns": [

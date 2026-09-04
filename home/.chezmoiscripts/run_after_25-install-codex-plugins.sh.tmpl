@@ -1,0 +1,85 @@
+#!/bin/sh
+# Install this repo's Codex plugins, by driving the Codex CLI.
+#
+# ~/.codex/config.toml is deliberately not managed. Codex writes it itself --
+# per-project `trust_level` entries appear as projects are trusted, and
+# `hooks.state` records a `trusted_hash` per hook that changes whenever a hook
+# does -- so a managed copy would revert whatever Codex last recorded and show
+# as permanent drift on every apply. It also sits next to auth.json, and
+# nothing in this repo goes near that directory's credentials. Same reasoning,
+# and the same shape, as run_onchange_after_30-configure-devpod: the CLI is the
+# interface, the file is Codex's.
+#
+# A plain `run_after`, not a `run_onchange`, for the reason the enable scripts
+# have: chezmoi records a run_onchange script's hash the moment it exits 0,
+# including the exit 0 that means "no codex here yet". On a machine part-way
+# through its first bootstrap -- codex arrives with the mise tools, which a
+# later script installs -- that would mark the plugins installed for the life
+# of the machine.
+set -eu
+
+# The marketplace, its pin, and the plugin. Codex accepts `owner/repo@ref` and
+# honours it, which is why this one is pinned when the Claude Code marketplaces
+# in dot_claude/modify_settings.json are not: that file records that Claude
+# Code's `plugin marketplace add` has no way to express a ref at all, so a
+# pin there reads as supply-chain control while enforcing nothing. Here it
+# enforces something, so it is worth having -- ponytail injects instructions
+# into every session, and this is the half of that which can be held still.
+#
+# renovate: datasource=github-commits depName=DietrichGebert/ponytail
+ponytail_ref="974d940a1c5344210874150b98ff0d2c861fab6a"
+ponytail_repo="DietrichGebert/ponytail"
+ponytail_marketplace="ponytail"
+ponytail_plugin="ponytail@ponytail"
+
+# codex comes from the mise tool list, which a later script installs, so its
+# absence here is an ordinary state on a first apply rather than a fault.
+command -v codex >/dev/null 2>&1 || exit 0
+
+# ponytail's hooks are `node` scripts. node is pinned in
+# dot_config/mise/config.toml.tmpl, but the same first-apply ordering applies:
+# installing a plugin whose hooks cannot run would leave Codex reporting hook
+# failures every session with nothing explaining why.
+if ! command -v node >/dev/null 2>&1; then
+	echo "[codex] node is not on PATH yet; skipping plugin install." >&2
+	exit 0
+fi
+
+# `marketplace list` doubles as the "is it already there?" test, the way the
+# devpod script uses `provider use` for the same purpose. Adding an already
+# added marketplace is not obviously harmless -- it could re-resolve the pin --
+# so this asks rather than adding blindly every apply.
+if ! codex plugin marketplace list 2>/dev/null | grep -q "^${ponytail_marketplace}[[:space:]]"; then
+	# Guarded, like every step below, because this script runs under `set -e`
+	# and is a run_after: an unguarded failure does not skip one plugin, it
+	# exits the script, and chezmoi stops there -- so every later script never
+	# runs. A network blip must cost exactly this one plugin.
+	if codex plugin marketplace add "${ponytail_repo}@${ponytail_ref}" >/dev/null 2>&1; then
+		echo "[codex] added the $ponytail_marketplace marketplace"
+	else
+		echo "[codex] could not add $ponytail_repo; skipping." >&2
+		exit 0
+	fi
+fi
+
+# Re-adding an installed plugin is what makes a second apply do work it does
+# not need to, and this script runs on every apply.
+#
+# awk rather than grep, and the pattern is fussier than it looks, because the
+# STATUS column is not one word. Verified against codex-cli 0.150.1 by running
+# it: an absent plugin reads `not installed`, and an installed one reads
+# `installed, enabled` -- two words either way, with a comma. So `grep
+# installed` matches both (every uninstalled plugin reads as present, and
+# nothing is ever installed), while `$2 == "installed"` matches neither (the
+# field is `not` or `installed,`, and the plugin is reinstalled on every
+# apply). This tests the first field exactly and allows the trailing comma.
+if codex plugin list 2>/dev/null |
+	awk -v p="$ponytail_plugin" '$1 == p && $2 ~ /^installed,?$/ { found = 1 } END { exit !found }'; then
+	exit 0
+fi
+
+if codex plugin add "$ponytail_plugin" >/dev/null 2>&1; then
+	echo "[codex] installed $ponytail_plugin"
+else
+	echo "[codex] could not install $ponytail_plugin; skipping." >&2
+fi
