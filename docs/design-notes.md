@@ -1285,46 +1285,55 @@ makes the check fail would otherwise write into the developer's real
 `~/.local/state` and read back whatever was already there.
 
 
-### Arranging a workspace into columns
+### Laying a workspace out as 25/50/25
 
-`SUPER + SHIFT + T` runs `hypr-columns`, which lays the active workspace out as
-three columns at 25/50/25, or as even columns at any other window count.
+`SUPER + SHIFT + T` runs `hypr-center-master`, which puts the active workspace
+on Hyprland's master layout with `orientation = center`. With `mfact = 0.5` set
+in `looknfeel.lua`, the master takes the middle half and the two slave stacks
+take a quarter each.
 
-**It is a script rather than a keybind pointed at a dispatcher, because
-Hyprland has no command that lays a workspace out.** `colresize` resizes
-whichever column currently has focus, so three different widths means visiting
-three columns in a known order -- and the order is only knowable by reading the
-windows' on-screen positions, since `hyprctl clients` returns them in creation
-order, not left to right. Read, sort, visit, resize. That is the whole script,
-and none of it can be expressed as a bind.
+**This replaced a script that did the same thing by hand, and the reason is
+worth recording because the hand-rolled version looked reasonable.** It read
+every window's position from `hyprctl clients`, sorted them left to right,
+focused each in turn and resized its column, because `colresize` only acts on
+the focused column. That worked -- three windows landed at 846/1696/846 on the
+ultrawide, which is exactly where the master layout puts them -- but it set the
+widths *once*. A fourth window forced a fallback to even columns and the
+arrangement was gone; on the scrolling layout it needed, the fourth window
+scrolled the first one off-screen. The master layout keeps enforcing the split
+instead of applying it: at four and five windows the columns stay 846/1696/846
+and the extras stack vertically inside the side columns. Twelve tests and a
+hundred-odd lines of shell went away with it, and the geometry got better.
 
-**It switches the workspace to the scrolling layout first, because dwindle has
-no such thing as a column width.** Dwindle's geometry is a tree of split ratios,
-so 25/50/25 there is two nested splits whose ratios depend on which window was
-opened when -- the same key would produce different results on workspaces that
-look identical. Scrolling gives every window a column and every column a width,
-which is the model the request actually describes.
+The lesson generalises: reaching for a script to compute a layout is a sign the
+layout has not been read closely enough. `orientation = center` is documented
+one page away from the `mfact` that was already in use.
 
-The switch has to persist, and that is why the script writes to
-`$XDG_STATE_HOME/omarchy/workspace-layouts/<id>.lua` rather than only calling
-`hyprctl eval`. Hyprland re-reads its config whenever a config file is saved,
-which `chezmoi apply` does routinely; a workspace whose layout was set only at
-runtime drops back to dwindle at that moment and leaves the windows in
-positions nothing maintains. That path and format belong to
-`omarchy-hyprland-workspace-layout-toggle`, and Omarchy's own
-`default/hypr/workspace-layouts.lua` reloads every file in that directory --
-writing there rather than inventing a second mechanism means the toggle and
-this script cannot disagree about what layout a workspace is on.
+**`mfact` is global rather than per-workspace, and that is a Hyprland limit
+rather than a choice.** The master layout exposes only `orientation` as a
+workspace `layout_opts` rule. It costs nothing here because master is not the
+default layout, so 0.5 applies only where a workspace has been switched to it
+deliberately. Omarchy's own default is 0.55, which would give 27.5/45/27.5.
 
-**Uneven counts are split evenly rather than refused.** A layout key that
-declines to act is a layout key nobody reaches for, and with the important
-window unknown, even columns are the only other split that means anything.
+**The script is one-way, not a toggle, because Omarchy already owns the way
+back.** `SUPER + L` runs `omarchy-hyprland-workspace-layout-toggle`, whose
+"anything that is not dwindle" branch turns a master workspace into a dwindle
+one. A second toggle over the same state would fight it, and the state is a
+single file per workspace, so the fight would be silent.
 
-The ordering is what the tests are for. A focus and a resize that drift apart
-silently size the wrong window, and reading positions before the layout switch
-reads coordinates the switch has already invalidated -- neither failure shows
-up in an exit code, so `tests/hypr-columns.bats` asserts against a transcript of
-the `hyprctl` calls rather than against the script's result.
+That file is why the script persists at all. `hyprctl eval` changes only the
+running compositor, and Hyprland re-reads its config whenever a config file is
+saved -- which `chezmoi apply` does routinely -- so a runtime-only layout
+reverts at that moment with nothing to say why. The path and format belong to
+`omarchy-hyprland-workspace-layout-toggle` and Omarchy's
+`default/hypr/workspace-layouts.lua` reloads every file in the directory:
+writing there rather than inventing a second store is what keeps the toggle and
+this script from disagreeing about a workspace.
+
+`jq` is deliberately not used. The only thing needed is the workspace id, and
+`hyprctl activeworkspace` prints it unadorned on its first line, so the script
+keeps working on a machine part-way through its first apply -- which is when
+someone is most likely to be pressing keys to find out what works.
 
 ## Zen Browser preferences
 

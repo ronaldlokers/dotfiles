@@ -1,0 +1,80 @@
+#!/bin/bash
+# Put the active workspace on Hyprland's master layout with the master centred,
+# which lays it out as 25/50/25.
+#
+# Bound to SUPER + SHIFT + T in dot_config/hypr/bindings.lua.
+#
+# This replaced a script that read every window's position and resized each
+# column by hand. The layout does the same job better: `orientation = center`
+# puts the master between two slave stacks, and `mfact = 0.5` (set once in
+# looknfeel.lua) makes the master half the screen, so the two sides get a
+# quarter each. Measured on the ultrawide, three windows land at 846/1696/846 --
+# the same numbers the old script produced by hand.
+#
+# The reason to prefer it is what happens next. The old script set widths once,
+# so a fourth window forced a fallback to even columns and the arrangement was
+# gone. Here the columns stay 25/50/25 at any count and extra windows stack
+# vertically inside the side columns, because the layout keeps enforcing it
+# rather than being applied once.
+#
+# There is no toggle here on purpose: Omarchy already binds SUPER + L to
+# omarchy-hyprland-workspace-layout-toggle, whose "anything that is not
+# dwindle" branch turns a master workspace back into dwindle. A second toggle
+# competing over the same state would be the thing that breaks.
+set -eu
+
+layouts_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts"
+
+notify() {
+	if command -v omarchy-notification-send >/dev/null 2>&1; then
+		omarchy-notification-send -u low "󱂬" "$1" || true
+	else
+		echo "[center-master] $1" >&2
+	fi
+}
+
+if ! command -v hyprctl >/dev/null 2>&1; then
+	notify "hyprctl is not installed"
+	exit 1
+fi
+
+# jq is deliberately not used. The only thing needed from hyprctl is the
+# workspace id, and `activeworkspace` without -j prints it on its first line as
+# `workspace ID <n> (<name>)`. Dropping the dependency means this keeps working
+# on a machine part-way through its first apply, before the mise tools land --
+# which is exactly when someone is most likely to be pressing keys to see what
+# works.
+ws="$(hyprctl activeworkspace 2>/dev/null | sed -n 's/^workspace ID \([-0-9][0-9]*\).*/\1/p' | head -1)"
+
+# Anything non-numeric means hyprctl answered with something unexpected, and a
+# workspace rule written from a bad id would name a workspace that does not
+# exist -- silently, since Hyprland accepts rules for workspaces not yet open.
+case "$ws" in
+'' | *[!0-9-]*)
+	notify "could not read the active workspace"
+	exit 1
+	;;
+esac
+
+rule="hl.workspace_rule({ workspace = \"$ws\", layout = \"master\", layout_opts = { orientation = \"center\" } })"
+
+if ! hyprctl eval "$rule" >/dev/null 2>&1; then
+	notify "could not centre the master on workspace $ws"
+	exit 1
+fi
+
+# Persisted, because `hyprctl eval` only changes the running compositor.
+# Hyprland re-reads its config whenever a config file is saved -- which a
+# `chezmoi apply` does routinely -- and a workspace whose layout was set only at
+# runtime silently reverts at that moment.
+#
+# This path and file format belong to omarchy-hyprland-workspace-layout-toggle,
+# and Omarchy's default/hypr/workspace-layouts.lua reloads every file in the
+# directory. Writing here rather than inventing a second store is what stops
+# that toggle and this script disagreeing about a workspace's layout: whichever
+# ran last owns the file, and there is only one file.
+if ! mkdir -p "$layouts_dir" 2>/dev/null; then
+	notify "centred workspace $ws, but could not persist it"
+	exit 0
+fi
+printf '%s\n' "$rule" >"$layouts_dir/$ws.lua"

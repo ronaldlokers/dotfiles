@@ -68,3 +68,21 @@ hl.config({
 -- in default/hypr/apps/steam.lua and qemu.lua. This file is required after
 -- `default.hypr.omarchy` in hyprland.lua, so it wins over the browser rule.
 o.window("zen", { opacity = "1 1" })
+
+-- Half the screen for the master window, so a workspace using the master
+-- layout with `orientation = center` lays out as 25/50/25: the master takes
+-- the middle half and the two slave stacks take a quarter each. Measured on
+-- the ultrawide, three windows land at 846/1696/846.
+--
+-- Global rather than per-workspace because Hyprland only exposes `orientation`
+-- as a workspace `layout_opts` rule, not `mfact`. That costs nothing here:
+-- master is not the default layout, so this only applies where a workspace has
+-- been switched to it deliberately -- by `hypr-center-master`, on
+-- SUPER + SHIFT + T.
+--
+-- Omarchy's default is 0.55, which would give 27.5/45/27.5.
+hl.config({
+	master = {
+		mfact = 0.5,
+	},
+})

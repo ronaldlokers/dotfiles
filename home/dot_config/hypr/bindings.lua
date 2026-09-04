@@ -57,14 +57,18 @@
 o.bind("Alt_R", "Dictate", "handy --toggle-transcription", { ignore_mods = true })
 o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mods = true })
 
--- Arrange the active workspace into columns: three windows become 25/50/25,
--- any other count is split evenly. The script is dot_local/bin/hypr-columns.
+-- Lay the active workspace out as 25/50/25 by putting it on the master layout
+-- with the master centred. `mfact` lives in looknfeel.lua.
 --
--- A script rather than a dispatcher because Hyprland has no "lay this workspace
--- out like so" command: `colresize` acts on the focused column only, so three
--- different widths means visiting each column in a known order, and the order
--- can only be known by reading the windows' on-screen positions first.
+-- This replaced a script that read each window's position and resized the
+-- columns by hand. The layout reaches the same geometry -- 846/1696/846 on the
+-- ultrawide -- and then keeps it: a fourth window stacks vertically inside a
+-- side column instead of forcing the old script's fallback to even columns.
 --
--- SUPER + SHIFT + T was unbound in both Omarchy's defaults and this file, so
--- there is no hl.unbind above it.
-o.bind("SUPER + SHIFT + T", "Arrange columns 25/50/25", "hypr-columns")
+-- One way, not a toggle. Omarchy binds SUPER + L to
+-- omarchy-hyprland-workspace-layout-toggle, whose non-dwindle branch turns a
+-- master workspace back into dwindle, so the way out already exists and a
+-- second toggle over the same state would only fight it.
+--
+-- SUPER + SHIFT + T was unbound in both Omarchy's defaults and this file.
+o.bind("SUPER + SHIFT + T", "Centre master (25/50/25)", "hypr-center-master")
