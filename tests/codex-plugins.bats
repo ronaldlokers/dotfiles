@@ -74,7 +74,12 @@ fi
 exit 0
 STUB
 	chmod 755 "$BIN/codex"
-	ln -sf "$(command -v node)" "$BIN/node" 2>/dev/null || printf '#!/bin/sh\nexit 0\n' >"$BIN/node"
+	# A written stub, not a symlink to the real node. The script only ever
+	# runs `command -v node`, so nothing here needs a working interpreter --
+	# and `chmod` on a symlink changes its *referent*, which on CI is a
+	# root-owned mise install and fails with "Operation not permitted". It
+	# passed locally only because this machine's mise tree is user-owned.
+	printf '#!/bin/sh\nexit 0\n' >"$BIN/node"
 	chmod 755 "$BIN/node"
 	ln -sf "$(command -v awk)" "$BIN/awk"
 	ln -sf "$(command -v grep)" "$BIN/grep"
