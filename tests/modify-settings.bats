@@ -124,12 +124,17 @@ path_with() {
 
 # The marketplaces themselves must survive: dropping the ref must not drop the
 # declaration, or the plugins stop resolving entirely.
-@test "all four marketplaces are still declared" {
+@test "all five marketplaces are still declared" {
 	run bash "$SCRIPT" </dev/null
 	[ "$status" -eq 0 ]
-	for m in claude-plugins-official caveman impeccable karpathy-skills; do
+	for m in claude-plugins-official caveman impeccable karpathy-skills ponytail; do
 		printf '%s' "$output" | jq -e --arg m "$m" '.extraKnownMarketplaces[$m].source.repo' >/dev/null
 	done
+	# The named list above catches a marketplace being dropped. The count
+	# catches the opposite -- one added without being written down here, so
+	# this list quietly stops describing the tree.
+	n="$(printf '%s' "$output" | jq '.extraKnownMarketplaces | length')"
+	[ "$n" -eq 5 ]
 }
 
 # --- Moshi's hooks live in the baseline, not on disk (2026-08-08) ------------
@@ -183,4 +188,26 @@ path_with() {
 	run bash "$SCRIPT" </dev/null
 	[[ "$output" != *"/home/ronald"* ]]
 	printf '%s' "$output" | jq -e '[..|.command? // empty]|map(select(test("moshi-hook")))|all(test("\\$HOME"))' >/dev/null
+}
+
+# --- ponytail replaced karpathy-skills (2026-09-04) -------------------------
+#
+# Both exist to argue against over-engineering, and both inject guidance into
+# every session. Running the pair costs context to say one thing twice, so
+# karpathy-skills is declared-but-off rather than removed: its marketplace
+# entry stays, so re-enabling it is one line here.
+
+@test "ponytail is enabled and karpathy-skills is not" {
+	run bash "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	[ "$(printf '%s' "$output" | jq -r '.enabledPlugins["ponytail@ponytail"]')" = "true" ]
+	[ "$(printf '%s' "$output" | jq -r '.enabledPlugins["andrej-karpathy-skills@karpathy-skills"]')" = "false" ]
+}
+
+@test "karpathy-skills stays declared so re-enabling is one line" {
+	run bash "$SCRIPT" </dev/null
+	[ "$status" -eq 0 ]
+	# Disabling a plugin and dropping its marketplace are different decisions.
+	# Dropping both would make "flip it back to true" silently not work.
+	printf '%s' "$output" | jq -e '.extraKnownMarketplaces["karpathy-skills"].source.repo' >/dev/null
 }
