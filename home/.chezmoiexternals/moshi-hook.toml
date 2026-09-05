@@ -20,24 +20,31 @@
        Same caveat as devpod's hash next door, and worth repeating rather than
        assuming a reader will go and look: the hash was taken from the served
        artifact and cross-checked against upstream's own published
-       checksums.txt for v0.2.76. Those two agreeing proves the download was
+       checksums.txt for v0.3.19. Those two agreeing proves the download was
        not tampered with in transit today. It does not prove anything about
        what upstream published, because both come from the same origin.
 
        Bump by hand, version and hash together:
-           v=v0.2.76  # or whatever cdn.getmoshi.app/hook/latest/version.txt says
+           v=v0.3.19  # or whatever cdn.getmoshi.app/hook/latest/version.txt says
            curl -fsSL "https://cdn.getmoshi.app/hook/$v/checksums.txt" \
              | grep moshi-hook_Linux_x86_64.tar.gz
 
        Renovate has no datasource for a bare CDN, so nothing proposes these —
-       which is the same position pass-cli is in, and the reason both say so. */ -}}
+       which is the same position pass-cli is in, and the reason both say so.
+
+       And the bump is not finished there. The Claude Code hooks this daemon
+       needs live in dot_claude/modify_settings.json rather than being written
+       by `moshi-hook install`, so a release that changes them changes nothing
+       here and the phone goes quiet for whatever event was added. Diff the old
+       and new installers against a scratch HOME — docs/design-notes.md,
+       "Bumping moshi-hook means diffing its hook installer". */ -}}
 {{- if and (contains " personal " (includeTemplate "profiles" .)) (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
-{{ $moshiHookVersion := "v0.2.76" }}
+{{ $moshiHookVersion := "v0.3.19" }}
 [".local/bin/moshi-hook"]
 type = "archive-file"
 executable = true
 path = "moshi-hook"
 url = "https://cdn.getmoshi.app/hook/{{ $moshiHookVersion }}/moshi-hook_Linux_x86_64.tar.gz"
-checksum.sha256 = "3c13c4782b0580128514b8eb54ce52a4be245a1c33b3b2463b40e350710c3392"
+checksum.sha256 = "c94ce3de5b8e7b6d1b9f12d501a95db047f01bf32b6b837e29a4229267ee79d4"
 refreshPeriod = "168h"
 {{- end -}}

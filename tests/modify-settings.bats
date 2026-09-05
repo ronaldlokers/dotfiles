@@ -152,7 +152,7 @@ path_with() {
 	run bash "$SCRIPT" </dev/null
 	[ "$status" -eq 0 ]
 	n="$(printf '%s' "$output" | jq -r '[..|.command? // empty]|map(select(test("moshi-hook")))|length')"
-	[ "$n" -eq 9 ]
+	[ "$n" -eq 10 ]
 }
 
 # Merging over a settings.json that has them must not drop them either — that
@@ -162,14 +162,14 @@ path_with() {
 	run bash "$SCRIPT" <<<"$baseline"
 	[ "$status" -eq 0 ]
 	n="$(printf '%s' "$output" | jq -r '[..|.command? // empty]|map(select(test("moshi-hook")))|length')"
-	[ "$n" -eq 9 ]
+	[ "$n" -eq 10 ]
 }
 
-# All seven categories, named. A partial set is the shape a bad merge leaves
+# All eight categories, named. A partial set is the shape a bad merge leaves
 # behind, and it would look like "mostly working".
 @test "every hook category Moshi installs is present" {
 	run bash "$SCRIPT" </dev/null
-	for k in PermissionRequest PostToolUse PreToolUse SessionEnd SessionStart Stop UserPromptSubmit; do
+	for k in Notification PermissionRequest PostToolUse PreToolUse SessionEnd SessionStart Stop UserPromptSubmit; do
 		printf '%s' "$output" | jq -e --arg k "$k" '.hooks[$k]' >/dev/null
 	done
 }

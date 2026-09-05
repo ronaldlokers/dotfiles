@@ -59,6 +59,18 @@ baseline() {
 {
   "includeCoAuthoredBy": false,
   "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "async": true,
+            "command": "\"$HOME\"/.local/bin/moshi-hook claude-hook",
+            "type": "command"
+          }
+        ],
+        "matcher": "permission_prompt"
+      }
+    ],
     "PermissionRequest": [
       {
         "hooks": [

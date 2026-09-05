@@ -1256,6 +1256,43 @@ the session is reported as not live. `mosh-port` resolves the same session
 without trouble. Upstream's, not ours, but it is the first thing that looks
 broken when probing the gateway by hand.
 
+### Bumping moshi-hook means diffing its hook installer
+
+`moshi-hook install` is never run on this machine. The Claude Code hook entries
+it would write live in `dot_claude/modify_settings.json` instead, because the
+merge there is managed-wins on `hooks` and an apply would delete anything the
+installer had written. That is settled (see "Co-owned configuration files"),
+but it has a consequence for updates that is easy to miss: when the pin in
+`.chezmoiexternals/moshi-hook.toml` moves, nothing tells the repo that the new
+release wants a different set of hooks. The daemon simply stops being told
+about an event, and the phone goes quiet for that one case while everything
+else keeps working.
+
+So a bump is two steps, not one. Move the version and hash together, then run
+the new binary's installer against a scratch `HOME` and diff it against the
+old one's:
+
+```sh
+for v in old new; do
+  mkdir -p "/tmp/$v/.claude"
+  HOME="/tmp/$v" ./moshi-hook-$v install --target claude
+done
+diff <(jq -S . /tmp/old/.claude/settings.json) <(jq -S . /tmp/new/.claude/settings.json)
+```
+
+Everything but the absolute path it bakes in is a real change. v0.2.76 to
+v0.3.19 added exactly one: a `Notification` hook matching `permission_prompt`,
+which is how the phone learns a permission prompt is waiting. Without it the
+approval round-trip Moshi exists for still works when the agent asks through
+`PermissionRequest`, and silently does not when Claude Code raises a
+notification instead.
+
+`moshi-hook status` reports the Claude hooks as `stale` on this machine
+permanently, and that is not a signal of this. It compares against its own
+installer output, which bakes in `/home/ronald/...`; the baseline here is
+`"$HOME"`-relative because it has to apply on any machine. The string differs,
+so the comparison fails, and it will keep failing. Read the diff above instead.
+
 ## Updates
 
 `dotfiles-update-check` **only notifies**; it never pulls and never applies. An
