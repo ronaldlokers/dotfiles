@@ -1,4 +1,4 @@
-{{- $miseVersion := "v2026.7.14" -}}
+{{- $miseVersion := "v2026.9.1" -}}
 # mise binary, pinned to an immutable release asset (linux-x64). Renovate bumps
 # $miseVersion via the custom manager in .github/renovate.json.
 #
@@ -16,5 +16,5 @@
 type = "file"
 executable = true
 url = "https://github.com/jdx/mise/releases/download/{{ $miseVersion }}/mise-{{ $miseVersion }}-linux-x64"
-checksum.sha256 = "fc96308f4fa085d7359892ac6351ededb35ecfabf1ddc34f5757bc755a2af8a6"
+checksum.sha256 = "c98423c8470d6dc416d9f7036d0646d8ef5ae92ad9186907f8fcc84cbe7db4ea"
 refreshPeriod = "168h"

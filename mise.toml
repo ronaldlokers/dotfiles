@@ -12,7 +12,7 @@ bats = "1.14.0"
 # The suite renders a script template, so the tests need chezmoi itself. Kept at
 # the same version as the machines install; the lint task below asserts all
 # three copies of this number agree.
-chezmoi = "2.72.0"
+chezmoi = "2.72.1"
 # renovate stays an `npx --yes` call rather than a mise tool: it is run by this
 # one lint line only.
 
@@ -32,7 +32,7 @@ run = [
 	# the fixed-point property — is covered by tests/modify-settings.bats. Two
 	# unreadable one-liners used to live here instead.
 	# renovate: datasource=npm depName=renovate
-	"npx --yes --package renovate@43.285.0 renovate-config-validator .github/renovate.json",
+	"npx --yes --package renovate@44.65.5 renovate-config-validator .github/renovate.json",
 	# The facts this repo states in more than one place — the three chezmoi
 	# versions, the vault name, the two container markers, the bootstrap PAT's
 	# expiry, the vendored graphify skill's version, the cached PAT's path. Each
