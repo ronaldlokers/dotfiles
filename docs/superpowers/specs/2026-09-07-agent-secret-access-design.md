@@ -45,8 +45,9 @@ wrong, and someone would later lean on a guarantee that was never there.
 What it buys, in order of value:
 
 1. **Blast radius.** The only credential on this machine today is the bootstrap
-   PAT: the entire vault, no expiry. An agent token scoped to one item for one
-   month replaces "everything, forever" with "one thing, briefly".
+   PAT: the entire vault, no expiry. An agent token scoped to a vault that holds
+   only agent-readable secrets, expiring monthly, replaces "everything, forever"
+   with "the things agents are meant to have, briefly".
 2. **Attribution.** `PROTON_PASS_AGENT_REASON` is mandatory on every read through
    an agent token and lands in `pass-cli agent monitor`. After an incident it is
    possible to answer what was read, when, and what reason was given — which is
@@ -86,28 +87,73 @@ stderr by default, which fnox does not document. See the open questions.
 
 ## Design
 
+### The Agents vault
+
+Agent-readable secrets live in their own vault, `Agents`. The grant is then
+vault-scoped, and that is the point: adding a secret an agent may read means
+putting it in that vault, with no second step to remember and no per-item grant
+to maintain at eleven at night. The boundary is the vault rather than a list
+somebody has to keep accurate.
+
+This is the same move as the existing Dotfiles/Work split, on a different axis.
+That split separates *machines*; this one separates *who is asking*. The
+reasoning in `home/.chezmoitemplates/vault-name` applies unchanged — "same vault,
+different items would not prevent it, a vault-scoped PAT reads all of it" — which
+is precisely why the boundary has to be a vault and not a convention.
+
+Granting the `Dotfiles` vault instead was considered and rejected. It holds the
+`bootstrap PAT` item, whose blast radius `docs/revocation.md` records as "the
+whole vault, therefore everything below". An agent that can read it holds a
+permanent, unexpiring, full-vault credential, at which point the agent token's
+expiry and revocation are decorative. That vault also holds the git signing key's
+private half, the sops age keys, `gh hosts.yml`, the devpod PATs, and the SSH
+keys — which `proton-ssh-load` selects by *type*, not title, so an agent
+enumerating the vault finds them without knowing any names.
+
+An `Agents` vault has no such inhabitant by construction, so expiry and
+revocation keep working.
+
+Known limit: this is gated to personal machines, so there is no `Work Agents`
+counterpart. If a work machine ever needs agent access, that is a new decision
+and a new vault, not a widening of this one.
+
 ### Identity: the agent token
 
 Created once, by hand:
 
-    pass-cli agent create fizzy --expiration 1m
-    pass-cli agent access grant fizzy \
-      --vault-name Dotfiles --item-title "Fizzy" --role viewer
+    pass-cli agent create fizzy --expiration 1m --vault Agents
+    pass-cli agent access grant fizzy --vault-name Agents --role viewer
 
-Scoped to the **item**, never the vault: `--item-title` alongside `--vault-name`
-narrows the grant to one item, where `--vault-name` alone would hand back most of
-the blast radius this design exists to reduce. `--role viewer` is read-only and
-is also the default, stated explicitly because the alternative roles (`editor`,
-`manager`) would let an agent write to the vault.
+Scoped to the `Agents` vault, which is safe because of what that vault contains
+rather than because the grant is narrow. `--role viewer` is read-only and is also
+the default, stated explicitly because `editor` and `manager` would let an agent
+write to the vault — and an agent that can write to the vault it reads from can
+grant itself things later.
 
-Stored the way every other secret here is stored: as a note item in the vault,
-with one line added to `home/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl`
+One agent per consumer, not one shared agent. Separate tokens mean
+`pass-cli agent monitor` attributes reads to a named caller, and revoking one
+does not disturb the others.
+
+Stored the way every other secret here is stored — as a note item, with one line
+added to `home/.chezmoiscripts/run_after_14-restore-secrets.sh.tmpl`.
+
+**In the `Dotfiles` vault, deliberately not in `Agents`.** The agent's own
+credential must not sit inside the vault that credential can read. With one agent
+this is merely circular; with two it is an escalation, because either agent could
+read the other's token and assume its identity, defeating the per-agent
+attribution above. Agent tokens are restored by the human session at apply time,
+so `Dotfiles` is the right home for them.
 
     restore "fizzy agent token" "$HOME/.config/pass-cli-agent-fizzy" 600 personal
 
 so it is fetched with the human session at apply time and lands at 0600.
 `dotfiles-secrets-check` picks it up with no further work, because its item list
 is derived from the `restore` lines rather than hand-kept.
+
+The fizzy secret itself is *not* covered by that check, and should not be: it is
+never restored to disk, it is referenced from the project's own `fnox.toml`
+rather than from this tree, and its health is the project's concern. What this
+repo checks is what this repo places — the agent token.
 
 The fourth argument is the profile gate — `restore()` takes an optional profile
 name and returns early when the machine's set does not contain it, which is how
@@ -140,7 +186,7 @@ type = "proton-pass"
 agent_reason = "unspecified — caller did not set PROTON_PASS_AGENT_REASON"
 
 [secrets]
-FIZZY_API_TOKEN = { provider = "protonpass", value = "pass://Dotfiles/Fizzy/api_token" }
+FIZZY_API_TOKEN = { provider = "protonpass", value = "pass://Agents/Fizzy/api_token" }
 ```
 
 The static `agent_reason` is a deliberately useless fallback. A fixed string in
@@ -242,6 +288,16 @@ Strictly worse once the Proton agent feature is in play.
 provider means values stay in Proton Pass and fnox is a reference and injection
 layer over it. Had fnox required its own store, it would have been rejected
 under the single-store rule.
+
+**A vault-scoped grant on the `Dotfiles` vault.** Rejected for the reason given
+under "The Agents vault": it contains the `bootstrap PAT`, so the grant is
+self-escalating and makes expiry and revocation meaningless.
+
+**Per-item grants against the `Dotfiles` vault.** Sound, and the first version of
+this design. Rejected because the friction is where it decays: every new secret
+needs a manual grant, and the second time that is needed under time pressure the
+`--vault-name Dotfiles` shortcut is right there. A boundary that depends on
+nobody ever taking the shortcut is not a boundary.
 
 **Agent reads the item directly with `pass-cli item view`.** Simplest, and still
 gets the audit trail, but the value enters the agent's context and therefore its
