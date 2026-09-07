@@ -29,7 +29,7 @@ set -eu
 # below. It was three, and they had already drifted: the usage text listed six
 # checks while the dispatch knew seven.
 all_checks="chezmoi-pins vault-name container-markers pat-expiry graphify-pin
-pat-path shellcheck-targets runbook-flags"
+pat-path shellcheck-targets runbook-flags hook-counts"
 
 is_check() {
 	for _ic in $all_checks; do
@@ -312,6 +312,41 @@ check_runbook_flags() {
 	done
 }
 
+# --- the hook counts the README quotes -------------------------------------
+# README's layout table states how many hooks dot_claude/modify_settings.json
+# installs. It said "nine entries, seven categories" while the script emitted
+# eleven and eight: cd11bbe added PermissionRequest, SessionEnd and two more
+# matchers for moshi-hook and left the sentence alone. Nobody noticed because
+# nothing reads both.
+#
+# Counted by running the modifier rather than by parsing it — it is a bash
+# script that prints JSON, so the number it produces is the only honest source.
+# Empty stdin is what chezmoi hands it on a machine with no settings.json yet.
+check_hook_counts() {
+	command -v jq >/dev/null 2>&1 || return 0
+	m="$root/home/dot_claude/modify_settings.json"
+	[ -r "$m" ] || return 0
+	counts="$(printf '{}' | bash "$m" 2>/dev/null |
+		jq -r '"\(.hooks|length) \([.hooks[]|length]|add)"' 2>/dev/null || true)"
+	cats="${counts%% *}"
+	entries="${counts##* }"
+	if [ -z "$cats" ] || [ -z "$entries" ] || [ "$cats" = "null" ]; then
+		fail "could not count the hooks modify_settings.json emits"
+		return
+	fi
+	stated="$(grep -oE 'modify_settings\.json` — [0-9]+ entries, [0-9]+ categories' \
+		"$root/README.md" 2>/dev/null || true)"
+	if [ -z "$stated" ]; then
+		fail "README no longer states the modify_settings.json hook counts"
+		return
+	fi
+	r_entries="$(printf '%s' "$stated" | grep -oE '[0-9]+ entries' | grep -oE '[0-9]+')"
+	r_cats="$(printf '%s' "$stated" | grep -oE '[0-9]+ categories' | grep -oE '[0-9]+')"
+	if [ "$r_entries" != "$entries" ] || [ "$r_cats" != "$cats" ]; then
+		fail "hook counts disagree: the script emits $entries entries in $cats categories, README says $r_entries in $r_cats"
+	fi
+}
+
 # --- the cached bootstrap PAT's path ----------------------------------------
 # proton-ssh-load writes it; dotfiles-secrets-check now reads it to establish a
 # session before calling its absence a fault. Two scripts, one path, and a
@@ -441,6 +476,7 @@ for want in "$@"; do
 	pat-path) check_pat_path ;;
 	shellcheck-targets) check_shellcheck_targets ;;
 	runbook-flags) check_runbook_flags ;;
+	hook-counts) check_hook_counts ;;
 	*)
 		echo "check-agreement: unknown check: $want" >&2
 		usage >&2

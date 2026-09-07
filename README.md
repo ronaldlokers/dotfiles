@@ -319,7 +319,7 @@ Four pieces, three of them applied automatically:
 | Piece | Where |
 | --- | --- |
 | `moshi-hook` daemon | `.chezmoiexternals/moshi-hook.toml`, pinned and checksummed |
-| Claude Code hooks | `dot_claude/modify_settings.json` — nine entries, seven categories |
+| Claude Code hooks | `dot_claude/modify_settings.json` — 11 entries, 8 categories |
 | sshd on the tailnet | `.chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl` |
 | Pairing | by hand, once — see below |
 
