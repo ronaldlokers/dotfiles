@@ -23,6 +23,12 @@ local omarchy_monitor_scale = 1
 hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
 
+-- Laptop panel, 1920x1080. 1.25 divides it into whole pixels (1536x864
+-- logical), which 1 does not need but the smaller logical desktop is the point.
+-- Pinned per-output rather than left to the catch-all above, so changing the
+-- catch-all for an external display cannot move the built-in panel with it.
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1.25 })
+
 -- Configure a specific monitor.
 -- hl.monitor({ output = "DP-2", mode = "2560x1440@144", position = "0x0", scale = 1 })
 
