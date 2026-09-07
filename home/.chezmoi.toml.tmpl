@@ -16,7 +16,30 @@
 {{- if stdinIsATTY -}}
 {{-   $role = promptStringOnce . "role" "Machine role (personal or work)" $role -}}
 {{- end -}}
+{{- /* The name, which — unlike the role — a machine can work out about itself.
+       So the hostname is the default and an unattended apply never asks: CI,
+       `mise run verify` and `devpod up` all keep whatever they already answer
+       to. The prompt covers the one case detection cannot, a fresh install
+       still carrying the hostname its installer picked, and it carries the
+       roster so the answer does not have to be remembered.
+
+       Advisory, not enforced. An off-roster name warns and still renders: a
+       machine already called something else is a naming lapse, and refusing to
+       configure it would turn a cosmetic problem into an unusable machine.
+       README.md says which roster names are still free. */ -}}
+{{- $roster := list "blankes" "callahan" "copeland" "fackler" "harris" "hightower" "hooks" "jones" "lassard" "mahoney" "proctor" "sweetchuck" "tackleberry" "zed" -}}
+{{- $name := .chezmoi.hostname -}}
+{{- if and (hasKey . "name") .name -}}
+{{-   $name = .name -}}
+{{- end -}}
+{{- if stdinIsATTY -}}
+{{-   $name = promptStringOnce . "name" (printf "Machine name (roster: %s)" (join ", " $roster)) $name -}}
+{{- end -}}
+{{- if not (has $name $roster) -}}
+{{-   warnf "machine name %q is not on the roster; README.md lists the free ones" $name -}}
+{{- end -}}
 
 [data]
     email = {{ $email | quote }}
     role = {{ $role | quote }}
+    name = {{ $name | quote }}

@@ -503,6 +503,39 @@ To change a machine's role, re-run `chezmoi init` and answer again.
 `docs/design-notes.md` has the reasoning, including why the split cannot live in
 mise itself.
 
+### Names
+
+Machines are named after Police Academy characters. The name is asked once at
+`chezmoi init` and lands in `chezmoi.toml` as `name`; it defaults to the
+hostname, so an unattended apply — CI, `mise run verify`, `devpod up` — never
+asks and never renames anything.
+
+| Name | |
+| --- | --- |
+| `mahoney` | in use |
+| `sweetchuck` | in use |
+| `blankes` `callahan` `copeland` `fackler` `harris` `hightower` `hooks` `jones` `lassard` `proctor` `tackleberry` `zed` | free |
+
+Only host machines take a roster name. Tagged devices (`homelab-prod-router`,
+`tailscale-operator`) and phones and tablets keep the names their platforms give
+them.
+
+```sh
+chezmoi init                             # ask, or re-ask, and store the answer
+chezmoi execute-template '{{ .name }}'   # what am I called?
+```
+
+A machine set up before this existed has no `name` key until it runs `chezmoi
+init` once — until then the template above fails with `map has no entry for key
+"name"`. Nothing else reads the key yet; it is a record of the answer, not a
+switch.
+
+The roster is advisory. A name that is not on it warns once at init and applies
+anyway — a machine already called something else is a cosmetic problem, and
+refusing to configure it would make it a real one. Renaming the machine itself
+is `hostnamectl set-hostname`, plus the Tailscale admin console, both outside
+these dotfiles; re-run `chezmoi init` afterwards so the stored answer follows.
+
 ## Keybindings
 
 Both shells get the same set.

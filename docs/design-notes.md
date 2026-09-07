@@ -1582,3 +1582,35 @@ reports and exits 0 instead of failing outright: a non-zero exit from a
 Zen profile is not worth taking the rest of the machine's provisioning down
 with it. On such a machine the fresh-install path just costs one extra apply,
 after Zen has been launched by hand once.
+
+## Machine names
+
+Names come from Police Academy — `mahoney`, `sweetchuck` — and the roster lives
+in `.chezmoi.toml.tmpl` with the free ones listed in `README.md`. Two decisions
+in there are worth keeping, because both cut against how the neighbouring
+prompts work.
+
+**The default is detected, not asked.** `role` is asked because nothing can
+detect it; the comment above it in the same file says so. A name is the
+opposite — `.chezmoi.hostname` already answers it — so the prompt defaults to
+the hostname rather than to a fixed value, and an unattended apply takes that
+default without asking. This matters more than it looks: CI, `mise run verify`
+and `devpod up` all render this template, and a fixed default would have every
+one of them assert a name that belongs to some other machine. The prompt earns
+its place only for the case detection genuinely cannot cover, a fresh install
+still carrying the hostname its installer picked.
+
+**Off-roster warns rather than fails.** `fail` was the obvious reading of "an
+allowed list" and it is the wrong one. `.chezmoi.toml.tmpl` is the config
+template: if it errors, `chezmoi init` produces no config at all and the machine
+cannot be provisioned. That trades a cosmetic problem — a host called
+`webserver01` — for an unusable machine, and it would fire hardest on exactly
+the machines least able to absorb it, the ones being set up for the first time.
+`warnf` says the same thing and still writes the config.
+
+**The key is a record, nothing reads it.** No template gates on `.name` today,
+and that was understood when it went in — it is written down so the answer
+survives, not because anything branches on it. A later reader finding an unused
+data key should know it is deliberate rather than a leftover from a gate that
+got deleted. If something does come to depend on it, note here what and why,
+since an unread key and a load-bearing one deserve different care.
