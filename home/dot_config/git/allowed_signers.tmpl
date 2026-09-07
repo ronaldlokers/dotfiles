@@ -32,11 +32,25 @@
 {{- if $key }}
 {{- /* While the vault still holds the retired key — the window between merging
        this and finishing the rotation — signing-pubkey returns exactly the
-       string above, and emitting it again unbounded would hand back the
-       forgery window the line above just closed. So it is skipped, and commits
-       made in that window are the ones to make after the vault swap, not
-       before. */}}
-{{- if ne $key $retiredKey }}
+       key above, and emitting it again unbounded would hand back the forgery
+       window the line above just closed. So it is skipped, and commits made in
+       that window are the ones to make after the vault swap, not before.
+
+       Compared on the key material alone, never on the whole line. The two
+       sources disagree about the trailing comment: the agent fallback strips
+       it (`print $1" "$2`) and the vault field carries it, so the vault path
+       returned "ssh-ed25519 AAAA… git-signing" against a bare $retiredKey and
+       `ne` was true no matter what. That is not a cosmetic mismatch — it
+       emitted the retired key a second time with no valid-before, which is
+       exactly the forgery window this guard exists to close, and it did so
+       silently. Found 28 August 2026. */}}
+{{- $bare := $key | splitList " " -}}
+{{- if ge (len $bare) 2 -}}
+{{- $bare = printf "%s %s" (index $bare 0) (index $bare 1) -}}
+{{- else -}}
+{{- $bare = $key -}}
+{{- end }}
+{{- if ne $bare $retiredKey }}
 {{ .email }} {{ $key }}
 {{- end }}
 {{- end }}

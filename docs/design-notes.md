@@ -609,6 +609,46 @@ URIs the templates themselves use: `secrets-check` reads `public_key` for
 `git signing key` today because that is the field `signing-pubkey` actually
 calls, not a hand-kept guess that can drift from it.
 
+### Comparing keys, not lines
+
+`allowed_signers` carries two entries: the retired signing key bounded with
+`valid-before`, and the current key unbounded. The second is skipped when the
+two are the same key, because emitting the retired key again without a bound
+hands straight back the forgery window the first entry exists to close — and
+that matters here more than it would in most repositories, since the retired
+key's private half is in this repository's public history, age-encrypted to an
+identity whose own private half sat at the repository root behind a single
+passphrase.
+
+That guard compared whole strings, and so never fired. The two sources of the
+current key disagree about the trailing comment: the agent fallback in
+`.chezmoitemplates/signing-pubkey` strips it (`print $1" "$2`), while the
+vault's `public_key` field carries it. So on any machine reading the vault —
+which is every machine that has a Proton session, meaning the normal case —
+the comparison was
+
+    ssh-ed25519 AAAA… git-signing   ≠   ssh-ed25519 AAAA…
+
+and the retired key went out a second time with nothing bounding it. Silently,
+on every apply, for as long as the rotation stayed unfinished. Found
+28 August 2026, and it had been that way since the entry was added.
+
+The comparison is on key material alone now — type and base64, never the
+comment. The general shape is worth keeping in mind wherever this repo compares
+two strings that came from different places: a key, a path and a version each
+have exactly one canonical form and several textual ones, and the guard has to
+name which one it is comparing. A guard that silently never fires is worse than
+no guard, because the entry above it reads as protected.
+
+`tests/allowed-signers.bats` pins it, and pins it by mutation: reverting the
+template to the whole-string compare turns two of its cases red on the
+two-line output, rather than on a symbol that stopped existing.
+
+The half that is not code: the vault still holds the retired key. Until it is
+rotated, the choice is between unverifiable recent history and a boundary moved
+forward, and a boundary in the present protects very little — backdating a
+commit is trivial. Rotate.
+
 ### Why SSH keys are counted, not named
 
 `secrets-check` used to assert three SSH item titles by name, the same way it
