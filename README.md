@@ -268,10 +268,23 @@ the commits it already signed keep verifying while it cannot vouch for anything
 newer. git compares against the *commit's* timestamp, which is what makes that
 work. Do the steps in this order:
 
-1. Mint the replacement, and do not write it to disk:
+1. Mint the replacement, and keep it off disk:
    ```sh
-   ssh-keygen -t ed25519 -C git-signing -f /dev/stdout -N '' -q
+   d="$(mktemp -d -p "$XDG_RUNTIME_DIR")"
+   ssh-keygen -t ed25519 -C git-signing -N '' -q -f "$d/k"
+   cat "$d/k.pub"; cat "$d/k"      # copy both into the vault item
+   rm -rf "$d"
    ```
+   `$XDG_RUNTIME_DIR` is a tmpfs owned by you at mode 700, so the key lives in
+   RAM and goes away at logout even if the `rm` never runs.
+
+   This used to read `-f /dev/stdout`, which does not work: `ssh-keygen` treats
+   `-f` as a path to create, finds `/dev/stdout` already there, and blocks on
+   `Overwrite (y/n)?` — a prompt nothing here mentions. Answer `y` and it still
+   exits 255 trying to write `/dev/stdout.pub` next to it, with the error text
+   landing in the middle of the key. A command in this runbook is read once, in
+   a hurry, months from now.
+
    Or generate it wherever you normally would — what matters is that it lands
    in the vault and nowhere else.
 2. Replace the **`git signing key`** item in the Dotfiles vault with it.
