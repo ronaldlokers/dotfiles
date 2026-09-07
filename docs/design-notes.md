@@ -1600,6 +1600,16 @@ one of them assert a name that belongs to some other machine. The prompt earns
 its place only for the case detection genuinely cannot cover, a fresh install
 still carrying the hostname its installer picked.
 
+**A pick-list, and a warn that is not redundant with it.** `promptChoiceOnce`
+means init offers the roster rather than asking for free text, which is the
+point — a name nobody can remember is not much of a convention. Two things it
+does not do, both worth knowing before someone deletes the warn as duplicated
+work. It only constrains the interactive path: an unattended init never reaches
+the picker and takes the hostname, and `chezmoi.toml` is a file anyone can edit.
+And it cannot offer a default it does not contain, so a hostname that is not a
+roster name is swapped for the first free one *inside the TTY branch only* —
+doing it outside would rename every unattended machine to `blankes`.
+
 **Off-roster warns rather than fails.** `fail` was the obvious reading of "an
 allowed list" and it is the wrong one. `.chezmoi.toml.tmpl` is the config
 template: if it errors, `chezmoi init` produces no config at all and the machine

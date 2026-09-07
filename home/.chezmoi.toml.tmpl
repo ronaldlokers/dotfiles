@@ -20,8 +20,13 @@
        So the hostname is the default and an unattended apply never asks: CI,
        `mise run verify` and `devpod up` all keep whatever they already answer
        to. The prompt covers the one case detection cannot, a fresh install
-       still carrying the hostname its installer picked, and it carries the
-       roster so the answer does not have to be remembered.
+       still carrying the hostname its installer picked, and it offers the
+       roster as a pick-list so the answer does not have to be remembered.
+
+       The pick-list constrains what can be typed, but not what can arrive: a
+       default chezmoi never asked about — the hostname — passes through
+       unchecked, which is the whole non-TTY path. So the warn below is not
+       redundant with the list.
 
        Advisory, not enforced. An off-roster name warns and still renders: a
        machine already called something else is a naming lapse, and refusing to
@@ -33,7 +38,15 @@
 {{-   $name = .name -}}
 {{- end -}}
 {{- if stdinIsATTY -}}
-{{-   $name = promptStringOnce . "name" (printf "Machine name (roster: %s)" (join ", " $roster)) $name -}}
+{{- /* The picker can only offer roster names, so a hostname that is not one
+         cannot also be the highlighted default — that is the fresh-install
+         case this prompt exists for. Fall back to the first free name; the
+         non-TTY path below never reaches here and keeps the hostname. */ -}}
+{{-   $default := $name -}}
+{{-   if not (has $default $roster) -}}
+{{-     $default = first $roster -}}
+{{-   end -}}
+{{-   $name = promptChoiceOnce . "name" "Machine name" $roster $default -}}
 {{- end -}}
 {{- if not (has $name $roster) -}}
 {{-   warnf "machine name %q is not on the roster; README.md lists the free ones" $name -}}

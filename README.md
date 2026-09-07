@@ -505,10 +505,12 @@ mise itself.
 
 ### Names
 
-Machines are named after Police Academy characters. The name is asked once at
-`chezmoi init` and lands in `chezmoi.toml` as `name`; it defaults to the
-hostname, so an unattended apply — CI, `mise run verify`, `devpod up` — never
-asks and never renames anything.
+Machines are named after Police Academy characters. `chezmoi init` offers the
+roster as a pick-list and stores the answer in `chezmoi.toml` as `name`. The
+highlighted default is this machine's hostname when that is already a roster
+name, and the first free name when it is not — a hostname the picker cannot
+offer cannot be the default. An unattended apply — CI, `mise run verify`,
+`devpod up` — never asks at all and keeps the hostname.
 
 | Name | |
 | --- | --- |
@@ -530,11 +532,16 @@ init` once — until then the template above fails with `map has no entry for ke
 "name"`. Nothing else reads the key yet; it is a record of the answer, not a
 switch.
 
-The roster is advisory. A name that is not on it warns once at init and applies
-anyway — a machine already called something else is a cosmetic problem, and
-refusing to configure it would make it a real one. Renaming the machine itself
-is `hostnamectl set-hostname`, plus the Tailscale admin console, both outside
-these dotfiles; re-run `chezmoi init` afterwards so the stored answer follows.
+The roster is advisory, and the pick-list does not make it otherwise: it limits
+what can be chosen, not what can arrive. An unattended init takes the hostname
+without ever reaching the picker, and `chezmoi.toml` can be edited by hand. Any
+name that is not on the roster warns once and applies anyway — a machine already
+called something else is a cosmetic problem, and refusing to configure it would
+make it a real one.
+
+Renaming the machine itself is `hostnamectl set-hostname` plus the Tailscale
+admin console, both outside these dotfiles; re-run `chezmoi init` afterwards so
+the stored answer follows.
 
 ## Keybindings
 
