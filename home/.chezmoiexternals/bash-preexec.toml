@@ -7,9 +7,9 @@
 # mutable as the tag — the hash is what makes "0.6.0" name one file.
 #
 # renovate: datasource=github-tags depName=rcaloras/bash-preexec
-{{ $bashPreexecVersion := "0.6.0" }}
+{{ $bashPreexecVersion := "0.7.0" }}
 [".bash/bash-preexec.sh"]
 type = "file"
 url = "https://raw.githubusercontent.com/rcaloras/bash-preexec/{{ $bashPreexecVersion }}/bash-preexec.sh"
-checksum.sha256 = "998f4d5e9dd82e254463228cc6caa4d40125ae79b31d5a16a2a2f49357f0c160"
+checksum.sha256 = "33de4e70ee84981d46e7d8a0e3105f1dd9affc9c4178594446cd96e7ef3b2752"
 refreshPeriod = "168h"
