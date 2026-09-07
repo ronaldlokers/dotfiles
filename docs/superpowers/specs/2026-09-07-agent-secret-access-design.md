@@ -83,7 +83,8 @@ mise — which this repo already depends on throughout. The provider is read-onl
 (`get`, `exec`, `provider test`), which for this use is a feature.
 
 Proton's `pass-cli run` was the other candidate. It masks secrets on stdout and
-stderr by default, which fnox does not document. See the open questions.
+stderr by default, which fnox does not document — see the probe results, which
+found the CLI does not mask and the MCP tool does.
 
 ## Design
 
@@ -206,65 +207,129 @@ restore is gated by its fourth argument; the mise pin is gated the way that file
 already gates personal-only tools. A work machine opting into this should be a
 decision, not a side effect.
 
-### The permission grant
+### Delivery: the MCP broker, with `get_secret` denied
 
-The grant is project-local, and `fnox.toml` is the capability boundary. The
-fizzy project's own `.claude/settings.json` carries
+The agent reaches secrets through `fnox mcp`, a stdio MCP server, rather than
+through a `Bash` call. Configured in the consuming project's `.mcp.json`:
 
-    "Bash(fnox exec:*)"
+```json
+{
+  "mcpServers": {
+    "fnox": { "command": "fnox", "args": ["--if-missing", "error", "mcp"] }
+  }
+}
+```
 
-which reads as: within this project, fnox may inject the secrets this project
-declares — and it declares one. Nothing global, and nothing in this repo's
-allow-list.
+and in that project's `.claude/settings.json`:
 
-The invocation is `fnox --if-missing error exec -- fizzy ...`; see the probe
-results for why the flag is mandatory rather than advisory.
+```json
+{
+  "permissions": {
+    "allow": ["mcp__fnox__exec"],
+    "deny":  ["mcp__fnox__get_secret"]
+  }
+}
+```
 
-This is narrowing rather than laundering. The classifier blocks `pass-cli`
-because it means unbounded vault access; a project-scoped grant to one declared,
-read-only item is a strictly smaller capability than the one that was blocked.
-Were it the same capability under a different name, it would be a workaround and
-should be rejected as one.
+**The allow-list is the load-bearing half, not the deny.** The server exposes two
+tools today, `exec` and `get_secret`, and a deny-list naming `get_secret` is
+correct until the day fnox ships a third tool — at which point it is available by
+default and nobody notices. Allowing only `exec` means anything new arrives
+unavailable until somebody decides otherwise. The explicit deny stays anyway,
+because it documents which tool is the hazard and why.
 
-The grant bounds which secret, not what the agent does with it. `fnox exec -- env`
-prints the value and the pattern allows it. That is the ceiling from the first
-section restated at the permission layer, and it is why scope, expiry and audit
-carry the weight rather than the pattern string.
+`--if-missing error` sits in the server's own `args` rather than at a call site,
+so it cannot be omitted per-invocation. The probe results show it is mandatory:
+the MCP server has the same fail-open default as the CLI, returning
+`RAN with []` and `isError: false` when the secret could not be resolved.
+
+This removes the Bash grant entirely, and with it the classifier problem that
+started all of this — not by working around the classifier but by not needing the
+`pass-cli` command surface at all. `exec` also takes an argv array and invokes no
+shell unless one is passed explicitly, which is a smaller injection surface than
+a shell string.
+
+`enableAllProjectMcpServers` is unset, so a project's MCP server requires
+approval the first time it is seen. That is a useful gate and should stay unset.
+
+#### What redaction is, and is not
+
+The MCP `exec` tool redacts secret values out of the content it returns. Measured:
+
+    exec ["sh","-c","echo VIA-EXEC: $PROBE_SECRET"]
+      -> "VIA-EXEC: [REDACTED]"
+
+The CLI's `fnox exec` does not do this — the same sentinel came back verbatim on
+both stdout and stderr — so this is a real advantage of the MCP path and the main
+reason to prefer it.
+
+It is literal string matching, and it is not a security control:
+
+    exec ["sh","-c","echo $PROBE_SECRET | rev"]
+      -> "b2a3f9-EULAV-lenitnes"
+
+Redaction stops the accident, not the intent. This is the ceiling from the first
+section, demonstrated rather than asserted: an agent that wants the value can
+have it, and the design's value is scope, expiry and attribution rather than
+containment. Anyone tempted to describe this as a sandbox should read that
+transcript first.
+
+### What lands where
+
+Most of this design is not in this repository, and the implementation plan should
+say so plainly.
+
+**This repo:** the `fnox` mise pin, and the `restore` line placing the agent
+token. Two lines, both gated to `personal`.
+
+**The consuming project:** `fnox.toml` with the secret reference, `.mcp.json`
+with the server, and `.claude/settings.json` with the allow and deny. None of it
+belongs here — a per-project capability configured centrally is the thing this
+design is trying not to build.
+
+**Neither, and done by hand once:** creating the `Agents` vault, creating the
+agent token, granting it, and putting the token in the `Dotfiles` vault so the
+restore line has something to fetch.
 
 ### Containers
 
 Containers get nothing from Proton by design, and the `restore` line sits inside
 the host-only path, so the token never lands there.
 
-The requirement is that `fnox exec` fails loudly in a container. Silently running
-fizzy with `FIZZY_API_TOKEN` unset is the same shape as an empty fetch
-overwriting a good file — a wrong answer delivered with exit 0 — which this repo
-has an explicit rule against.
+The requirement is that the broker fails loudly there. Silently running fizzy
+with `FIZZY_API_TOKEN` unset is the same shape as an empty fetch overwriting a
+good file — a wrong answer delivered with exit 0 — which this repo has an
+explicit rule against.
 
-This is exactly what `--if-missing error` buys, and the probe confirmed the
-default does the wrong thing here: without the flag a container runs fizzy with
-an empty token and exits 0. The container case is therefore not a special path —
-it is the same guard as an expired agent token or a revoked grant.
+This is exactly what `--if-missing error` buys, and the probes confirmed the
+default does the wrong thing on both paths: the CLI runs the command and exits 0,
+and the MCP server returns `RAN with []` with `isError: false`. Because the flag
+lives in the server's `args` rather than at a call site, the container case is
+not a special path at all — it is the same guard as an expired agent token or a
+revoked grant, and there is no per-invocation way to forget it.
 
 ### Testing
 
-bats, reusing the `pass-cli` stub already in `tests/helpers.bash`:
+This repo's testable surface is small, because most of the design lands
+elsewhere. What it can and should cover:
 
-1. Token file absent: non-zero exit, a message naming the file and the fix, and
-   fizzy is never invoked.
-2. Token present: fizzy invoked exactly once, with `FIZZY_API_TOKEN` set.
-3. `PROTON_PASS_AGENT_REASON` set by the caller reaches `pass-cli`; unset falls
-   back to the "unspecified" string, which is a visible state rather than a
-   silent one.
-4. Container: skipped, and says so.
-5. `--if-missing error` is present in the invocation. Mutation: drop the flag and
-   the "token absent" case must go red — with the flag removed, fnox runs the
-   command and exits 0, so a test asserting non-zero on a missing token is
-   precisely what notices.
+1. The agent token is restored on a personal machine, at mode 600.
+2. It is **not** restored on a work machine or in a container — the profile gate
+   on the `restore` call.
+3. A failed or empty fetch leaves any existing token file alone, which is the
+   existing `restore` contract and already covered by
+   `tests/restore-secrets.bats`; the new line needs to be shown to inherit it
+   rather than assumed to.
+4. `dotfiles-secrets-check` includes the new item, which follows from its derived
+   item list but should be asserted rather than trusted.
 
-Each case mutation-proved — revert the guard it covers and confirm that specific
-assertion fails on output, not on a missing symbol. A compile error or an absent
-symbol is not proof.
+Each mutation-proved: revert the guard the case covers and confirm that specific
+assertion fails on output, not on a missing symbol.
+
+What this repo cannot test is the MCP wiring, the deny rule, or fnox's
+fail-closed behaviour — those live in the consuming project. The probe results
+below are the evidence for the parts no test here will cover, which is why they
+are recorded in this document rather than left in a terminal.
 
 ## Probe results
 
@@ -304,29 +369,36 @@ secrets actually resolve. `fnox get <NAME>` does fail closed (`rc=1`) and would
 work as a preflight, but `--if-missing error` is one flag rather than a second
 fetch.
 
-### `fnox exec` does NOT mask secrets
+### Masking: the CLI does not, the MCP tool does
 
-`pass-cli run` masks secrets on stdout and stderr by default. fnox does not. A
-sentinel value stored through fnox appeared verbatim on both streams from the
-child process.
+These differ, and the difference is why the MCP path was chosen.
 
-Nothing in this design depends on masking, which was the reason for treating it
-as unverified rather than designing around it. Two consequences to keep in mind:
-a command that echoes its own configuration will print the token, and if that
-ever matters for a particular consumer, `pass-cli run` is the invocation with
-masking and can be composed underneath.
+The **CLI** `fnox exec` does not mask. A sentinel value came back verbatim on
+both stdout and stderr from the child process, where `pass-cli run` masks by
+default.
+
+The **MCP** `exec` tool redacts the value out of the content it returns
+(`VIA-EXEC: [REDACTED]`). See the delivery section for the measurement, and for
+the demonstration that the redaction is literal string matching and falls to a
+one-word transformation.
+
+The design does not depend on masking either way — that is why it was treated as
+unverified rather than designed around. The MCP redaction is a genuine
+improvement against accidental echo, and nothing more should be claimed for it.
 
 ### Noted for later, deliberately out of scope
 
-fnox 1.35.1 also ships `fnox mcp` ("Start an MCP server that brokers secrets to
-AI agents"), `fnox proxy` ("Broker credentials into destination-scoped HTTPS
-requests") and `fnox lease` (ephemeral credential leases).
+fnox 1.35.1 also ships `fnox proxy` ("Broker credentials into destination-scoped
+HTTPS requests") and `fnox lease` (ephemeral credential leases). `fnox mcp` was
+in this list when the probes were run and has since become the design's primary
+delivery path.
 
-`proxy` in particular is the thing this design's first section says is out of
-scope: it would let an agent make authenticated requests without ever holding the
-credential, which raises the ceiling rather than documenting it. That is a
-separate design and should not be folded in here — but it means the ceiling is
-raisable later without replacing any of this.
+`proxy` is the thing the first section says is out of scope: it would let an
+agent make authenticated HTTPS requests without ever holding the credential,
+which raises the ceiling rather than documenting it. It is the natural next step
+if the ceiling ever needs raising, and it does not invalidate anything here — the
+`Agents` vault, the scoped agent token, and the audit trail all carry over. It
+should be its own design, not an amendment to this one.
 
 ## Rejected alternatives
 
@@ -343,6 +415,13 @@ Strictly worse once the Proton agent feature is in play.
 provider means values stay in Proton Pass and fnox is a reference and injection
 layer over it. Had fnox required its own store, it would have been rejected
 under the single-store rule.
+
+**The CLI path: `fnox --if-missing error exec -- fizzy`, with a `Bash(fnox exec:*)`
+grant.** Viable, and simpler — no MCP config, and no `get_secret` tool to
+remember to deny, so forgetting something means it stops working rather than
+quietly leaking. Not chosen because it needs a Bash grant, and because the CLI
+`exec` does no redaction at all, so an accidental echo goes straight into the
+transcript. Recorded as the fallback if the MCP wiring proves awkward.
 
 **A vault-scoped grant on the `Dotfiles` vault.** Rejected for the reason given
 under "The Agents vault": it contains the `bootstrap PAT`, so the grant is
