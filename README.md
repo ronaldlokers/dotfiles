@@ -529,8 +529,35 @@ chezmoi execute-template '{{ .name }}'   # what am I called?
 
 A machine set up before this existed has no `name` key until it runs `chezmoi
 init` once — until then the template above fails with `map has no entry for key
-"name"`. Nothing else reads the key yet; it is a record of the answer, not a
-switch.
+"name"`, and everything below simply skips.
+
+**Where the name is applied.** `run_after_26-apply-machine-name.sh.tmpl` sets
+the system hostname and the Tailscale device name; a `modify_` script sets
+LocalSend's advertised alias, so the machine stops announcing itself to the LAN
+as "Neat Avocado". All three are personal hosts only — the roster is a personal
+convention, and a work machine's hostname belongs to whoever issued it.
+
+One rule decides whether a name is set or merely reported:
+
+| Live name | What happens |
+| --- | --- |
+| not on the roster | an installer's leftover (`archlinux`, `localhost`); replaced |
+| on the roster, matches `name` | nothing |
+| on the roster, differs from `name` | somebody chose it; warned about, never renamed |
+
+So renaming is a first-setup action and nothing else. An apply on an established
+machine can only warn, which is the point: a stale `chezmoi.toml` that could
+rename a running machine on every apply is the failure that shape rules out. To
+rename deliberately, use `hostnamectl set-hostname` and `tailscale set
+--hostname=` yourself, then re-run `chezmoi init` so the stored answer follows.
+
+Renaming on the tailnet also moves the MagicDNS name that `moshi-hook host setup
+--host` was pointed at — see [Moshi](#moshi) before doing it.
+
+LocalSend's preferences hold that app's RSA private key, so they are edited in
+place by a `modify_` script and never copied into this repo; the alias is the
+only key it touches, and without `jq` or a recorded name it returns the file
+untouched.
 
 The roster is advisory, and the pick-list does not make it otherwise: it limits
 what can be chosen, not what can arrive. An unattended init takes the hostname

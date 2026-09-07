@@ -1618,9 +1618,43 @@ cannot be provisioned. That trades a cosmetic problem — a host called
 the machines least able to absorb it, the ones being set up for the first time.
 `warnf` says the same thing and still writes the config.
 
-**The key is a record, nothing reads it.** No template gates on `.name` today,
-and that was understood when it went in — it is written down so the answer
-survives, not because anything branches on it. A later reader finding an unused
-data key should know it is deliberate rather than a leftover from a gate that
-got deleted. If something does come to depend on it, note here what and why,
-since an unread key and a load-bearing one deserve different care.
+**Set what is still a default, warn about what somebody chose.** The name is
+applied in three places — the system hostname, the Tailscale device name, and
+LocalSend's advertised alias — and the interesting decision is not where but
+when. A live name that is not on the roster is an installer's leftover that
+nobody meant, so it is replaced; a live name that *is* on the roster was picked
+by a person, so a disagreement with `chezmoi.toml` is reported and nothing
+moves.
+
+That single rule is why there is no state file recording "has this machine been
+named yet". The machine already carries the answer — a roster name means yes —
+and a state file would add a second place for the record and the reality to
+disagree, plus re-run the rename on any machine whose state file was lost. It is
+also what keeps renaming a first-setup action: an apply on an established
+machine can only warn, so a stale `chezmoi.toml` can never rename a running
+machine out from under someone. Renaming on the tailnet is the expensive half,
+because the MagicDNS name is what `moshi-hook host setup --host` was pointed at.
+
+**LocalSend is a `modify_` script because the file holds a private key.** Its
+`shared_preferences.json` carries the app's RSA private key, its paired devices
+and its receive history alongside the alias. Managing it as a normal file would
+put that key in this repo, which the first rule forbids and gitleaks would
+catch; a `modify_` script is piped the current contents and its stdout becomes
+the file, so the key is read and written on the machine and never enters the
+source tree. Same mechanism as `dot_claude/modify_settings.json`, for a
+different reason — that one is about not reverting another program's writes,
+this one is about not acquiring a secret.
+
+Its refusals all return the input unchanged, because the failure modes are not
+symmetric: an alias that stays wrong until the next apply costs nothing, and a
+corrupted preferences file costs the device its identity and every pairing.
+Worth knowing before someone tidies it: the explicit `command -v jq` refusal is
+redundant. Mutating it away leaves the tests green, because a missing jq also
+fails the `jq -e .` validity check and refuses there instead. It is kept for
+legibility, not because it is load-bearing.
+
+**The key is a record everywhere else.** Nothing *gates* on `.name` — no
+profile, no ignore rule, no tool list. It is read by the three appliers above
+and by nothing that decides what gets installed, which is deliberate: a name is
+an identity, not a capability, and the moment it starts selecting behaviour it
+becomes a second role with none of the role's reasoning behind it.

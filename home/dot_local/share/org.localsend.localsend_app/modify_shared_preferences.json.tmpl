@@ -1,0 +1,60 @@
+#!/bin/sh
+# chezmoi modify_ script for LocalSend's preferences.
+#
+# LocalSend shows other devices a name — its "alias" — and that name should be
+# the one on the machine's door rather than the random "Neat Avocado" it makes
+# up on first launch. This sets `flutter.ls_alias` to the name chezmoi recorded.
+#
+# It has to be a modify_ script, and not because of formatting. THIS FILE HOLDS
+# LOCALSEND'S RSA PRIVATE KEY, under `flutter.ls_security_context`, alongside
+# the receive history and the paired-device list. A plain managed file would
+# mean committing that key to this repo, which the repo's first rule forbids and
+# gitleaks would catch. chezmoi pipes the target's current contents through this
+# script at apply time and takes stdout as the new file, so the key is read and
+# written on the machine and never exists in the source tree. Everything except
+# the one key this script sets passes through untouched.
+#
+# Every refusal prefers a stale alias to a damaged file, and passes the input
+# straight back out: no recorded name, no jq, input that is not JSON. Corrupting
+# this file costs the device its identity and its pairings, which is far worse
+# than an alias that stays wrong until the next apply.
+#
+# Note for anyone tempted to delete the `command -v jq` test as redundant: it
+# IS redundant, and deliberately so. Mutating it away leaves every test passing,
+# because a missing jq also makes the `jq -e .` validity check below fail, which
+# refuses in the same way. It is kept because a refusal that reads as intended
+# beats one that happens to fall out of another check — but it is not what
+# stands between a jq-less first apply and a mangled key, so do not treat it as
+# load-bearing either.
+#
+# Output is compact and newline-free because that is how LocalSend itself writes
+# the file. It must also be a fixed point — chezmoi runs this on every apply and
+# CI asserts a second apply produces no drift — and `jq -c` of `jq -c` output is
+# byte-identical, key order included.
+set -eu
+
+current="$(cat)"
+
+# shellcheck disable=SC1083
+name={{ dig "name" "" . | quote }}
+
+if [ -z "$name" ] || ! command -v jq >/dev/null 2>&1; then
+	printf '%s' "$current"
+	exit 0
+fi
+
+# Empty input means the target does not exist yet: LocalSend has never been
+# launched on this machine. Seeding the alias into an otherwise empty object is
+# better than waiting for a first launch that would name it after a fruit.
+if [ -z "$current" ]; then
+	current='{}'
+fi
+
+# Anything that is not JSON is left exactly as found. A half-written file from a
+# LocalSend that was killed mid-save is not something to overwrite confidently.
+if ! printf '%s' "$current" | jq -e . >/dev/null 2>&1; then
+	printf '%s' "$current"
+	exit 0
+fi
+
+printf '%s' "$current" | jq -cj --arg alias "$name" '.["flutter.ls_alias"] = $alias'

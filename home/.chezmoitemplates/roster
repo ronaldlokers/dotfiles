@@ -1,0 +1,14 @@
+{{- /* The machine-name roster, space separated, in one place because two
+       consumers need it and a disagreement between them is silent.
+
+       .chezmoi.toml.tmpl splits it into a list for the init pick-list;
+       .chezmoiscripts/run_after_26-apply-machine-name.sh.tmpl matches against
+       it to tell an installer's default hostname (rename it) from a name
+       somebody chose (leave it alone). If those two ever disagreed, a name the
+       prompt offers would read as an installer default and get overwritten on
+       the next apply.
+
+       Names are Police Academy characters. README.md tracks which are taken —
+       that is prose, not state, so adding one here does not need it, but
+       leaving the README stale defeats the point of having a roster. */ -}}
+blankes callahan copeland fackler harris hightower hooks jones lassard mahoney proctor sweetchuck tackleberry zed

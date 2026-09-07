@@ -32,7 +32,7 @@
        machine already called something else is a naming lapse, and refusing to
        configure it would turn a cosmetic problem into an unusable machine.
        README.md says which roster names are still free. */ -}}
-{{- $roster := list "blankes" "callahan" "copeland" "fackler" "harris" "hightower" "hooks" "jones" "lassard" "mahoney" "proctor" "sweetchuck" "tackleberry" "zed" -}}
+{{- $roster := splitList " " (trim (includeTemplate "roster" .)) -}}
 {{- $name := .chezmoi.hostname -}}
 {{- if and (hasKey . "name") .name -}}
 {{-   $name = .name -}}

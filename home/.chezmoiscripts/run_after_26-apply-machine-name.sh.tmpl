@@ -1,0 +1,130 @@
+#!/bin/sh
+# Give a machine its name — once, on the way in.
+#
+# `chezmoi init` asks which roster name this machine is and stores the answer.
+# This script is what makes the answer mean something: it sets the system
+# hostname and the Tailscale device name to match, so the name is not merely
+# recorded in chezmoi.toml but is what the machine actually answers to.
+#
+# The whole design is in one rule: SET WHAT IS STILL A DEFAULT, WARN ABOUT WHAT
+# SOMEBODY CHOSE. A live name that is not on the roster is an installer's
+# leftover — `archlinux`, `localhost` — and nobody meant it, so it is replaced.
+# A live name that IS on the roster was picked by a person, and if it disagrees
+# with the stored answer this script says so and changes nothing.
+#
+# That distinction is the reason there is no state file. "Have we named this
+# machine yet" is not a fact that needs recording, because the machine already
+# carries the answer: a roster name means yes. A state file would add a way for
+# the record and the reality to disagree, and would re-run the rename on any
+# machine whose state file was lost.
+#
+# Renaming is therefore a first-setup action and nothing else. An apply on an
+# established machine can only ever warn — which matters, because a stale
+# chezmoi.toml that could rename a running machine on every apply is precisely
+# the failure this shape rules out.
+set -eu
+
+# Containers have no hostname worth setting — theirs comes from the runtime and
+# changes per container — and no tailnet to be named on.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ]; then
+	exit 0
+fi
+
+# Personal machines only. The roster is a personal convention; a work machine's
+# hostname usually belongs to whoever issued it, and renaming it from a
+# dotfiles apply would be the wrong kind of surprise.
+# shellcheck disable=SC1083
+is_personal={{ includeTemplate "is-personal" . }}
+# shellcheck disable=SC2154
+if [ "$is_personal" != "true" ]; then
+	exit 0
+fi
+
+# A machine initialised before the name prompt existed has no `name` key at all,
+# and rendering `.name` unconditionally would abort the apply for it. Absent is
+# a normal state, not a fault: it means `chezmoi init` has not been re-run.
+# shellcheck disable=SC1083
+name={{ dig "name" "" . | quote }}
+if [ -z "$name" ]; then
+	echo "[machine-name] no name recorded; run \`chezmoi init\` to choose one." >&2
+	exit 0
+fi
+
+# shellcheck disable=SC1083
+roster='{{ includeTemplate "roster" . | trim }}'
+
+# Padded both sides so a substring cannot match: without it a roster holding
+# `hooks` would answer for a hostname of `hook`. Same reasoning, same shape as
+# the profile gates.
+on_roster() {
+	case " $roster " in
+	*" $1 "*) return 0 ;;
+	esac
+	return 1
+}
+
+# Every mutation goes through sudo -n. A password prompt here would block an
+# apply that is often unattended, and naming the machine is not worth stalling
+# the rest of the run for — the next interactive apply will do it.
+can_sudo() {
+	sudo -n true 2>/dev/null
+}
+
+# --- system hostname ---------------------------------------------------------
+
+if command -v hostnamectl >/dev/null 2>&1; then
+	live="$(hostnamectl --static 2>/dev/null || true)"
+
+	if [ "$live" = "$name" ]; then
+		: # already named; nothing to do
+	elif on_roster "$live"; then
+		echo "[machine-name] hostname is '$live' but chezmoi.toml says '$name'." >&2
+		echo "[machine-name] Both are roster names, so this was deliberate; not renaming." >&2
+		echo "[machine-name] Re-run \`chezmoi init\` to store '$live', or rename by hand." >&2
+	elif ! can_sudo; then
+		echo "[machine-name] would set hostname to '$name' but sudo needs a password; skipping." >&2
+	elif sudo -n hostnamectl set-hostname "$name" 2>/dev/null; then
+		echo "[machine-name] hostname set to '$name' (was '$live')." >&2
+	else
+		echo "[machine-name] could not set hostname to '$name'; leaving '$live'." >&2
+	fi
+fi
+
+# --- Tailscale device name ---------------------------------------------------
+
+if ! command -v tailscale >/dev/null 2>&1; then
+	exit 0
+fi
+
+# Read rather than assume: a machine that has never run `tailscale up` has no
+# device name to compare against, and this script is not the place to join a
+# tailnet. An empty answer means not-logged-in, which is a skip, not a fault.
+ts_live="$(tailscale status --json 2>/dev/null | sed -n 's/.*"HostName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+
+if [ -z "$ts_live" ]; then
+	echo "[machine-name] not on the tailnet; leaving the device name alone." >&2
+	exit 0
+fi
+
+if [ "$ts_live" = "$name" ]; then
+	exit 0
+fi
+
+if on_roster "$ts_live"; then
+	echo "[machine-name] tailnet name is '$ts_live' but chezmoi.toml says '$name'." >&2
+	echo "[machine-name] Both are roster names, so this was deliberate; not renaming." >&2
+	echo "[machine-name] A tailnet rename also moves the MagicDNS name that" >&2
+	echo "[machine-name] \`moshi-hook host setup --host\` was pointed at." >&2
+	exit 0
+fi
+
+if ! can_sudo; then
+	echo "[machine-name] would set the tailnet name to '$name' but sudo needs a password; skipping." >&2
+	exit 0
+fi
+
+if sudo -n tailscale set --hostname="$name" 2>/dev/null; then
+	echo "[machine-name] tailnet name set to '$name' (was '$ts_live')." >&2
+else
+	echo "[machine-name] could not set the tailnet name to '$name'; leaving '$ts_live'." >&2
+fi
