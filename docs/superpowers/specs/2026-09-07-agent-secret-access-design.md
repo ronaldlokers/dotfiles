@@ -217,6 +217,9 @@ which reads as: within this project, fnox may inject the secrets this project
 declares — and it declares one. Nothing global, and nothing in this repo's
 allow-list.
 
+The invocation is `fnox --if-missing error exec -- fizzy ...`; see the probe
+results for why the flag is mandatory rather than advisory.
+
 This is narrowing rather than laundering. The classifier blocks `pass-cli`
 because it means unbounded vault access; a project-scoped grant to one declared,
 read-only item is a strictly smaller capability than the one that was blocked.
@@ -238,6 +241,11 @@ fizzy with `FIZZY_API_TOKEN` unset is the same shape as an empty fetch
 overwriting a good file — a wrong answer delivered with exit 0 — which this repo
 has an explicit rule against.
 
+This is exactly what `--if-missing error` buys, and the probe confirmed the
+default does the wrong thing here: without the flag a container runs fizzy with
+an empty token and exits 0. The container case is therefore not a special path —
+it is the same guard as an expired agent token or a revoked grant.
+
 ### Testing
 
 bats, reusing the `pass-cli` stub already in `tests/helpers.bash`:
@@ -249,29 +257,76 @@ bats, reusing the `pass-cli` stub already in `tests/helpers.bash`:
    back to the "unspecified" string, which is a visible state rather than a
    silent one.
 4. Container: skipped, and says so.
+5. `--if-missing error` is present in the invocation. Mutation: drop the flag and
+   the "token absent" case must go red — with the flag removed, fnox runs the
+   command and exits 0, so a test asserting non-zero on a missing token is
+   precisely what notices.
 
 Each case mutation-proved — revert the guard it covers and confirm that specific
 assertion fails on output, not on a missing symbol. A compile error or an absent
 symbol is not proof.
 
-## Open questions
+## Probe results
 
-Both are ten-second probes at implementation time, and both must be answered
-before anything is built on top of them.
+Both open questions were answered on 2026-09-07 against fnox 1.35.1, run
+ephemerally through `mise x` with a scratch age provider so that neither the
+vault nor `$HOME` was involved.
 
-**Does `fnox exec` fail closed?** Its documentation does not say whether a
-provider failure aborts or runs the command with the variable unset. Probe:
-point a reference at a deliberately bogus `pass://` URI and run
-`fnox exec -- env`. If it runs the command anyway, this design needs a guard in
-front of it, and the container requirement above becomes load-bearing rather
-than incidental.
+### `fnox exec` fails OPEN, and this is the load-bearing finding
 
-**Does `fnox exec` mask secrets on stdout and stderr?** `pass-cli run` does by
-default; fnox's `exec` page does not mention masking. The same probe answers it:
-point a reference at a throwaway item and see whether the value appears in the
-output. If it does not mask, either compose with `pass-cli run` for commands
-likely to echo their configuration, or accept it and note that nothing in the
-design depends on masking.
+With a provider that cannot resolve, `fnox exec` logs a warning, runs the command
+anyway with the variable unset, and exits 0:
+
+    WARN fnox_core::secret_resolver: Error resolving secret 'PROBE_SECRET': ...
+    COMMAND-RAN
+    var=[]
+    rc=0
+
+That is a wrong answer delivered with exit 0 — the same shape as an empty fetch
+overwriting a good secret, which this repo has an explicit rule against.
+
+The cause is a default, not a limitation. `--if-missing` is a global flag taking
+`error`, `warn` or `ignore`, and the default behaves as `warn`. Measured:
+
+| invocation | broken provider | good provider |
+| --- | --- | --- |
+| `fnox exec` | runs, `rc=0` | runs, `rc=0` |
+| `fnox --if-missing error exec` | **does not run, `rc=1`** | runs, `rc=0` |
+
+**So every invocation in this design must carry `--if-missing error`.** It is not
+a nicety; without it the container case degrades to running fizzy with an empty
+token and reporting success, and so does an expired agent token.
+
+`fnox check` is **not** a substitute, and this is worth recording because it
+looks like one. Against the same broken provider it prints "✓ Configuration is
+healthy" and exits 0 — it validates the shape of the config, not whether the
+secrets actually resolve. `fnox get <NAME>` does fail closed (`rc=1`) and would
+work as a preflight, but `--if-missing error` is one flag rather than a second
+fetch.
+
+### `fnox exec` does NOT mask secrets
+
+`pass-cli run` masks secrets on stdout and stderr by default. fnox does not. A
+sentinel value stored through fnox appeared verbatim on both streams from the
+child process.
+
+Nothing in this design depends on masking, which was the reason for treating it
+as unverified rather than designing around it. Two consequences to keep in mind:
+a command that echoes its own configuration will print the token, and if that
+ever matters for a particular consumer, `pass-cli run` is the invocation with
+masking and can be composed underneath.
+
+### Noted for later, deliberately out of scope
+
+fnox 1.35.1 also ships `fnox mcp` ("Start an MCP server that brokers secrets to
+AI agents"), `fnox proxy` ("Broker credentials into destination-scoped HTTPS
+requests") and `fnox lease` (ephemeral credential leases).
+
+`proxy` in particular is the thing this design's first section says is out of
+scope: it would let an agent make authenticated requests without ever holding the
+credential, which raises the ceiling rather than documenting it. That is a
+separate design and should not be folded in here — but it means the ceiling is
+raisable later without replacing any of this.
 
 ## Rejected alternatives
 
