@@ -29,7 +29,7 @@ set -eu
 # below. It was three, and they had already drifted: the usage text listed six
 # checks while the dispatch knew seven.
 all_checks="chezmoi-pins vault-name container-markers pat-expiry graphify-pin
-pat-path shellcheck-targets"
+pat-path shellcheck-targets runbook-flags"
 
 is_check() {
 	for _ic in $all_checks; do
@@ -255,6 +255,63 @@ check_graphify_pin() {
 	fi
 }
 
+# --- the flags the runbooks tell you to type ---------------------------------
+# The recovery runbooks are the only documents here that are never executed:
+# every other path in this repo runs daily, on a timer, or in CI, while
+# README's "Rotating the signing key" and docs/revocation.md are read once, in
+# an emergency, months after they were written. So they rot silently, and the
+# moment you find out is the worst possible one.
+#
+# Two had rotted by 2026-09-07. `pass-cli pat delete --personal-access-token-name`
+# — step one of "the bootstrap PAT leaked", the command whose whole job is to
+# revoke a token that reads the entire vault — fails with `error: unexpected
+# argument`, because delete takes an id and only `renew` takes a name. And the
+# key-rotation one-liner used `ssh-keygen -f /dev/stdout`, which blocks on an
+# undocumented `Overwrite (y/n)?` prompt and then exits 255.
+#
+# This closes the first class: every `pass-cli` flag the docs name has to exist
+# in that subcommand's own `--help`. Skipped when pass-cli is absent, which is
+# the CI case — this is a local check, and a local check that runs is worth more
+# than a CI check that cannot.
+check_runbook_flags() {
+	command -v pass-cli >/dev/null 2>&1 || return 0
+	for doc in "$root/README.md" "$root/docs/revocation.md"; do
+		[ -r "$doc" ] || continue
+		# Every `pass-cli ...` invocation carrying at least one long flag.
+		#
+		# Through a file rather than a pipe, and that is the whole reason this
+		# is not two lines shorter: `grep | while read` runs the loop in a
+		# subshell, so `fail` sets its rc there and the parent still exits 0.
+		# The check printed FAIL and passed. Caught by mutating the doc back to
+		# the broken flag and reading the exit status rather than the output.
+		matches="${TMPDIR:-/tmp}/check-agreement-runbook.$$"
+		grep -hoE 'pass-cli [a-z-]+( [a-z-]+)* --[a-z-]+([ =][^ `]*)?' \
+			"$doc" >"$matches" 2>/dev/null || true
+		while read -r line; do
+			sub=""
+			flags=""
+			for tok in $line; do
+				case "$tok" in
+				pass-cli) ;;
+				--*) flags="$flags ${tok%%=*}" ;;
+				-*) ;;
+				*) [ -z "$flags" ] && sub="$sub $tok" ;;
+				esac
+			done
+			[ -n "$sub" ] || continue
+			# shellcheck disable=SC2086
+			help="$(pass-cli $sub --help 2>&1 || true)"
+			for f in $flags; do
+				case "$help" in
+				*"$f"*) ;;
+				*) fail "$doc says \`pass-cli$sub $f\` but $f is not in that subcommand's --help" ;;
+				esac
+			done
+		done <"$matches"
+		rm -f "$matches"
+	done
+}
+
 # --- the cached bootstrap PAT's path ----------------------------------------
 # proton-ssh-load writes it; dotfiles-secrets-check now reads it to establish a
 # session before calling its absence a fault. Two scripts, one path, and a
@@ -383,6 +440,7 @@ for want in "$@"; do
 	graphify-pin) check_graphify_pin ;;
 	pat-path) check_pat_path ;;
 	shellcheck-targets) check_shellcheck_targets ;;
+	runbook-flags) check_runbook_flags ;;
 	*)
 		echo "check-agreement: unknown check: $want" >&2
 		usage >&2
