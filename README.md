@@ -503,6 +503,74 @@ To change a machine's role, re-run `chezmoi init` and answer again.
 `docs/design-notes.md` has the reasoning, including why the split cannot live in
 mise itself.
 
+### Names
+
+Machines are named after Police Academy characters. `chezmoi init` asks for one,
+lists the roster in the question, and stores the answer in `chezmoi.toml` as
+`name`. The default is this machine's hostname. An unattended apply — CI, `mise
+run verify`, `devpod up` — never asks at all and keeps the hostname.
+
+You type the name rather than picking it from a menu, and that is deliberate:
+chezmoi's choice prompt matches on a prefix, so with names like `harris`,
+`hightower` and `hooks` one keystroke silently selects the wrong machine name.
+
+| Name | |
+| --- | --- |
+| `mahoney` | in use |
+| `sweetchuck` | in use |
+| `blankes` `callahan` `copeland` `fackler` `harris` `hightower` `hooks` `jones` `lassard` `proctor` `tackleberry` `zed` | free |
+
+Only host machines take a roster name. Tagged devices (`homelab-prod-router`,
+`tailscale-operator`) and phones and tablets keep the names their platforms give
+them.
+
+```sh
+chezmoi init                             # ask, or re-ask, and store the answer
+chezmoi execute-template '{{ .name }}'   # what am I called?
+```
+
+A machine set up before this existed has no `name` key until it runs `chezmoi
+init` once — until then the template above fails with `map has no entry for key
+"name"`, and everything below simply skips.
+
+**Where the name is applied.** `run_after_26-apply-machine-name.sh.tmpl` sets
+the system hostname and the Tailscale device name; a `modify_` script sets
+LocalSend's advertised alias, so the machine stops announcing itself to the LAN
+as "Neat Avocado". All three are personal hosts only — the roster is a personal
+convention, and a work machine's hostname belongs to whoever issued it.
+
+One rule decides whether a name is set or merely reported:
+
+| Live name | What happens |
+| --- | --- |
+| not on the roster | an installer's leftover (`archlinux`, `localhost`); replaced |
+| on the roster, matches `name` | nothing |
+| on the roster, differs from `name` | somebody chose it; warned about, never renamed |
+
+So renaming is a first-setup action and nothing else. An apply on an established
+machine can only warn, which is the point: a stale `chezmoi.toml` that could
+rename a running machine on every apply is the failure that shape rules out. To
+rename deliberately, use `hostnamectl set-hostname` and `tailscale set
+--hostname=` yourself, then re-run `chezmoi init` so the stored answer follows.
+
+Renaming on the tailnet also moves the MagicDNS name that `moshi-hook host setup
+--host` was pointed at — see [Moshi](#moshi) before doing it.
+
+LocalSend's preferences hold that app's RSA private key, so they are edited in
+place by a `modify_` script and never copied into this repo; the alias is the
+only key it touches, and without `jq` or a recorded name it returns the file
+untouched.
+
+The roster is advisory. An unattended init takes the hostname without being
+asked anything, and `chezmoi.toml` can be edited by hand, so any name that is
+not on the roster warns once and applies anyway — a machine already
+called something else is a cosmetic problem, and refusing to configure it would
+make it a real one.
+
+Renaming the machine itself is `hostnamectl set-hostname` plus the Tailscale
+admin console, both outside these dotfiles; re-run `chezmoi init` afterwards so
+the stored answer follows.
+
 ## Keybindings
 
 Both shells get the same set.

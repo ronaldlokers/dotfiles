@@ -1582,3 +1582,83 @@ reports and exits 0 instead of failing outright: a non-zero exit from a
 Zen profile is not worth taking the rest of the machine's provisioning down
 with it. On such a machine the fresh-install path just costs one extra apply,
 after Zen has been launched by hand once.
+
+## Machine names
+
+Names come from Police Academy — `mahoney`, `sweetchuck` — and the roster lives
+in `.chezmoi.toml.tmpl` with the free ones listed in `README.md`. Two decisions
+in there are worth keeping, because both cut against how the neighbouring
+prompts work.
+
+**The default is detected, not asked.** `role` is asked because nothing can
+detect it; the comment above it in the same file says so. A name is the
+opposite — `.chezmoi.hostname` already answers it — so the prompt defaults to
+the hostname rather than to a fixed value, and an unattended apply takes that
+default without asking. This matters more than it looks: CI, `mise run verify`
+and `devpod up` all render this template, and a fixed default would have every
+one of them assert a name that belongs to some other machine. The prompt earns
+its place only for the case detection genuinely cannot cover, a fresh install
+still carrying the hostname its installer picked.
+
+**The roster is listed in the question, not offered as a menu.**
+`promptChoiceOnce` was the obvious way to "give a list to choose from" and it
+was tried, on 2026-09-07, and reverted the same day. chezmoi's choice prompt
+prints the options slash-separated on a single line and then matches on a
+PREFIX. With fourteen names sharing initials — `harris`/`hightower`/`hooks`,
+`callahan`/`copeland` — one keystroke resolves to whichever it reaches first and
+the prompt moves on, with nothing shown to say which was taken. Being silently
+assigned the wrong name defeats the entire purpose of naming a machine, and it
+is a worse failure than having to type nine characters.
+
+So it is `promptStringOnce` with the roster interpolated into the question, and
+the off-roster warn is what catches a typo. Anyone re-attempting a menu should
+know the constraint is chezmoi's prompt toolkit, not the idea.
+
+**Off-roster warns rather than fails.** `fail` was the obvious reading of "an
+allowed list" and it is the wrong one. `.chezmoi.toml.tmpl` is the config
+template: if it errors, `chezmoi init` produces no config at all and the machine
+cannot be provisioned. That trades a cosmetic problem — a host called
+`webserver01` — for an unusable machine, and it would fire hardest on exactly
+the machines least able to absorb it, the ones being set up for the first time.
+`warnf` says the same thing and still writes the config.
+
+**Set what is still a default, warn about what somebody chose.** The name is
+applied in three places — the system hostname, the Tailscale device name, and
+LocalSend's advertised alias — and the interesting decision is not where but
+when. A live name that is not on the roster is an installer's leftover that
+nobody meant, so it is replaced; a live name that *is* on the roster was picked
+by a person, so a disagreement with `chezmoi.toml` is reported and nothing
+moves.
+
+That single rule is why there is no state file recording "has this machine been
+named yet". The machine already carries the answer — a roster name means yes —
+and a state file would add a second place for the record and the reality to
+disagree, plus re-run the rename on any machine whose state file was lost. It is
+also what keeps renaming a first-setup action: an apply on an established
+machine can only warn, so a stale `chezmoi.toml` can never rename a running
+machine out from under someone. Renaming on the tailnet is the expensive half,
+because the MagicDNS name is what `moshi-hook host setup --host` was pointed at.
+
+**LocalSend is a `modify_` script because the file holds a private key.** Its
+`shared_preferences.json` carries the app's RSA private key, its paired devices
+and its receive history alongside the alias. Managing it as a normal file would
+put that key in this repo, which the first rule forbids and gitleaks would
+catch; a `modify_` script is piped the current contents and its stdout becomes
+the file, so the key is read and written on the machine and never enters the
+source tree. Same mechanism as `dot_claude/modify_settings.json`, for a
+different reason — that one is about not reverting another program's writes,
+this one is about not acquiring a secret.
+
+Its refusals all return the input unchanged, because the failure modes are not
+symmetric: an alias that stays wrong until the next apply costs nothing, and a
+corrupted preferences file costs the device its identity and every pairing.
+Worth knowing before someone tidies it: the explicit `command -v jq` refusal is
+redundant. Mutating it away leaves the tests green, because a missing jq also
+fails the `jq -e .` validity check and refuses there instead. It is kept for
+legibility, not because it is load-bearing.
+
+**The key is a record everywhere else.** Nothing *gates* on `.name` — no
+profile, no ignore rule, no tool list. It is read by the three appliers above
+and by nothing that decides what gets installed, which is deliberate: a name is
+an identity, not a capability, and the moment it starts selecting behaviour it
+becomes a second role with none of the role's reasoning behind it.

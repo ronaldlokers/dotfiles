@@ -22,6 +22,10 @@ ghostty.terminfo
 # a devcontainer working on this repo can still run it by hand.
 .config/omarchy/plugins/lokilabs.ssh-agent
 .config/omarchy/plugins/lokilabs.workspace
+# LocalSend's preferences. A container has no LocalSend and no LAN identity to
+# announce, and the file holds the app's private key — nothing that should be
+# materialised somewhere it serves no purpose.
+.local/share/org.localsend.localsend_app/shared_preferences.json
 {{ end -}}
 {{ if or (eq (includeTemplate "is-container" .) "true") (eq (includeTemplate "is-devpod-platform" .) "false") -}}
 # The devpod wrapper only means something where the binary it fronts is
@@ -66,6 +70,10 @@ ghostty.terminfo
 # machine it is a command that does the wrong thing rather than nothing, which
 # is worse than its absence.
 .local/bin/repos-sync
+# LocalSend's alias, for the same reason run_after_26 skips a work machine: the
+# roster is a personal convention, and announcing a Police Academy name to a
+# work LAN is the wrong kind of surprise.
+.local/share/org.localsend.localsend_app/shared_preferences.json
 # The monitor rule is a catch-all pinned to the scale one 34" ultrawide wants,
 # which is a fact about a desk rather than about Omarchy. A work machine has
 # different displays, so it keeps Omarchy's `scale = "auto"` and lets the bar
