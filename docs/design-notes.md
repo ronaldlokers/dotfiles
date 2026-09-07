@@ -1465,6 +1465,64 @@ declared-but-disabled rather than removed, so its marketplace entry survives and
 re-enabling is one line. `tests/modify-settings.bats` pins both halves of that,
 since nothing else would notice the swap reverting.
 
+## The lokilabs theme
+
+The palette is derived, not chosen. lokilabs.nl carries its own design system
+in `.impeccable/design.json` — tokens and tonal ramps — and the site's ANSI code
+blocks are written with truecolor escapes, so most of the terminal set already
+existed somewhere authoritative. Ember Light `#f67d51` is the accent because it
+is the site's own accent; the lavender and green are the exact values those
+code blocks use. Only yellow and cyan are invented, and only because the system
+has no token for either: both sit on axes that already exist (the Paper warm
+neutral, Violet Tint 4) at the chroma the rest of the system uses, rather than
+being picked to look right next to the others.
+
+Ground and accent are calibrated to the boot-log wallpaper the theme ships
+with. Its field runs `#351a5a` to `#562c8b` and its prompt glyph is Ember Light
+unmodified, so `background` sits one step under the wallpaper's darkest field.
+That is what makes windows read as resting on the wallpaper rather than being
+punched out of it, and it is why the ground is not simply the darkest value
+available.
+
+Three files are hand-authored that Omarchy would otherwise generate, each
+because the generated one was wrong for this palette specifically:
+
+- `btop.theme` — the stock template runs every gauge cyan to blue to magenta,
+  which in a violet system is three shades of the same colour.
+- `shell.bar.toml` — the bar takes the site's Deep Violet nav band rather than
+  the terminal ground, so bar and desktop agree instead of the bar looking like
+  a docked terminal.
+- the Hyprland border keys in `colors.toml` — the site never uses a flat fill
+  where a gradient belongs, and the generated theme has no way to express one.
+
+The wallpaper is JPEG at q92 with 4:4:4 chroma: 49.4 dB PSNR against the PNG
+original, 243 KB against 1.1 MB. A gradient is the worst possible thing to
+store losslessly in git, because no future delta will ever compress it and
+every clone carries the megabyte forever.
+
+### What a review found afterwards
+
+Two things this derivation did not check, both measured on 2026-09-06:
+
+`red #e9622e` and `orange #f67d51` are **0.7° apart in hue**. Both trace
+honestly back to the Ember ramp, which is how they got here — but they are the
+two colours a diff, a test runner and `btop` use to mean different things, and
+only lightness separates them. Deriving each colour correctly in isolation does
+not make the set legible as a set; that is a separate question, and it was not
+asked. Green sits 98° clear of both, so the failure is specific to red-versus-
+orange rather than general.
+
+Two pairs that carry meaning also fall below 4.5:1: the bar's active colour
+`#f67d51` on the bar ground `#562c8b` at **3.74**, and `muted #967bbd` on
+`background #2f1950` at **4.26** — the latter being comment text in every
+terminal on the machine. `looknfeel.lua` then sets `dim_inactive` with
+`dim_strength = 0.15`, so an unfocused window's 4.26 becomes roughly 3.6, and
+the unfocused window is the one being read out of the corner of an eye.
+
+Neither is an argument against deriving the palette from the site. Both are an
+argument that "traceable to a token" and "legible on this ground at this size"
+are different claims, and only the first one was made.
+
 ## Zen Browser preferences
 
 `run_after_24-seed-zen-prefs.sh.tmpl` writes a fixed list of Zen preferences
