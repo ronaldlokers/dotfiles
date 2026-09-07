@@ -505,12 +505,14 @@ mise itself.
 
 ### Names
 
-Machines are named after Police Academy characters. `chezmoi init` offers the
-roster as a pick-list and stores the answer in `chezmoi.toml` as `name`. The
-highlighted default is this machine's hostname when that is already a roster
-name, and the first free name when it is not — a hostname the picker cannot
-offer cannot be the default. An unattended apply — CI, `mise run verify`,
-`devpod up` — never asks at all and keeps the hostname.
+Machines are named after Police Academy characters. `chezmoi init` asks for one,
+lists the roster in the question, and stores the answer in `chezmoi.toml` as
+`name`. The default is this machine's hostname. An unattended apply — CI, `mise
+run verify`, `devpod up` — never asks at all and keeps the hostname.
+
+You type the name rather than picking it from a menu, and that is deliberate:
+chezmoi's choice prompt matches on a prefix, so with names like `harris`,
+`hightower` and `hooks` one keystroke silently selects the wrong machine name.
 
 | Name | |
 | --- | --- |
@@ -559,10 +561,9 @@ place by a `modify_` script and never copied into this repo; the alias is the
 only key it touches, and without `jq` or a recorded name it returns the file
 untouched.
 
-The roster is advisory, and the pick-list does not make it otherwise: it limits
-what can be chosen, not what can arrive. An unattended init takes the hostname
-without ever reaching the picker, and `chezmoi.toml` can be edited by hand. Any
-name that is not on the roster warns once and applies anyway — a machine already
+The roster is advisory. An unattended init takes the hostname without being
+asked anything, and `chezmoi.toml` can be edited by hand, so any name that is
+not on the roster warns once and applies anyway — a machine already
 called something else is a cosmetic problem, and refusing to configure it would
 make it a real one.
 

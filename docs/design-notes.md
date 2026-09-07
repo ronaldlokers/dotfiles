@@ -1600,15 +1600,19 @@ one of them assert a name that belongs to some other machine. The prompt earns
 its place only for the case detection genuinely cannot cover, a fresh install
 still carrying the hostname its installer picked.
 
-**A pick-list, and a warn that is not redundant with it.** `promptChoiceOnce`
-means init offers the roster rather than asking for free text, which is the
-point — a name nobody can remember is not much of a convention. Two things it
-does not do, both worth knowing before someone deletes the warn as duplicated
-work. It only constrains the interactive path: an unattended init never reaches
-the picker and takes the hostname, and `chezmoi.toml` is a file anyone can edit.
-And it cannot offer a default it does not contain, so a hostname that is not a
-roster name is swapped for the first free one *inside the TTY branch only* —
-doing it outside would rename every unattended machine to `blankes`.
+**The roster is listed in the question, not offered as a menu.**
+`promptChoiceOnce` was the obvious way to "give a list to choose from" and it
+was tried, on 2026-09-07, and reverted the same day. chezmoi's choice prompt
+prints the options slash-separated on a single line and then matches on a
+PREFIX. With fourteen names sharing initials — `harris`/`hightower`/`hooks`,
+`callahan`/`copeland` — one keystroke resolves to whichever it reaches first and
+the prompt moves on, with nothing shown to say which was taken. Being silently
+assigned the wrong name defeats the entire purpose of naming a machine, and it
+is a worse failure than having to type nine characters.
+
+So it is `promptStringOnce` with the roster interpolated into the question, and
+the off-roster warn is what catches a typo. Anyone re-attempting a menu should
+know the constraint is chezmoi's prompt toolkit, not the idea.
 
 **Off-roster warns rather than fails.** `fail` was the obvious reading of "an
 allowed list" and it is the wrong one. `.chezmoi.toml.tmpl` is the config
