@@ -1,0 +1,41 @@
+#!/bin/sh
+# Start the Nano Banana MCP server with the Gemini key in its environment and
+# nowhere else.
+#
+# The key could have gone straight into ~/.claude.json as an `-e` value on
+# `claude mcp add`. It is not there because that file is not chezmoi-managed,
+# is world-readable by default, and gets copied around when a Claude Code
+# problem is being diagnosed. It also could have been exported from the shell
+# rc, which would hand it to every process this user starts rather than to the
+# one that needs it.
+#
+# So: one file at 0600 that restore-secrets writes from Proton Pass, read here
+# and inherited only by the server.
+set -eu
+
+env_file="${XDG_CONFIG_HOME:-$HOME/.config}/nanobanana/env"
+
+if [ ! -r "$env_file" ]; then
+	echo "nanobanana-mcp: no key at $env_file." >&2
+	echo "nanobanana-mcp: add 'gemini api key' to the Dotfiles vault in Proton Pass," >&2
+	echo "nanobanana-mcp: with the key as the item's note, then 'chezmoi apply'." >&2
+	exit 1
+fi
+
+# The file holds the key and nothing else, so the shell never sees it as code.
+GEMINI_API_KEY="$(cat "$env_file")"
+export GEMINI_API_KEY
+
+if [ -z "$GEMINI_API_KEY" ]; then
+	echo "nanobanana-mcp: $env_file is empty." >&2
+	exit 1
+fi
+
+# Where the images land. Under the user's pictures rather than in whatever
+# directory Claude Code happened to start in, because a generated image is a
+# file the user will want to find again.
+IMAGE_OUTPUT_DIR="${IMAGE_OUTPUT_DIR:-$HOME/Pictures/nanobanana}"
+export IMAGE_OUTPUT_DIR
+mkdir -p "$IMAGE_OUTPUT_DIR"
+
+exec nanobanana-mcp-server "$@"
