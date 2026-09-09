@@ -301,12 +301,14 @@ restore_titles_for() {
 	[[ "$output" != *"sops age keys"* ]]
 	[[ "$output" != *"devpod dotfiles-env"* ]]
 	[[ "$output" != *"devpod project-tokens"* ]]
+	[[ "$output" != *"gemini api key"* ]]
 }
 
-@test "a personal machine still restores all five" {
+@test "a personal machine still restores all six" {
 	run restore_titles_for personal
 	[ "$status" -eq 0 ]
-	[ "$(printf '%s\n' "$output" | grep -c .)" -eq 5 ]
+	[ "$(printf '%s\n' "$output" | grep -c .)" -eq 6 ]
+	[[ "$output" == *"gemini api key"* ]]
 }
 
 @test "the offline export and its counterpart are not installed on a work machine" {

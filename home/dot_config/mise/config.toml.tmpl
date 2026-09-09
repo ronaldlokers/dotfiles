@@ -110,6 +110,19 @@ uv = "0.12.9"
 # vendored into dot_claude/skills rather than left to `graphify install`, so a
 # fresh machine gets it from an apply.
 "pipx:graphifyy" = "0.9.53"
+# Gemini's image models behind an MCP server, so Impeccable finds a
+# harness-native image tool and never reaches for its OpenAI fallback. Reads
+# GEMINI_API_KEY from the environment; ~/.local/bin/nanobanana-mcp is what puts
+# it there, from the file restore-secrets writes.
+#
+# The published metadata names a homepage, repository and bug tracker at
+# github.com/nano-banana/mcp-server, which does not exist. That is upstream
+# sloppiness rather than a lookalike, and it was checked rather than assumed:
+# the sdist's source tree is byte-identical to zhongweili/nanobanana-mcp-server
+# at its last push, and 0.4.5 was uploaded 43 seconds after that push. Verify
+# the same way before bumping, because the name is the only thing a lookalike
+# would need.
+"pipx:nanobanana-mcp-server" = "0.4.5"
 
 # The five below were added on this machine with `mise use`, which writes
 # ~/.config/mise/config.toml directly and so never reached this template. An
