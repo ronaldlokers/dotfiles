@@ -7,7 +7,23 @@
 [tools]
 bat = "0.26.1"
 chezmoi = "2.72.1"
-claude = "2.1.261"
+# The one tool here deliberately not pinned, decided 10 September 2026.
+#
+# Everything else in this file is pinned because a version that moves under you
+# is a variable in every later debugging session. Claude Code is the exception
+# for the opposite reason: it ships several times a week, its releases carry the
+# harness the agent sessions actually run in, and a pin means noticing months
+# later that a fixed bug was never picked up.
+#
+# It had already lost the argument in practice. The live config on this machine
+# said `latest` and this template said 2.1.261, so every `chezmoi apply` stopped
+# to ask about the same line — and the answer, each time, was to keep `latest`.
+# A pin nobody applies is not a pin, it is a prompt.
+#
+# What this costs, stated: two machines can be on different Claude Code versions
+# at the same moment, and a session's behaviour is no longer reproducible from
+# this file alone. `claude --version` is where that question gets answered now.
+claude = "latest"
 fzf = "0.74.3"
 lsd = "1.2.0"
 fd = "10.5.0"
