@@ -31,6 +31,18 @@ if [ -z "$GEMINI_API_KEY" ]; then
 	exit 1
 fi
 
+# The vault item is created before the key exists, so that adding the key is
+# pasting into a field rather than getting a title exactly right in a password
+# manager. That placeholder then restores like any other secret, and without
+# this the server would start with it and fail somewhere inside Google's SDK
+# on the first render — an opaque failure where a plain one had been.
+if [ "$GEMINI_API_KEY" = "REPLACE-ME-WITH-THE-GEMINI-API-KEY" ]; then
+	echo "nanobanana-mcp: the vault item still holds its placeholder." >&2
+	echo "nanobanana-mcp: put the real key in the note of 'gemini api key'" >&2
+	echo "nanobanana-mcp: in the Dotfiles vault, then 'chezmoi apply'." >&2
+	exit 1
+fi
+
 # Where the images land. Under the user's pictures rather than in whatever
 # directory Claude Code happened to start in, because a generated image is a
 # file the user will want to find again.
