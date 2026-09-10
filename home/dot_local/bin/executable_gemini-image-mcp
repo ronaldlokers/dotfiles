@@ -2,6 +2,11 @@
 # Start the Nano Banana MCP server with the Gemini key in its environment and
 # nowhere else.
 #
+# Named gemini-image-mcp rather than nanobanana-mcp because the package ships an
+# executable of its own by that second name. Both landed on PATH, mise's shim
+# won, and `nanobanana-mcp` therefore started the server with no key at all —
+# a wrapper that exists and is never the thing that runs.
+#
 # The key could have gone straight into ~/.claude.json as an `-e` value on
 # `claude mcp add`. It is not there because that file is not chezmoi-managed,
 # is world-readable by default, and gets copied around when a Claude Code
@@ -16,9 +21,9 @@ set -eu
 env_file="${XDG_CONFIG_HOME:-$HOME/.config}/nanobanana/env"
 
 if [ ! -r "$env_file" ]; then
-	echo "nanobanana-mcp: no key at $env_file." >&2
-	echo "nanobanana-mcp: add 'gemini api key' to the Dotfiles vault in Proton Pass," >&2
-	echo "nanobanana-mcp: with the key as the item's note, then 'chezmoi apply'." >&2
+	echo "gemini-image-mcp: no key at $env_file." >&2
+	echo "gemini-image-mcp: add 'gemini api key' to the Dotfiles vault in Proton Pass," >&2
+	echo "gemini-image-mcp: with the key as the item's note, then 'chezmoi apply'." >&2
 	exit 1
 fi
 
@@ -27,7 +32,7 @@ GEMINI_API_KEY="$(cat "$env_file")"
 export GEMINI_API_KEY
 
 if [ -z "$GEMINI_API_KEY" ]; then
-	echo "nanobanana-mcp: $env_file is empty." >&2
+	echo "gemini-image-mcp: $env_file is empty." >&2
 	exit 1
 fi
 
@@ -37,9 +42,9 @@ fi
 # this the server would start with it and fail somewhere inside Google's SDK
 # on the first render — an opaque failure where a plain one had been.
 if [ "$GEMINI_API_KEY" = "REPLACE-ME-WITH-THE-GEMINI-API-KEY" ]; then
-	echo "nanobanana-mcp: the vault item still holds its placeholder." >&2
-	echo "nanobanana-mcp: put the real key in the note of 'gemini api key'" >&2
-	echo "nanobanana-mcp: in the Dotfiles vault, then 'chezmoi apply'." >&2
+	echo "gemini-image-mcp: the vault item still holds its placeholder." >&2
+	echo "gemini-image-mcp: put the real key in the note of 'gemini api key'" >&2
+	echo "gemini-image-mcp: in the Dotfiles vault, then 'chezmoi apply'." >&2
 	exit 1
 fi
 
