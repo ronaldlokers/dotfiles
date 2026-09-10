@@ -122,7 +122,15 @@ uv = "0.12.9"
 # at its last push, and 0.4.5 was uploaded 43 seconds after that push. Verify
 # the same way before bumping, because the name is the only thing a lookalike
 # would need.
-"pipx:nanobanana-mcp-server" = "0.4.5"
+#
+# fastmcp is pinned with it because 0.4.5 asks for `fastmcp>=2.11.0` with no
+# ceiling, and fastmcp 4.0.0 landed on 31 August 2026 — after this package's
+# last commit — moving `fastmcp.tools.tool`. Resolved fresh, the server dies on
+# import with ModuleNotFoundError before it serves anything. 3.4.7 is the last
+# 3.x and is pinned exactly rather than as `<4`, both because this repo pins to
+# immutable versions and because a `<` in an args string is a shell
+# metacharacter waiting to be interpreted by something.
+"pipx:nanobanana-mcp-server" = { version = "0.4.5", uvx_args = "--with fastmcp==3.4.7" }
 
 # The five below were added on this machine with `mise use`, which writes
 # ~/.config/mise/config.toml directly and so never reached this template. An
