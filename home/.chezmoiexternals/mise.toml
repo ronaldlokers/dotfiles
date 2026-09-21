@@ -1,4 +1,4 @@
-{{- $miseVersion := "v2026.9.1" -}}
+{{- $miseVersion := "v2026.9.12" -}}
 # mise binary, pinned to an immutable release asset (linux-x64). Renovate bumps
 # $miseVersion via the custom manager in .github/renovate.json.
 #
