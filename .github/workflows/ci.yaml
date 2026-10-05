@@ -23,7 +23,7 @@ jobs:
       # --yes` renovate, so "CI is green" said nothing about which versions a
       # contributor had locally — the validator in particular passed here and
       # failed on a developer machine with a stale npx cache.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
       - name: lint
         run: mise run lint
 
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # Same reasoning as the lint job: the suite and the bats that runs it are
       # both pinned in mise.toml, so a local run and this one are identical.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
       - name: test
         run: mise run test
 
