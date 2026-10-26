@@ -27,7 +27,26 @@ setup() {
 	HYPR_LOG="$BATS_TEST_TMPDIR/hyprctl.log"
 	: >"$HYPR_LOG"
 	STATE="$HOME/.local/state/omarchy/workspace-layouts"
-	export HOME HYPR_LOG
+	NOTIFY_LOG="$BATS_TEST_TMPDIR/notify.log"
+	: >"$NOTIFY_LOG"
+	export HOME HYPR_LOG NOTIFY_LOG
+	make_notify_stub
+}
+
+# Without this the script finds the real /usr/bin/omarchy-notification-send --
+# it is on the minimal PATH run_center hands over -- and every test that drives
+# a failure path pops an actual desktop notification on whoever is running the
+# suite. Worse for the tests themselves: the real one prints nothing, so the
+# message never reaches bats' $output and nothing can assert on what the user
+# is told. Exactly the reason helpers.bash stubs notify-send; this script calls
+# the omarchy wrapper instead, which that stub does not cover.
+make_notify_stub() {
+	cat >"$BIN/omarchy-notification-send" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$NOTIFY_LOG"
+exit 0
+STUB
+	chmod 755 "$BIN/omarchy-notification-send"
 }
 
 # A fake hyprctl recording every call.
@@ -64,6 +83,7 @@ STUB
 run_center() {
 	run env -u XDG_STATE_HOME -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME \
 		PATH="$BIN:/usr/bin:/bin" HOME="$HOME" HYPR_LOG="$HYPR_LOG" \
+		NOTIFY_LOG="$NOTIFY_LOG" \
 		${WS_LINE+WS_LINE="$WS_LINE"} ${EVAL_RC:+EVAL_RC="$EVAL_RC"} \
 		${MFACT+MFACT="$MFACT"} \
 		bash "$SCRIPT"
@@ -207,4 +227,37 @@ run_center() {
 	grep -q 'orientation = "center"' "$STATE/1.lua"
 	run grep -c 'mfact exact' "$HYPR_LOG"
 	[ "$status" -ne 0 ]
+}
+
+# The write was the one failure path the script did not report. Every other one
+# calls notify; a bare `printf > file` under `set -e` exits non-zero with
+# nothing on screen, and the symptom arrives much later -- the workspace is
+# centred now and reverts at the next config reload, which is exactly what
+# persisting it prevents.
+@test "a failed persist is reported rather than exiting silently" {
+	[ "$(id -u)" -ne 0 ] || skip "root ignores the directory permission this relies on"
+	make_hyprctl_stub
+	mkdir -p "$STATE"
+	chmod 500 "$STATE"
+	run_center
+	chmod 700 "$STATE"
+	[ "$status" -eq 0 ]
+	grep -q "could not persist it" "$NOTIFY_LOG"
+	# The centring itself still happened; only the persistence failed.
+	grep -q 'eval' "$HYPR_LOG"
+}
+
+# `*[!0-9-]*` reads as "contains only digits and hyphens", which a bare `-`
+# satisfies -- and the sed that produces $ws can emit exactly that, since
+# `[-0-9][0-9]*` matches a lone sign followed by no digits. A rule written from
+# it names a workspace that does not exist, and Hyprland accepts rules for
+# workspaces that are not open, so nothing anywhere says so.
+@test "a lone sign is not a workspace id" {
+	make_hyprctl_stub
+	WS_LINE="workspace ID - (special) on monitor DP-1:" run_center
+	[ "$status" -eq 1 ]
+	grep -q "could not read the active workspace" "$NOTIFY_LOG"
+	# Nothing was applied and nothing was written.
+	! grep -q 'eval' "$HYPR_LOG"
+	[ ! -d "$STATE" ]
 }

@@ -12,9 +12,17 @@ _agent_live() {
 _agent_link="$HOME/.ssh/agent.sock"
 if ! _agent_live "${SSH_AUTH_SOCK:-}"; then
   # word-splitting the find output into candidate sockets is intentional
+  #
+  # `-uid` is not decoration. Whatever this loop picks becomes SSH_AUTH_SOCK for
+  # the shell and then gets republished at the stable ~/.ssh/agent.sock below,
+  # so every later shell inherits it too — and an agent answers signing requests
+  # for the git signing key. /tmp is world-writable, so without the predicate
+  # any uid that can create /tmp/auth-agent*/listener.sock chooses this
+  # machine's agent. `-type s` already declines a symlink pointing somewhere
+  # else, since find does not follow one without -L.
   # shellcheck disable=SC2046
   for _s in "$_agent_link" \
-      $(command find /tmp -maxdepth 2 -path '/tmp/auth-agent*' -name listener.sock -type s 2> /dev/null | xargs -r ls -t 2> /dev/null) \
+      $(command find /tmp -maxdepth 2 -path '/tmp/auth-agent*' -name listener.sock -type s -uid "$(id -u)" 2> /dev/null | xargs -r ls -t 2> /dev/null) \
       "${XDG_RUNTIME_DIR:-/nonexistent}/ssh-agent.socket"; do
     if _agent_live "$_s"; then
       export SSH_AUTH_SOCK="$_s"
