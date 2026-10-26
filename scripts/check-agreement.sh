@@ -29,7 +29,7 @@ set -eu
 # below. It was three, and they had already drifted: the usage text listed six
 # checks while the dispatch knew seven.
 all_checks="chezmoi-pins vault-name container-markers pat-expiry graphify-pin
-pat-path shellcheck-targets"
+pat-path shellcheck-targets runbook-flags hook-counts"
 
 is_check() {
 	for _ic in $all_checks; do
@@ -255,6 +255,98 @@ check_graphify_pin() {
 	fi
 }
 
+# --- the flags the runbooks tell you to type ---------------------------------
+# The recovery runbooks are the only documents here that are never executed:
+# every other path in this repo runs daily, on a timer, or in CI, while
+# README's "Rotating the signing key" and docs/revocation.md are read once, in
+# an emergency, months after they were written. So they rot silently, and the
+# moment you find out is the worst possible one.
+#
+# Two had rotted by 2026-09-07. `pass-cli pat delete --personal-access-token-name`
+# — step one of "the bootstrap PAT leaked", the command whose whole job is to
+# revoke a token that reads the entire vault — fails with `error: unexpected
+# argument`, because delete takes an id and only `renew` takes a name. And the
+# key-rotation one-liner used `ssh-keygen -f /dev/stdout`, which blocks on an
+# undocumented `Overwrite (y/n)?` prompt and then exits 255.
+#
+# This closes the first class: every `pass-cli` flag the docs name has to exist
+# in that subcommand's own `--help`. Skipped when pass-cli is absent, which is
+# the CI case — this is a local check, and a local check that runs is worth more
+# than a CI check that cannot.
+check_runbook_flags() {
+	command -v pass-cli >/dev/null 2>&1 || return 0
+	for doc in "$root/README.md" "$root/docs/revocation.md"; do
+		[ -r "$doc" ] || continue
+		# Every `pass-cli ...` invocation carrying at least one long flag.
+		#
+		# Through a file rather than a pipe, and that is the whole reason this
+		# is not two lines shorter: `grep | while read` runs the loop in a
+		# subshell, so `fail` sets its rc there and the parent still exits 0.
+		# The check printed FAIL and passed. Caught by mutating the doc back to
+		# the broken flag and reading the exit status rather than the output.
+		matches="${TMPDIR:-/tmp}/check-agreement-runbook.$$"
+		grep -hoE 'pass-cli [a-z-]+( [a-z-]+)* --[a-z-]+([ =][^ `]*)?' \
+			"$doc" >"$matches" 2>/dev/null || true
+		while read -r line; do
+			sub=""
+			flags=""
+			for tok in $line; do
+				case "$tok" in
+				pass-cli) ;;
+				--*) flags="$flags ${tok%%=*}" ;;
+				-*) ;;
+				*) [ -z "$flags" ] && sub="$sub $tok" ;;
+				esac
+			done
+			[ -n "$sub" ] || continue
+			# shellcheck disable=SC2086
+			help="$(pass-cli $sub --help 2>&1 || true)"
+			for f in $flags; do
+				case "$help" in
+				*"$f"*) ;;
+				*) fail "$doc says \`pass-cli$sub $f\` but $f is not in that subcommand's --help" ;;
+				esac
+			done
+		done <"$matches"
+		rm -f "$matches"
+	done
+}
+
+# --- the hook counts the README quotes -------------------------------------
+# README's layout table states how many hooks dot_claude/modify_settings.json
+# installs. It said "nine entries, seven categories" while the script emitted
+# eleven and eight: cd11bbe added PermissionRequest, SessionEnd and two more
+# matchers for moshi-hook and left the sentence alone. Nobody noticed because
+# nothing reads both.
+#
+# Counted by running the modifier rather than by parsing it — it is a bash
+# script that prints JSON, so the number it produces is the only honest source.
+# Empty stdin is what chezmoi hands it on a machine with no settings.json yet.
+check_hook_counts() {
+	command -v jq >/dev/null 2>&1 || return 0
+	m="$root/home/dot_claude/modify_settings.json"
+	[ -r "$m" ] || return 0
+	counts="$(printf '{}' | bash "$m" 2>/dev/null |
+		jq -r '"\(.hooks|length) \([.hooks[]|length]|add)"' 2>/dev/null || true)"
+	cats="${counts%% *}"
+	entries="${counts##* }"
+	if [ -z "$cats" ] || [ -z "$entries" ] || [ "$cats" = "null" ]; then
+		fail "could not count the hooks modify_settings.json emits"
+		return
+	fi
+	stated="$(grep -oE 'modify_settings\.json` — [0-9]+ entries, [0-9]+ categories' \
+		"$root/README.md" 2>/dev/null || true)"
+	if [ -z "$stated" ]; then
+		fail "README no longer states the modify_settings.json hook counts"
+		return
+	fi
+	r_entries="$(printf '%s' "$stated" | grep -oE '[0-9]+ entries' | grep -oE '[0-9]+')"
+	r_cats="$(printf '%s' "$stated" | grep -oE '[0-9]+ categories' | grep -oE '[0-9]+')"
+	if [ "$r_entries" != "$entries" ] || [ "$r_cats" != "$cats" ]; then
+		fail "hook counts disagree: the script emits $entries entries in $cats categories, README says $r_entries in $r_cats"
+	fi
+}
+
 # --- the cached bootstrap PAT's path ----------------------------------------
 # proton-ssh-load writes it; dotfiles-secrets-check now reads it to establish a
 # session before calling its absence a fault. Two scripts, one path, and a
@@ -383,6 +475,8 @@ for want in "$@"; do
 	graphify-pin) check_graphify_pin ;;
 	pat-path) check_pat_path ;;
 	shellcheck-targets) check_shellcheck_targets ;;
+	runbook-flags) check_runbook_flags ;;
+	hook-counts) check_hook_counts ;;
 	*)
 		echo "check-agreement: unknown check: $want" >&2
 		usage >&2

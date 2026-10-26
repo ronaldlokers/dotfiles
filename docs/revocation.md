@@ -67,8 +67,12 @@ entire vault.
    ```sh
    pass-cli login
    pass-cli pat list
-   pass-cli pat delete --personal-access-token-name <name>
+   pass-cli pat delete --personal-access-token-id <id>
    ```
+   `delete` takes the **id**, not the name — `--personal-access-token-name` is
+   valid on `renew` and nowhere else, and passing it here fails with
+   `error: unexpected argument` instead of revoking anything. `pat list` is
+   what gives you the id, which is why it is the step before.
 2. Mint a replacement and put it in `~/.config/pass-cli-bootstrap-pat` (0600) on
    each machine, plus the `bootstrap PAT` vault item. Check each machine for a
    `~/.config/pass-cli-bootstrap-pat.rejected` while you are there and delete
