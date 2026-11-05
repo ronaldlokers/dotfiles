@@ -1311,6 +1311,11 @@ approval round-trip Moshi exists for still works when the agent asks through
 `PermissionRequest`, and silently does not when Claude Code raises a
 notification instead.
 
+v0.3.19 to v0.4.50 left those hooks unchanged. Its installer additionally
+writes an optional Claude plugin for forwarding prompt suggestions and a skill
+for inline visuals; neither is required for the existing approval and
+notification integration managed here.
+
 `moshi-hook status` reports the Claude hooks as `stale` on this machine
 permanently, and that is not a signal of this. It compares against its own
 installer output, which bakes in `/home/ronald/...`; the baseline here is

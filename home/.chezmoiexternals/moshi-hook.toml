@@ -20,12 +20,12 @@
        Same caveat as devpod's hash next door, and worth repeating rather than
        assuming a reader will go and look: the hash was taken from the served
        artifact and cross-checked against upstream's own published
-       checksums.txt for v0.3.19. Those two agreeing proves the download was
+       checksums.txt for v0.4.50. Those two agreeing proves the download was
        not tampered with in transit today. It does not prove anything about
        what upstream published, because both come from the same origin.
 
        Bump by hand, version and hash together:
-           v=v0.3.19  # or whatever cdn.getmoshi.app/hook/latest/version.txt says
+           v=v0.4.50  # or whatever cdn.getmoshi.app/hook/latest/version.txt says
            curl -fsSL "https://cdn.getmoshi.app/hook/$v/checksums.txt" \
              | grep moshi-hook_Linux_x86_64.tar.gz
 
@@ -39,12 +39,12 @@
        and new installers against a scratch HOME — docs/design-notes.md,
        "Bumping moshi-hook means diffing its hook installer". */ -}}
 {{- if and (contains " personal " (includeTemplate "profiles" .)) (eq .chezmoi.os "linux") (eq .chezmoi.arch "amd64") -}}
-{{ $moshiHookVersion := "v0.3.19" }}
+{{ $moshiHookVersion := "v0.4.50" }}
 [".local/bin/moshi-hook"]
 type = "archive-file"
 executable = true
 path = "moshi-hook"
 url = "https://cdn.getmoshi.app/hook/{{ $moshiHookVersion }}/moshi-hook_Linux_x86_64.tar.gz"
-checksum.sha256 = "c94ce3de5b8e7b6d1b9f12d501a95db047f01bf32b6b837e29a4229267ee79d4"
+checksum.sha256 = "793c56b2f02c3e3436e2f82523bb6e1538bfff4de3ec98b6b1e9270d6f167da3"
 refreshPeriod = "168h"
 {{- end -}}
