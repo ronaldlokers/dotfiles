@@ -198,11 +198,9 @@ jobs:
       - name: smoke-test installed tools
         run: |
           export PATH="$TESTHOME/.local/bin:$PATH"
-          # the old `mise ls | head -20` exited 0 regardless (head masks the
-          # status), so a tool that failed to install still passed CI. Ask mise
-          # directly which configured tools are missing — no hard-coded list to
-          # drift from mise/config.toml, and no reliance on interactive-shell
-          # PATH activation (which doesn't fire under `zsh -ic`).
+          # Ask mise whether a normal install still has work — no hard-coded
+          # list to drift from mise/config.toml, and lazy tools correctly stay
+          # absent until first use.
           # Run from $TESTHOME, not the checkout: mise merges every config in
           # the cwd hierarchy, so standing in the repo pulls in its own
           # mise.toml — the tooling that lints this repo — and reports the
@@ -211,13 +209,12 @@ jobs:
           # (Do not start that line with the linter's own name: shellcheck
           # reads a comment opening with its name as a directive, fails to
           # parse it, and silently stops checking the rest of this script.)
-          missing="$(cd "$TESTHOME" && HOME="$TESTHOME" mise ls --missing 2>/dev/null)"
-          if [ -n "$missing" ]; then
-            echo "::error::configured mise tools are not installed:"
+          if ! missing="$(cd "$TESTHOME" && HOME="$TESTHOME" mise install --dry-run-code 2>&1)"; then
+            echo "::error::configured non-lazy mise tools are not installed:"
             printf '%s\n' "$missing"
             exit 1
           fi
-          echo "all configured mise tools installed"
+          echo "all configured non-lazy mise tools installed"
 
   host-ssh-agent:
     # The bootstrap job runs the clean-HOME/container path, where there is no
