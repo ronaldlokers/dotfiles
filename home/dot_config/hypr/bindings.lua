@@ -73,3 +73,10 @@ o.bind("Alt_R", nil, "handy --toggle-transcription", { release = true, ignore_mo
 -- SUPER + M was unbound in Omarchy's defaults, in this file, and in the live
 -- compositor's bind table, so there is no hl.unbind above it.
 o.bind("SUPER + M", "Centre master (25/50/25)", "hypr-center-master")
+
+-- Dictation keys from before Alt + Space and Right Alt became the defaults.
+-- Remove these lines to give the keys back to applications.
+if o.dictation_installed and o.dictation_installed() then
+  o.bind("SUPER + CTRL + X", "Toggle dictation", "omarchy-dictation toggle")
+  o.bind_hold("F9", "Start dictation (push-to-talk)", "omarchy-dictation start", "Stop dictation (push-to-talk)", "omarchy-dictation stop")
+end
