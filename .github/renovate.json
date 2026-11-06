@@ -5,7 +5,7 @@
   ],
   "mise": {
     "managerFilePatterns": [
-      "/(^|/)dot_config/mise/config\\.toml$/",
+      "/(^|/)dot_config/mise/config\\.toml(?:\\.tmpl)?$/",
       "/(^|/)mise\\.toml$/"
     ]
   },
@@ -76,7 +76,7 @@
     {
       "description": "Never automerge the mise tool lists. Same reasoning as the externals rule below, and it was inconsistent to apply it to one and not the other: home/dot_config/mise/config.toml installs and runs the CLI tools this machine uses all day, and mise.toml installs the linters and the test runner that this repo's own checks execute. Both are code that runs as you, fetched from upstream, with CI asserting only that the install succeeded \u2014 never that the contents are what was expected. A green pipeline says the new version installs, not that it is the version the maintainer published. The cost is a PR to click rather than one to read; the alternative is a compromised release reaching every machine's next apply with nobody having looked.",
       "matchFileNames": [
-        "home/dot_config/mise/config.toml",
+        "home/dot_config/mise/config.toml.tmpl",
         "mise.toml"
       ],
       "automerge": false
