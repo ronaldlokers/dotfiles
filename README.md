@@ -265,15 +265,37 @@ the commits it already signed keep verifying while it cannot vouch for anything
 newer. git compares against the *commit's* timestamp, which is what makes that
 work. Do the steps in this order:
 
-1. Mint the replacement, and do not write it to disk:
+1. Log in with the browser flow, then generate the replacement directly inside
+   Proton Pass under a temporary title:
    ```sh
-   ssh-keygen -t ed25519 -C git-signing -f /dev/stdout -N '' -q
+   pass-cli login
+   pass-cli item create ssh-key generate \
+     --vault-name Dotfiles \
+     --title 'git signing key replacement' \
+     --comment git-signing
    ```
-   Or generate it wherever you normally would — what matters is that it lands
-   in the vault and nowhere else.
-2. Replace the **`git signing key`** item in the Dotfiles vault with it.
+   Proton generates and stores both halves in the vault. The private key never
+   reaches a local file, command argument, clipboard or terminal scrollback.
+
+   This used to read `-f /dev/stdout`, which does not work: `ssh-keygen` treats
+   `-f` as a path to create, finds `/dev/stdout` already there, and blocks on
+   `Overwrite (y/n)?` — a prompt nothing here mentions. Answer `y` and it still
+   exits 255 trying to write `/dev/stdout.pub` next to it, with the error text
+   landing in the middle of the key. A command in this runbook is read once, in
+   a hurry, months from now. Printing a working replacement with `cat` would be
+   no better: the private key would survive in terminal scrollback.
+2. Retire the old item, then move the temporary title into its place:
+   ```sh
+   pass-cli item update --vault-name Dotfiles \
+     --item-title 'git signing key' \
+     --field "title=git signing key retired $(date -I)"
+   pass-cli item update --vault-name Dotfiles \
+     --item-title 'git signing key replacement' \
+     --field 'title=git signing key'
+   ```
    `signing-pubkey` reads `public_key` from that item, so nothing in this repo
-   names the key itself.
+   names the key itself. If the second rename fails, rerun it before applying;
+   the temporary title is the only thing that changed.
 3. Set `$retiredBefore` in `home/dot_config/git/allowed_signers.tmpl` to the
    day you are doing this, then `chezmoi apply`. Both entries should now
    render — check with
@@ -303,7 +325,7 @@ Four pieces, three of them applied automatically:
 | Piece | Where |
 | --- | --- |
 | `moshi-hook` daemon | `.chezmoiexternals/moshi-hook.toml`, pinned and checksummed |
-| Claude Code hooks | `dot_claude/modify_settings.json` — nine entries, seven categories |
+| Claude Code hooks | `dot_claude/modify_settings.json` — 11 entries, 8 categories |
 | sshd on the tailnet | `.chezmoiscripts/run_after_21-ssh-over-tailnet.sh.tmpl` |
 | Pairing | by hand, once — see below |
 

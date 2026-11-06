@@ -10,7 +10,7 @@
 - Commit subjects use conventional-commit style: `fix: ...`, `feat: ...` — lowercase, imperative.
 
 ## Secrets
-- Secrets live in Proton Pass (Dotfiles vault), fetched by `pass-cli` during `chezmoi apply`; SSH keys go straight into the ssh-agent and never hit disk. Nothing secret belongs in the dotfiles repo — no `.age` blobs, no `encrypted_` files. Never write a secret plaintext to a repo; flag if found.
+- Secrets live in Proton Pass — the `Dotfiles` vault on a personal machine, `Work` on a work one — fetched by `pass-cli` during `chezmoi apply`; SSH keys go straight into the ssh-agent and never hit disk. Nothing secret belongs in the dotfiles repo — no `.age` blobs, no `encrypted_` files. Never write a secret plaintext to a repo; flag if found.
 
 ## Model routing
 <!-- MODEL-POLICY:START -->
