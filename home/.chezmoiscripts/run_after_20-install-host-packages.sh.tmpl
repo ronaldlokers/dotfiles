@@ -85,7 +85,7 @@ AUR_PACKAGES=(
 	# 3D printer slicer, ham radio programmer, MikroTik router config: the
 	# hobbies, and none of them have anything to say to a work machine.
 	bambustudio-bin
-	chirp-next
+	chirp-next-bin
 	winbox
 {{ end }}
 {{ if contains " work " (includeTemplate "profiles" .) }}
@@ -186,7 +186,7 @@ fi
 # Keyed on the package actually being installed: a machine that skipped or
 # dropped chirp shouldn't silently pick up device access it has no use for.
 declare -A PACKAGE_GROUPS=(
-	[chirp-next]=uucp
+	[chirp-next-bin]=uucp
 )
 
 # `id -un`, not $USER: chezmoi runs scripts with whatever environment it
