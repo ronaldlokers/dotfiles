@@ -1,11 +1,11 @@
 #!/bin/sh
-# Put this repo's own bar widgets on the Omarchy bar, once each.
+# Put the ssh-agent widget on the Omarchy bar, once.
 #
 # ~/.config/omarchy/shell.json is deliberately not managed: `omarchy bar`,
 # `omarchy theme` and the plugin commands all write to it, and a managed copy
 # would revert whatever the last one did -- the fight docs/design-notes.md
-# describes under "Co-owned configuration files". The widgets still have to
-# arrive on a new machine without being typed in by hand, so they are seeded
+# describes under "Co-owned configuration files". The widget still has to
+# arrive on a new machine without being typed in by hand, so it is seeded
 # rather than asserted.
 #
 # A plain `run_after`, not a `run_onchange`, for the reason the enable scripts
@@ -14,10 +14,7 @@
 # script has two such conditions -- no shell.json yet, no jq yet -- and either
 # would have marked the seeding done for the life of the machine.
 #
-# The memory is a state file instead, one line per widget: `<id> <spec>`. Per
-# widget, not one line for all of them, because a shared spec would mean that
-# editing one widget's entry here resurrected another the user had removed on
-# purpose -- a change to one thing undoing a decision about another.
+# The memory is a state file instead, containing `<id> <spec>`.
 #
 #   - spec unchanged and already recorded: do nothing. A widget moved or
 #     removed by hand stays that way; the repo has had its say.
@@ -41,15 +38,9 @@ shell_json="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dotfiles"
 state_file="$state_dir/bar-widget-seeded"
 
-# The widgets, and the specs the state file remembers. Changing anything on one
-# of these lines -- the entry, where it sits, how it gets there -- is what makes
-# the next apply seed that one again.
-#
-# `before` keeps the anchor and sits in front of it. `replace` takes the
-# anchor's place and drops it: lokilabs.workspace is a clone of
-# omarchy.workspaces, not an addition to it, and both on one bar would paint
-# the same spaces twice.
-widget_ids="lokilabs.ssh-agent lokilabs.workspace"
+# The widget and the spec the state file remembers. Changing the entry or its
+# placement is what makes the next apply seed it again.
+widget_ids="lokilabs.ssh-agent"
 
 spec_for() {
 	case "$1" in
@@ -58,12 +49,6 @@ spec_for() {
 		section="right"
 		anchor="omarchy.power"
 		mode="before"
-		;;
-	lokilabs.workspace)
-		entry='{"id":"lokilabs.workspace","monitorColors":["bright_green","bright_magenta"]}'
-		section="left"
-		anchor="omarchy.workspaces"
-		mode="replace"
 		;;
 	*)
 		return 1
@@ -112,6 +97,13 @@ state_put() {
 	printf '%s %s\n' "$1" "$2" >>"$tmp"
 	mv -f "$tmp" "$state_file"
 }
+
+# Hand the bar back to Omarchy's workspace widget when upgrading from the old
+# clone. Keep its position; only the id changes.
+if jq -e '.bar.layout.left // [] | any(.id == "lokilabs.workspace")' "$shell_json" >/dev/null; then
+	jq '(.bar.layout.left[] | select(.id == "lokilabs.workspace")).id = "omarchy.workspaces"' \
+		"$shell_json" >"$shell_json.tmp.$$" && mv -f "$shell_json.tmp.$$" "$shell_json"
+fi
 
 for widget_id in $widget_ids; do
 	spec_for "$widget_id"

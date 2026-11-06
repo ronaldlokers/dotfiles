@@ -376,8 +376,8 @@ got_past_the_gates() {
 }
 
 @test "does not grant device access for a package that is not installed" {
-	# chirp-next fails to build, so nothing should hand out its group
-	run_packages AUR_FAIL="chirp-next" GROUPS_PRESENT="uucp" USER_GROUPS="users"
+	# chirp-next-bin fails to install, so nothing should hand out its group
+	run_packages AUR_FAIL="chirp-next-bin" GROUPS_PRESENT="uucp" USER_GROUPS="users"
 	[ "$status" -eq 0 ]
 	got_past_the_gates
 	[ ! -s "$USERMOD_LOG" ]
@@ -460,7 +460,7 @@ got_past_the_gates() {
 # than a run_onchange, the next apply retries whatever did not land.
 @test "exits 0 even when everything fails" {
 	run_packages REPO_FAIL="discord ghostty obsidian proton-vpn-gtk-app prusa-slicer rpi-imager signal-desktop tailscale pam-u2f pcsclite yubikey-manager yubikey-personalization zsh" \
-		AUR_FAIL="bambustudio-bin chirp-next claude-desktop proton-pass-bin spotify winbox zen-browser-bin"
+		AUR_FAIL="bambustudio-bin chirp-next-bin claude-desktop proton-pass-bin spotify winbox zen-browser-bin"
 	[ "$status" -eq 0 ]
 	[[ "$output" == *"failed to install"* ]]
 	[[ "$output" == *"re-run 'chezmoi apply'"* ]]

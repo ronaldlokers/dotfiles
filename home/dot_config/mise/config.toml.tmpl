@@ -5,6 +5,11 @@
        does not belong: a TUI is wanted in a container as much as on a host, and
        most of this list is untagged for that reason. */ -}}
 [tools]
+# Omarchy declares these two lazy tools without registry aliases or binary
+# metadata. The aliases below select their backends; lazy_bins keeps fresh mise
+# installs from warning while creating their shims.
+basecamp = { version = "latest", lazy = true, lazy_bins = ["basecamp"] }
+muse = { version = "latest", lazy = true, lazy_bins = ["muse"] }
 bat = "0.26.1"
 chezmoi = "2.72.1"
 # The one tool here deliberately not pinned, decided 10 September 2026.
@@ -175,3 +180,8 @@ flux2 = "2.9.5"
 [settings]
 # run pipx-backend tools through uvx so no system python/pipx is needed
 pipx.uvx = true
+
+# User aliases are the supported override for system tools.
+[tool_alias]
+basecamp = "github:basecamp/basecamp-cli"
+muse = "http:muse[url=https://api.meta.ai/muse-launcher.sh,bin=muse,version_list_url=https://api.meta.ai/muse-code/channels/muse-stable,version_json_path=.version]"

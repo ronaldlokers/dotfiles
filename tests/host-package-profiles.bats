@@ -56,7 +56,7 @@ packages_for() {
 	[[ "$output" == *"signal-desktop"* ]]
 	[[ "$output" == *"proton-vpn-gtk-app"* ]]
 	[[ "$output" == *"prusa-slicer"* ]]
-	[[ "$output" == *"chirp-next"* ]]
+	[[ "$output" == *"chirp-next-bin"* ]]
 }
 
 @test "and not the work ones" {
@@ -79,7 +79,7 @@ packages_for() {
 	[[ "$output" != *"signal-desktop"* ]]
 	[[ "$output" != *"proton-vpn-gtk-app"* ]]
 	[[ "$output" != *"prusa-slicer"* ]]
-	[[ "$output" != *"chirp-next"* ]]
+	[[ "$output" != *"chirp-next-bin"* ]]
 	[[ "$output" != *"rpi-imager"* ]]
 	[[ "$output" != *"winbox"* ]]
 	[[ "$output" != *"bambustudio-bin"* ]]
