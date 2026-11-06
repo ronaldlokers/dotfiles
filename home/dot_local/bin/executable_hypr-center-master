@@ -46,15 +46,25 @@ fi
 # works.
 ws="$(hyprctl activeworkspace 2>/dev/null | sed -n 's/^workspace ID \([-0-9][0-9]*\).*/\1/p' | head -1)"
 
-# Anything non-numeric means hyprctl answered with something unexpected, and a
-# workspace rule written from a bad id would name a workspace that does not
-# exist -- silently, since Hyprland accepts rules for workspaces not yet open.
+# Anything that is not an optional `-` followed by digits means hyprctl
+# answered with something unexpected, and a workspace rule written from a bad
+# id names a workspace that does not exist -- silently, since Hyprland accepts
+# rules for workspaces that are not open yet.
+#
+# The sed above already limits the shape to `[-0-9][0-9]*`, so the case this
+# adds over the previous `*[!0-9-]*` guard is the narrow one it let through: a
+# bare `-`, which that pattern reads as "contains only digits and hyphens" and
+# accepts. Special workspaces carry a negative id, which is why the sign is
+# allowed at all.
 case "$ws" in
-'' | *[!0-9-]*)
+'' | '-') ws_bad=1 ;;
+-*) case "${ws#-}" in '' | *[!0-9]*) ws_bad=1 ;; *) ws_bad=0 ;; esac ;;
+*) case "$ws" in *[!0-9]*) ws_bad=1 ;; *) ws_bad=0 ;; esac ;;
+esac
+if [ "$ws_bad" -eq 1 ]; then
 	notify "could not read the active workspace"
 	exit 1
-	;;
-esac
+fi
 
 rule="hl.workspace_rule({ workspace = \"$ws\", layout = \"master\", layout_opts = { orientation = \"center\" } })"
 
@@ -105,4 +115,13 @@ if ! mkdir -p "$layouts_dir" 2>/dev/null; then
 	notify "centred workspace $ws, but could not persist it"
 	exit 0
 fi
-printf '%s\n' "$rule" >"$layouts_dir/$ws.lua"
+
+# Guarded like the mkdir above it. Under `set -e` a bare redirection that fails
+# exits the script with nothing on screen, and the symptom arrives much later:
+# the workspace is centred now and silently reverts at the next config reload,
+# which is the exact thing persisting it is for. A full disk or a read-only
+# state directory is the ordinary way this happens.
+if ! printf '%s\n' "$rule" >"$layouts_dir/$ws.lua" 2>/dev/null; then
+	notify "centred workspace $ws, but could not persist it"
+	exit 0
+fi

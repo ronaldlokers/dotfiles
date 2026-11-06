@@ -122,7 +122,22 @@ Item {
     // count is the part that changes.
     text: " " + root.label
     color: root.alertColor
-    font.family: "CaskaydiaMono Nerd Font"
+    // The bar's own family, the way the colours above are the bar's own
+    // colours. Ui/WidgetButton.qml -- what every stock widget is built from --
+    // reads exactly this, so hardcoding a name here was the one place this
+    // widget stopped following the theme: a machine whose bar font is not
+    // CaskaydiaMono rendered every stock widget in one face and this one in
+    // another, and a machine without that font at all rendered the key glyph
+    // as a replacement box.
+    font.family: bar && bar.fontFamily ? bar.fontFamily : "CaskaydiaMono Nerd Font"
+    // ponytail: size stays pinned. shell.bar.toml sets `scale-with-font = true`,
+    // so a user who raises the bar's font gets every stock widget scaling and
+    // this one staying at 12px -- but the bar exposes no font size to read.
+    // WidgetButton takes it from Style.font.body, and importing qs.Commons for
+    // it is the coupling this widget's header explains it will not take: it
+    // draws itself so that a shell release moving those modules costs it
+    // nothing. Upgrade path is the bar exposing a size the way it already
+    // exposes fontFamily, barSize, foreground and urgent.
     font.pixelSize: 12
   }
 
